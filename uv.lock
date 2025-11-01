@@ -1,0 +1,17 @@
+version = 1
+revision = 3
+requires-python = ">=3.8"
+
+[[package]]
+name = "astrodrift"
+source = { editable = "." }
+
+[package.dev-dependencies]
+dev = [
+    { name = "astrodrift" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "astrodrift", editable = "." }]

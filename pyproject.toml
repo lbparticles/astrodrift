@@ -3,7 +3,7 @@ requires = ["maturin>=1.9,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "drift"
+name = "astrodrift"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
@@ -13,3 +13,22 @@ classifiers = [
 dynamic = ["version"]
 [tool.maturin]
 features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "drift.drift_rs"
+
+[tool.uv.workspace]
+members = [
+    ".",
+    ".",
+    ".",
+    ".",
+]
+
+[tool.uv.sources]
+astrodrift = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "astrodrift",
+]
+
