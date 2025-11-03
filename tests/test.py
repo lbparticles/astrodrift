@@ -1,9 +1,9 @@
-from drift import sum_as_string
+from drift import integrate, potential, ic
 
 
 def main():
-    res = sum_as_string(1, 2)
-    print(res)
+    res = integrate(potential(), ic())
+    res.run()
 
 
 if __name__ == "__main__":
