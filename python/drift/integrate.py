@@ -1,8 +1,9 @@
-from .drift_rs import sum_as_string
+from .drift_rs import integrate_gpu
 from .potential import potential
 from .ic import ic
 from .output import output
 from .log import log
+import numpy as np
 
 
 class integrate:
@@ -26,5 +27,15 @@ class integrate:
         return f"{self.potentials} {self.initial_conditions}"
 
     def run(self):
-        sum_as_string(1, 2)
+        N = 20
+        state0 = np.zeros((N, 6), dtype=np.float64)
+        integrate_gpu(
+            state0,
+            steps_cap=10000,
+            t_end=28.12458,
+            dt0=0.070311,
+            atol=1e-11,
+            rtol=1e-11,
+            reverse=False,
+        )
         return self.output
