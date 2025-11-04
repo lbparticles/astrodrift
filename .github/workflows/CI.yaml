@@ -11,6 +11,9 @@ permissions:
 
 env:
   BUCKET: drift-oci-bucket
+  APPTAINER_TMPDIR: /mnt/gha/tmp
+  APPTAINER_CACHEDIR: /mnt/gha/cache
+  TMPDIR: /mnt/gha/tmp
 
 jobs:
   build-publish:
@@ -58,6 +61,14 @@ jobs:
           docker build \
             -f container/ubuntu24-cuda12/Dockerfile \
             -t ubuntu24-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }} .
+      
+      - name: Prepare scratch for Apptainer
+        run: |
+          set -euxo pipefail
+          sudo mkdir -p /mnt/gha/tmp /mnt/gha/cache
+          sudo chown -R $USER:$USER /mnt/gha
+          # clean any prior cache to free space
+          if command -v apptainer >/dev/null 2>&1; then apptainer cache clean -a || true; fi
 
       - name: Build Apptainer SIF (ubuntu22-cuda12)
         run: |
