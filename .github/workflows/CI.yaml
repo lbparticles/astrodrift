@@ -10,14 +10,16 @@ permissions:
   id-token: write
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_REPO: ${{ github.repository }}                  # org/repo
-  SIF_REPO:  ${{ github.repository }}-sif               # org/repo-sif (OCI artifacts for SIFs)
+  BUCKET: drift-oci-bucket
 
 jobs:
   build-publish:
-    # Ensure we stay on your hardened self-hosted VM
     runs-on: [ self-hosted, vm ]
+    timeout-minutes: 30
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
 
     steps:
       - name: Checkout
@@ -45,10 +47,6 @@ jobs:
             echo "hash_ubuntu24_cuda12=$HASH24"
           } >> "$GITHUB_OUTPUT"
 
-
-      - name: Install/enable Buildx (if needed)
-        uses: docker/setup-buildx-action@v3
-
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -58,14 +56,47 @@ jobs:
 
       - name: Build and push ubuntu22-cuda12 image
         run: |
-          docker buildx build \
+          docker build \
             -f container/ubuntu22-cuda12/Dockerfile \
-            -t ubuntu22-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }} \
-            --load .
+            -t ubuntu22-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }} .
 
       - name: Build and push ubuntu24-cuda12 image
         run: |
-          docker buildx build \
+          docker build \
             -f container/ubuntu24-cuda12/Dockerfile \
-            -t ubuntu24-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }} \
-            --load .
+            -t ubuntu24-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }} .
+
+      - name: Build Apptainer SIF (ubuntu22-cuda12)
+        run: |
+          set -euxo pipefail
+          mkdir -p apptainer/out
+          apptainer build \
+            apptainer/out/app-ubuntu22-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif \
+            docker-daemon://ubuntu22-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}
+          ls -lh apptainer/out
+
+      - name: Build Apptainer SIF (ubuntu24-cuda12)
+        run: |
+          set -euxo pipefail
+          mkdir -p apptainer/out
+          apptainer build \
+            apptainer/out/app-ubuntu24-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif \
+            docker-daemon://ubuntu24-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}
+          ls -lh apptainer/out
+
+      - name: Upload SIF to S3 (ubuntu22-cuda12)
+        run: |
+          set -euxo pipefail
+          aws s3 cp \
+            apptainer/out/app-ubuntu22-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif \
+            s3://${{ env.BUCKET }}/ubuntu22/app-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif \
+            --metadata artifact-type=application/vnd.apptainer.sif.layer.v1
+
+      - name: Upload SIF to S3 (ubuntu24-cuda12)
+        run: |
+          set -euxo pipefail
+          aws s3 cp \
+            apptainer/out/app-ubuntu24-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif \
+            s3://${{ env.BUCKET }}/ubuntu24/app-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif \
+            --metadata artifact-type=application/vnd.apptainer.sif.layer.v1
+

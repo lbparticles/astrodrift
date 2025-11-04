@@ -71,7 +71,7 @@ RUN curl -sSf -L -O https://github.com/llvm/llvm-project/releases/download/llvmo
 
 # Get Rust
 ENV HOME=/data/home/leo
-RUN curl -sSf -L https://sh.rustup.rs | bash -s -- -y
+RUN curl -sSf -L https://sh.rustup.rs | bash -s -- --default-toolchain none -y
 ENV PATH="/data/home/leo/.cargo/bin:$PATH"
 
 ARG NSYS_URL=https://developer.nvidia.com/downloads/assets/tools/secure/nsight-systems/2024_4/
