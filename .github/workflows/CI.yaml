@@ -1,0 +1,71 @@
+name: Build & Publish Docker + Apptainer (same VM)
+
+on:
+  push:
+    branches: [ actions-runner-setup ]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_REPO: ${{ github.repository }}                  # org/repo
+  SIF_REPO:  ${{ github.repository }}-sif               # org/repo-sif (OCI artifacts for SIFs)
+
+jobs:
+  build-publish:
+    # Ensure we stay on your hardened self-hosted VM
+    runs-on: [ self-hosted, vm ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Compute short hashes for Dockerfiles
+        id: hash
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          short_hash() {
+            local path="$1"
+            git ls-files -z -- "$path/Dockerfile" 2>/dev/null \
+              | xargs -0 sha256sum \
+              | sha256sum \
+              | cut -c1-8
+          }
+
+          HASH22=$(short_hash container/ubuntu22-cuda12)
+          HASH24=$(short_hash container/ubuntu24-cuda12)
+
+          {
+            echo "hash_ubuntu22_cuda12=$HASH22"
+            echo "hash_ubuntu24_cuda12=$HASH24"
+          } >> "$GITHUB_OUTPUT"
+
+
+      - name: Install/enable Buildx (if needed)
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ubuntu22-cuda12 image
+        run: |
+          docker buildx build \
+            -f container/ubuntu22-cuda12/Dockerfile \
+            -t ubuntu22-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }} \
+            --load .
+
+      - name: Build and push ubuntu24-cuda12 image
+        run: |
+          docker buildx build \
+            -f container/ubuntu24-cuda12/Dockerfile \
+            -t ubuntu24-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }} \
+            --load .
