@@ -64,10 +64,6 @@ jobs:
       
       - name: Prepare scratch for Apptainer
         run: |
-          set -euxo pipefail
-          sudo mkdir -p /mnt/gha/tmp /mnt/gha/cache
-          sudo chown -R $USER:$USER /mnt/gha
-          # clean any prior cache to free space
           if command -v apptainer >/dev/null 2>&1; then apptainer cache clean -a || true; fi
 
       - name: Build Apptainer SIF (ubuntu22-cuda12)
