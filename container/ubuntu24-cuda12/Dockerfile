@@ -95,6 +95,15 @@ RUN --mount=type=bind,source=rust-toolchain.toml,target=/data/astrodrift/rust-to
     rustup show
 
 
+RUN --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-install-project
+
+# RUN --mount=type=bind,source=Cargo.toml,target=Cargo.toml \
+#     cargo fetch  # Or cargo build --release for a binary
+# WORKDIR /data/astrodrift/kernels
+# RUN --mount=type=bind,source=kernels/Cargo.toml,target=Cargo.toml \
+#     cargo fetch # Or cargo build --release for a binary
 
 
 # Add nvvm to LD_LIBRARY_PATH.

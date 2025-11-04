@@ -12,6 +12,7 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
+    "numpy>=1.24.4",
     "patchelf>=0.17.2.4",
 ]
 
