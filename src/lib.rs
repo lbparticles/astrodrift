@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::Write;
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
-const NF64: usize = 9;
+const NF64: usize = 6;
 // FIXME: double check in MPA impl
 const FAC_MIN: f64 = 0.33;
 const FAC_MAX: f64 = 6.0;

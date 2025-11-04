@@ -25,9 +25,21 @@
 
 # DEPENDENCIES
 
+```
+  
+```
+
+
 
 # CONTRIBUTION
 
+To install from source 
+
+```git clone https://github.com/lbparticles/astrodrift```
+
+To use the gpu functions calls you must have an nvidia gpu and drivers installed on your system, download them from the [official website]( https://www.nvidia.com/en-us/drivers/) or use your os package manager.
+
+Inside the containers/, there are two provided Dockerfile to build ubuntu22 and ubuntu24 versions of an apptainer that has the necessary nvidia toolkits installed. make sure that you have installed docker and apptainer installed. There are also example shell scripts that can be modified to create a docker container in the root of project -- WORKDIR. There is a translation script from docker to apptainer. There is a run.sh script that opens the apptainer with the project bound to /data/astrodrift and sets it to the current working directory.
 
 # CONTRIBUTORS
 
