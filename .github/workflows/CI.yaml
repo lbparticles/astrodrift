@@ -152,7 +152,7 @@ jobs:
     - uses: actions/checkout@v5
 
     - name: Fetch SIF (ubuntu22)
-      if: contains(runner.labels, 'ubuntu22')
+      if: contains(toJSON(runner.labels), 'ubuntu22')
       run: |
         set -euxo pipefail
         if [ ! -f app-ubuntu22.sif ]; then
@@ -164,7 +164,7 @@ jobs:
         fi
 
     - name: Fetch SIF (ubuntu24)
-      if: contains(runner.labels, 'ubuntu24')
+      if: contains(toJSON(runner.labels), 'ubuntu24')
       run: |
         set -euxo pipefail
         if [ ! -f app-ubuntu24.sif ]; then
@@ -176,7 +176,7 @@ jobs:
         fi
 
     - name: Run tests inside SIF (ubuntu22)
-      if: contains(runner.labels, 'ubuntu22')
+      if: contains(toJSON(runner.labels), 'ubuntu22')
       run: |
           set -euxo pipefail
           apptainer exec \
@@ -191,7 +191,7 @@ jobs:
             bash -c "maturin develop && python test.py"
 
     - name: Run tests inside SIF (ubuntu24)
-      if: contains(runner.labels, 'ubuntu24')
+      if: contains(toJSON(runner.labels), 'ubuntu24')
       run: |
           set -euxo pipefail
           apptainer exec \
