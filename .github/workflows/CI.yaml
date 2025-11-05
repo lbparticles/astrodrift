@@ -49,14 +49,44 @@ jobs:
             echo "hash_ubuntu22_cuda12=$HASH22"
             echo "hash_ubuntu24_cuda12=$HASH24"
           } >> "$GITHUB_OUTPUT"
+      
+      - name: Check S3 for existing SIF (ubuntu22-cuda12)
+        id: check22
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY="ubuntu22/app-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif"
+          if aws s3api head-object --bucket "${BUCKET}" --key "${KEY}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Found s3://${BUCKET}/${KEY} — skipping ubuntu22 build."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Not found: s3://${BUCKET}/${KEY} — will build ubuntu22."
+          fi
+      
+      - name: Check S3 for existing SIF (ubuntu24-cuda12)
+        id: check24
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY="ubuntu24/app-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif"
+          if aws s3api head-object --bucket "${BUCKET}" --key "${KEY}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Found s3://${BUCKET}/${KEY} — skipping ubuntu24 build."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Not found: s3://${BUCKET}/${KEY} — will build ubuntu24."
+          fi
 
-      - name: Build and push ubuntu22-cuda12 image
+      - name: Build ubuntu22-cuda12 image
+        if: steps.check22.outputs.exists == 'false'
         run: |
           docker build \
             -f container/ubuntu22-cuda12/Dockerfile \
             -t ubuntu22-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }} .
 
-      - name: Build and push ubuntu24-cuda12 image
+      - name: Build ubuntu24-cuda12 image
+        if: steps.check24.outputs.exists == 'false'
         run: |
           docker build \
             -f container/ubuntu24-cuda12/Dockerfile \
@@ -67,6 +97,7 @@ jobs:
           if command -v apptainer >/dev/null 2>&1; then apptainer cache clean -a || true; fi
 
       - name: Build Apptainer SIF (ubuntu22-cuda12)
+        if: steps.check22.outputs.exists == 'false'
         run: |
           set -euxo pipefail
           mkdir -p apptainer/out
@@ -76,6 +107,7 @@ jobs:
           ls -lh apptainer/out
 
       - name: Build Apptainer SIF (ubuntu24-cuda12)
+        if: steps.check24.outputs.exists == 'false'
         run: |
           set -euxo pipefail
           mkdir -p apptainer/out
@@ -85,6 +117,7 @@ jobs:
           ls -lh apptainer/out
 
       - name: Upload SIF to S3 (ubuntu22-cuda12)
+        if: steps.check22.outputs.exists == 'false'
         run: |
           set -euxo pipefail
           aws s3 cp \
@@ -93,6 +126,7 @@ jobs:
             --metadata artifact-type=application/vnd.apptainer.sif.layer.v1
 
       - name: Upload SIF to S3 (ubuntu24-cuda12)
+        if: steps.check24.outputs.exists == 'false'
         run: |
           set -euxo pipefail
           aws s3 cp \
