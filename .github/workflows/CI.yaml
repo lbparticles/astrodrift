@@ -151,6 +151,9 @@ jobs:
     steps:
     - uses: actions/checkout@v5
 
+    - name: Print runner labels
+      run: echo "${{ toJSON(runner.labels) }}"
+
     - name: Fetch SIF (ubuntu22)
       if: contains(toJSON(runner.labels), 'ubuntu22')
       run: |
