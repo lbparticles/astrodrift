@@ -3,6 +3,8 @@ name: Build Docker + Apptainer Images and Run Tests
 on:
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
 
 permissions:
   contents: read
