@@ -150,9 +150,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
-
-    - name: Show target
-      run: echo "This runner target is $RUNNER_TARGET"
+    
+    - name: Import RUNNER_TARGET from runner
+      shell: bash
+      run: |
+        echo "RUNNER_TARGET=${RUNNER_TARGET:-}" >> "$GITHUB_ENV"
+        echo "RUNNER_TARGET imported as: ${RUNNER_TARGET:-<unset>}"
 
     - name: Fetch SIF (ubuntu22)
       if: env.RUNNER_TARGET == 'ubuntu22'
