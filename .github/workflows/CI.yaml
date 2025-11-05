@@ -1,8 +1,8 @@
-name: Build & Publish Docker + Apptainer (same VM)
+name: Build Docker + Apptainer Images and Run Tests
 
 on:
-  push:
-    branches: [ actions-runner-setup ]
+  pull_request:
+    branches: [ main ]
 
 permissions:
   contents: read
@@ -16,13 +16,16 @@ env:
   TMPDIR: /mnt/gha/tmp
 
 jobs:
-  build-publish:
+  build:
     runs-on: [ self-hosted, vm ]
     timeout-minutes: 30
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
+    outputs:
+      hash22: ${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}
+      hash24: ${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}
 
     steps:
       - name: Checkout
@@ -133,4 +136,70 @@ jobs:
             apptainer/out/app-ubuntu24-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif \
             s3://${{ env.BUCKET }}/ubuntu24/app-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif \
             --metadata artifact-type=application/vnd.apptainer.sif.layer.v1
+          
+  test:
+    runs-on: [ self-hosted, test ]
+    needs: build
+    timeout-minutes: 30
+    env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Fetch SIF (ubuntu22)
+      if: contains(runner.labels, 'ubuntu22')
+      run: |
+        set -euxo pipefail
+        if [ ! -f app-ubuntu22.sif ]; then
+          aws s3 cp \
+            s3://${{ env.BUCKET }}/ubuntu22/app-${{ needs.build.outputs.hash22 }}.sif \
+            app-ubuntu22.sif --no-progress --only-show-errors
+        else:
+          echo "SIF already exists locally, skipping download."
+        fi
+
+    - name: Fetch SIF (ubuntu24)
+      if: contains(runner.labels, 'ubuntu24')
+      run: |
+        set -euxo pipefail
+        if [ ! -f app-ubuntu24.sif ]; then
+          aws s3 cp \
+            s3://${{ env.BUCKET }}/ubuntu24/app-${{ needs.build.outputs.hash24 }}.sif \
+            app-ubuntu24.sif --no-progress --only-show-errors
+        else
+          echo "SIF already exists locally, skipping download."
+        fi
+
+    - name: Run tests inside SIF (ubuntu22)
+      if: contains(runner.labels, 'ubuntu22')
+      run: |
+          set -euxo pipefail
+          apptainer exec \
+            -B ./:/data/astrodrift \
+            --writable-tmpfs \
+            --no-mount home \
+            --home /data/home/leo \
+            --nv \
+            --cleanenv \
+            --cwd /data/astrodrift \
+            ./app-ubuntu22.sif \
+            bash -c "maturin develop && python test.py"
+
+    - name: Run tests inside SIF (ubuntu24)
+      if: contains(runner.labels, 'ubuntu24')
+      run: |
+          set -euxo pipefail
+          apptainer exec \
+            -B ./:/data/astrodrift \
+            --writable-tmpfs \
+            --no-mount home \
+            --home /data/home/leo \
+            --nv \
+            --cleanenv \
+            --cwd /data/astrodrift \
+            ./app-ubuntu24.sif \
+            bash -c "maturin develop && python test.py"
 
