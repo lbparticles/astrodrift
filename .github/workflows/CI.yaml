@@ -151,35 +151,49 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     
-    - name: Import RUNNER_TARGET from runner
+    - name: Import runner env (RUNNER_TARGET, SIF_CACHE_DIR)
       shell: bash
       run: |
         echo "RUNNER_TARGET=${RUNNER_TARGET:-}" >> "$GITHUB_ENV"
-        echo "RUNNER_TARGET imported as: ${RUNNER_TARGET:-<unset>}"
+        echo "SIF_CACHE_DIR=${SIF_CACHE_DIR:-}" >> "$GITHUB_ENV"
+        echo "Imported RUNNER_TARGET=${RUNNER_TARGET:-<unset>}"
+        echo "Imported SIF_CACHE_DIR=${SIF_CACHE_DIR:-<unset>}"
 
     - name: Fetch SIF (ubuntu22)
       if: env.RUNNER_TARGET == 'ubuntu22'
       run: |
         set -euxo pipefail
-        if [ ! -f app-ubuntu22.sif ]; then
-          aws s3 cp \
-            s3://${{ env.BUCKET }}/ubuntu22/app-${{ needs.build.outputs.hash22 }}.sif \
-            app-ubuntu22.sif --no-progress --only-show-errors
+        SIF_PATH="$SIF_CACHE_DIR/app-ubuntu22-${{ needs.build.outputs.hash22 }}.sif"
+        if [ -f "$SIF_PATH" ]; then
+          echo "Using cached SIF: $SIF_PATH"
         else
-          echo "SIF already exists locally, skipping download."
+          echo "Cache miss; downloading -> $SIF_PATH"
+          tmp="$SIF_PATH.tmp.$$"
+          aws s3 cp \
+            "s3://${{ env.BUCKET }}/ubuntu22/app-${{ needs.build.outputs.hash22 }}.sif" \
+            "$tmp" --no-progress --only-show-errors
+          mv -f "$tmp" "$SIF_PATH"
         fi
+        ln -sf "$SIF_PATH" app-ubuntu22.sif
+        ls -lh "$SIF_PATH" app-ubuntu22.sif
 
     - name: Fetch SIF (ubuntu24)
       if: env.RUNNER_TARGET == 'ubuntu24'
       run: |
         set -euxo pipefail
-        if [ ! -f app-ubuntu24.sif ]; then
-          aws s3 cp \
-            s3://${{ env.BUCKET }}/ubuntu24/app-${{ needs.build.outputs.hash24 }}.sif \
-            app-ubuntu24.sif --no-progress --only-show-errors
+        SIF_PATH="$SIF_CACHE_DIR/app-ubuntu24-${{ needs.build.outputs.hash24 }}.sif"
+        if [ -f "$SIF_PATH" ]; then
+          echo "Using cached SIF: $SIF_PATH"
         else
-          echo "SIF already exists locally, skipping download."
+          echo "Cache miss; downloading -> $SIF_PATH"
+          tmp="$SIF_PATH.tmp.$$"
+          aws s3 cp \
+            "s3://${{ env.BUCKET }}/ubuntu24/app-${{ needs.build.outputs.hash24 }}.sif" \
+            "$tmp" --no-progress --only-show-errors
+          mv -f "$tmp" "$SIF_PATH"
         fi
+        ln -sf "$SIF_PATH" app-ubuntu24.sif
+        ls -lh "$SIF_PATH" app-ubuntu24.sif
 
     - name: Run tests inside SIF (ubuntu22)
       if: env.RUNNER_TARGET == 'ubuntu22'
