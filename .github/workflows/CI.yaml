@@ -94,7 +94,7 @@ jobs:
       
       - name: Prepare scratch for Apptainer
         run: |
-          if command -v apptainer >/dev/null 2>&1; then apptainer cache clean -a || true; fi
+          if command -v apptainer >/dev/null 2>&1; then apptainer cache clean -f || true; fi
 
       - name: Build Apptainer SIF (ubuntu22-cuda12)
         if: steps.check22.outputs.exists == 'false'
