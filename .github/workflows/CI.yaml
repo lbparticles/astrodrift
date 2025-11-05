@@ -155,7 +155,7 @@ jobs:
       run: echo "This runner target is $RUNNER_TARGET"
 
     - name: Fetch SIF (ubuntu22)
-      if: contains(toJSON(runner.labels), 'ubuntu22')
+      if: env.RUNNER_TARGET == 'ubuntu22'
       run: |
         set -euxo pipefail
         if [ ! -f app-ubuntu22.sif ]; then
@@ -167,7 +167,7 @@ jobs:
         fi
 
     - name: Fetch SIF (ubuntu24)
-      if: contains(toJSON(runner.labels), 'ubuntu24')
+      if: env.RUNNER_TARGET == 'ubuntu24'
       run: |
         set -euxo pipefail
         if [ ! -f app-ubuntu24.sif ]; then
@@ -179,7 +179,7 @@ jobs:
         fi
 
     - name: Run tests inside SIF (ubuntu22)
-      if: contains(toJSON(runner.labels), 'ubuntu22')
+      if: env.RUNNER_TARGET == 'ubuntu22'
       run: |
           set -euxo pipefail
           apptainer exec \
@@ -191,10 +191,10 @@ jobs:
             --cleanenv \
             --cwd /data/astrodrift \
             ./app-ubuntu22.sif \
-            bash -c "maturin develop && python test.py"
+            bash -c "maturin develop && python tests/test.py"
 
     - name: Run tests inside SIF (ubuntu24)
-      if: contains(toJSON(runner.labels), 'ubuntu24')
+      if: env.RUNNER_TARGET == 'ubuntu24'
       run: |
           set -euxo pipefail
           apptainer exec \
@@ -206,5 +206,5 @@ jobs:
             --cleanenv \
             --cwd /data/astrodrift \
             ./app-ubuntu24.sif \
-            bash -c "maturin develop && python test.py"
+            bash -c "maturin develop && python tests/test.py"
 
