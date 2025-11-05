@@ -165,7 +165,7 @@ jobs:
           aws s3 cp \
             s3://${{ env.BUCKET }}/ubuntu22/app-${{ needs.build.outputs.hash22 }}.sif \
             app-ubuntu22.sif --no-progress --only-show-errors
-        else:
+        else
           echo "SIF already exists locally, skipping download."
         fi
 
