@@ -80,7 +80,7 @@ ARG NSYS_PKG=NsightSystems-linux-cli-public-2024.4.1.61-3431596.deb
 RUN apt-get update && apt install -y wget libglib2.0-0
 RUN wget ${NSYS_URL}${NSYS_PKG} && dpkg -i $NSYS_PKG && rm $NSYS_PKG
 
-ADD https://astral.sh/uv/install.sh /uv-installer.sh
+ADD https://astral.sh/uv/0.9.7/install.sh /uv-installer.sh
 
 # Run the installer then remove it
 RUN sh /uv-installer.sh && rm /uv-installer.sh
