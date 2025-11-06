@@ -13,9 +13,9 @@ permissions:
 
 env:
   BUCKET: drift-oci-bucket
-  APPTAINER_TMPDIR: /home/ubuntu/tmp
-  APPTAINER_CACHEDIR: /home/ubuntu/cache
-  TMPDIR: /home/ubuntu/tmp
+  # APPTAINER_TMPDIR: /home/ubuntu/tmp
+  # APPTAINER_CACHEDIR: /home/ubuntu/cache
+  # TMPDIR: /home/ubuntu/tmp
 
 jobs:
   start-runner:
@@ -117,6 +117,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Grab previous build if exists ubuntu22
+        if: needs.start-runner.outputs.need22 == 'true'
+        run: |
+          KEY="ubuntu22/docker22.tar"
+          if aws s3api head-object --bucket "${{ env.BUCKET }}" --key "${KEY}" >/dev/null 2>&1; then
+            tmp="/home/ubuntu/tmp"
+            aws s3 cp "s3://${{ env.BUCKET }}/ubuntu22/docker22.tar" \
+            "${tmp}/docker22.tar" --no-progress --only-show-errors
+            docker load -i "$tmp/docker22.tar"
+            rm -f "${tmp}/docker22.tar"
+          else
+            echo "No previous build found (ubuntu24)"
+          fi
+      - name: Grab previous build if exists ubuntu24
+        if: needs.start-runner.outputs.need24 == 'true'
+        run: |
+          KEY="ubuntu24/docker24.tar"
+          if aws s3api head-object --bucket "${{ env.BUCKET }}" --key "${KEY}" >/dev/null 2>&1; then
+            tmp="/home/ubuntu/tmp"
+            aws s3 cp "s3://${{ env.BUCKET }}/ubuntu24/docker24.tar" \
+            "${tmp}/docker24.tar" --no-progress --only-show-errors
+            docker load -i "$tmp/docker24.tar"
+            rm -f "${tmp}/docker24.tar"
+          else
+            echo "No previous build found (ubuntu24)"
+          fi
+
       - name: Build ubuntu22-cuda12 image
         if: needs.start-runner.outputs.need22 == 'true'
         run: |
@@ -145,15 +172,15 @@ jobs:
             docker-daemon://ubuntu22-cuda12:ctx-${{ needs.start-runner.outputs.hash22 }}
           ls -lh apptainer/out
 
-      - name: Build Apptainer SIF (ubuntu24-cuda12)
-        if: needs.start-runner.outputs.need24 == 'true'
+      - name: Upload docker tar to S3 (ubuntu22-cuda12)
+        if: needs.start-runner.outputs.need22 == 'true'
         run: |
           set -euxo pipefail
-          mkdir -p apptainer/out
-          apptainer build \
-            apptainer/out/app-ubuntu24-${{ needs.start-runner.outputs.hash24 }}.sif \
-            docker-daemon://ubuntu24-cuda12:ctx-${{ needs.start-runner.outputs.hash24 }}
-          ls -lh apptainer/out
+          docker save -o docker22.tar ubuntu22-cuda12:ctx-${{ needs.start-runner.outputs.hash22 }}
+          aws s3 cp \
+            docker22.tar \
+            s3://${{ env.BUCKET }}/ubuntu22/docker22.tar \
+            --metadata artifact-type=docker-image-archive
 
       - name: Upload SIF to S3 (ubuntu22-cuda12)
         if: needs.start-runner.outputs.need22 == 'true'
@@ -163,6 +190,27 @@ jobs:
             apptainer/out/app-ubuntu22-${{ needs.start-runner.outputs.hash22 }}.sif \
             s3://${{ env.BUCKET }}/ubuntu22/app-${{ needs.start-runner.outputs.hash22 }}.sif \
             --metadata artifact-type=application/vnd.apptainer.sif.layer.v1
+          rm apptainer/out/app-ubuntu22-${{ needs.start-runner.outputs.hash22 }}.sif
+
+      - name: Build Apptainer SIF (ubuntu24-cuda12)
+        if: needs.start-runner.outputs.need24 == 'true'
+        run: |
+          set -euxo pipefail
+          mkdir -p apptainer/out
+          apptainer build \
+            apptainer/out/app-ubuntu24-${{ needs.start-runner.outputs.hash24 }}.sif \
+            docker-daemon://ubuntu24-cuda12:ctx-${{ needs.start-runner.outputs.hash24 }}
+          ls -lh apptainer/out
+      
+      - name: Upload docker tar to S3 (ubuntu24-cuda12)
+        if: needs.start-runner.outputs.need24 == 'true'
+        run: |
+          set -euxo pipefail
+          docker save -o docker24.tar ubuntu24-cuda12:ctx-${{ needs.start-runner.outputs.hash24 }}
+          aws s3 cp \
+            docker24.tar \
+            s3://${{ env.BUCKET }}/ubuntu24/docker24.tar \
+            --metadata artifact-type=docker-image-archive
 
       - name: Upload SIF to S3 (ubuntu24-cuda12)
         if: needs.start-runner.outputs.need24 == 'true'
