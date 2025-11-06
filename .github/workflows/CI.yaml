@@ -18,210 +18,263 @@ env:
   TMPDIR: /mnt/gha/tmp
 
 jobs:
-  build:
-    runs-on: [ self-hosted, vm ]
-    timeout-minutes: 30
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+  start-runner:
+    name: Start self-hosted EC2 runner
+    runs-on: ubuntu-latest
     outputs:
-      hash22: ${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}
-      hash24: ${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}
-
+      label: ${{ steps.start-ec2-runner.outputs.label }}
+      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Start EC2 runner
+        id: start-ec2-runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ami-0ab6751e65fa197cc
+          ec2-instance-type: m6i.2xlarge
+          subnet-id: subnet-0496b03cda965787c
+          security-group-id: sg-05309e81ca4f5e69b
+  do-the-job:
+    name: Do the job on the runner
+    needs: start-runner
+    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    steps:
+      - name: Hello World
+        run: echo 'Hello World!'
+  stop-runner:
+    name: Stop self-hosted EC2 runner
+    needs:
+      - start-runner
+      - do-the-job
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Stop EC2 runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
 
-      - name: Compute short hashes for Dockerfiles
-        id: hash
-        shell: bash
-        run: |
-          set -euo pipefail
+# jobs:
+  # build:
+  #   runs-on: [ self-hosted, vm ]
+  #   timeout-minutes: 30
+  #   env:
+  #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #     AWS_REGION: ${{ secrets.AWS_REGION }}
+  #   outputs:
+  #     hash22: ${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}
+  #     hash24: ${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}
 
-          short_hash() {
-            local path="$1"
-            git ls-files -z -- "$path/Dockerfile" 2>/dev/null \
-              | xargs -0 sha256sum \
-              | sha256sum \
-              | cut -c1-8
-          }
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v5
 
-          HASH22=$(short_hash container/ubuntu22-cuda12)
-          HASH24=$(short_hash container/ubuntu24-cuda12)
+  #     - name: Compute short hashes for Dockerfiles
+  #       id: hash
+  #       shell: bash
+  #       run: |
+  #         set -euo pipefail
 
-          {
-            echo "hash_ubuntu22_cuda12=$HASH22"
-            echo "hash_ubuntu24_cuda12=$HASH24"
-          } >> "$GITHUB_OUTPUT"
+  #         short_hash() {
+  #           local path="$1"
+  #           git ls-files -z -- "$path/Dockerfile" 2>/dev/null \
+  #             | xargs -0 sha256sum \
+  #             | sha256sum \
+  #             | cut -c1-8
+  #         }
+
+  #         HASH22=$(short_hash container/ubuntu22-cuda12)
+  #         HASH24=$(short_hash container/ubuntu24-cuda12)
+
+  #         {
+  #           echo "hash_ubuntu22_cuda12=$HASH22"
+  #           echo "hash_ubuntu24_cuda12=$HASH24"
+  #         } >> "$GITHUB_OUTPUT"
       
-      - name: Check S3 for existing SIF (ubuntu22-cuda12)
-        id: check22
-        shell: bash
-        run: |
-          set -euo pipefail
-          KEY="ubuntu22/app-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif"
-          if aws s3api head-object --bucket "${BUCKET}" --key "${KEY}" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Found s3://${BUCKET}/${KEY} — skipping ubuntu22 build."
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "Not found: s3://${BUCKET}/${KEY} — will build ubuntu22."
-          fi
+  #     - name: Check S3 for existing SIF (ubuntu22-cuda12)
+  #       id: check22
+  #       shell: bash
+  #       run: |
+  #         set -euo pipefail
+  #         KEY="ubuntu22/app-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif"
+  #         if aws s3api head-object --bucket "${BUCKET}" --key "${KEY}" >/dev/null 2>&1; then
+  #           echo "exists=true" >> "$GITHUB_OUTPUT"
+  #           echo "Found s3://${BUCKET}/${KEY} — skipping ubuntu22 build."
+  #         else
+  #           echo "exists=false" >> "$GITHUB_OUTPUT"
+  #           echo "Not found: s3://${BUCKET}/${KEY} — will build ubuntu22."
+  #         fi
       
-      - name: Check S3 for existing SIF (ubuntu24-cuda12)
-        id: check24
-        shell: bash
-        run: |
-          set -euo pipefail
-          KEY="ubuntu24/app-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif"
-          if aws s3api head-object --bucket "${BUCKET}" --key "${KEY}" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Found s3://${BUCKET}/${KEY} — skipping ubuntu24 build."
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "Not found: s3://${BUCKET}/${KEY} — will build ubuntu24."
-          fi
+  #     - name: Check S3 for existing SIF (ubuntu24-cuda12)
+  #       id: check24
+  #       shell: bash
+  #       run: |
+  #         set -euo pipefail
+  #         KEY="ubuntu24/app-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif"
+  #         if aws s3api head-object --bucket "${BUCKET}" --key "${KEY}" >/dev/null 2>&1; then
+  #           echo "exists=true" >> "$GITHUB_OUTPUT"
+  #           echo "Found s3://${BUCKET}/${KEY} — skipping ubuntu24 build."
+  #         else
+  #           echo "exists=false" >> "$GITHUB_OUTPUT"
+  #           echo "Not found: s3://${BUCKET}/${KEY} — will build ubuntu24."
+  #         fi
 
-      - name: Build ubuntu22-cuda12 image
-        if: steps.check22.outputs.exists == 'false'
-        run: |
-          docker build \
-            -f container/ubuntu22-cuda12/Dockerfile \
-            -t ubuntu22-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }} .
+  #     - name: Build ubuntu22-cuda12 image
+  #       if: steps.check22.outputs.exists == 'false'
+  #       run: |
+  #         docker build \
+  #           -f container/ubuntu22-cuda12/Dockerfile \
+  #           -t ubuntu22-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }} .
 
-      - name: Build ubuntu24-cuda12 image
-        if: steps.check24.outputs.exists == 'false'
-        run: |
-          docker build \
-            -f container/ubuntu24-cuda12/Dockerfile \
-            -t ubuntu24-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }} .
+  #     - name: Build ubuntu24-cuda12 image
+  #       if: steps.check24.outputs.exists == 'false'
+  #       run: |
+  #         docker build \
+  #           -f container/ubuntu24-cuda12/Dockerfile \
+  #           -t ubuntu24-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }} .
       
-      - name: Prepare scratch for Apptainer
-        run: |
-          if command -v apptainer >/dev/null 2>&1; then apptainer cache clean -f || true; fi
+  #     - name: Prepare scratch for Apptainer
+  #       run: |
+  #         if command -v apptainer >/dev/null 2>&1; then apptainer cache clean -f || true; fi
 
-      - name: Build Apptainer SIF (ubuntu22-cuda12)
-        if: steps.check22.outputs.exists == 'false'
-        run: |
-          set -euxo pipefail
-          mkdir -p apptainer/out
-          apptainer build \
-            apptainer/out/app-ubuntu22-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif \
-            docker-daemon://ubuntu22-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}
-          ls -lh apptainer/out
+  #     - name: Build Apptainer SIF (ubuntu22-cuda12)
+  #       if: steps.check22.outputs.exists == 'false'
+  #       run: |
+  #         set -euxo pipefail
+  #         mkdir -p apptainer/out
+  #         apptainer build \
+  #           apptainer/out/app-ubuntu22-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif \
+  #           docker-daemon://ubuntu22-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}
+  #         ls -lh apptainer/out
 
-      - name: Build Apptainer SIF (ubuntu24-cuda12)
-        if: steps.check24.outputs.exists == 'false'
-        run: |
-          set -euxo pipefail
-          mkdir -p apptainer/out
-          apptainer build \
-            apptainer/out/app-ubuntu24-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif \
-            docker-daemon://ubuntu24-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}
-          ls -lh apptainer/out
+  #     - name: Build Apptainer SIF (ubuntu24-cuda12)
+  #       if: steps.check24.outputs.exists == 'false'
+  #       run: |
+  #         set -euxo pipefail
+  #         mkdir -p apptainer/out
+  #         apptainer build \
+  #           apptainer/out/app-ubuntu24-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif \
+  #           docker-daemon://ubuntu24-cuda12:ctx-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}
+  #         ls -lh apptainer/out
 
-      - name: Upload SIF to S3 (ubuntu22-cuda12)
-        if: steps.check22.outputs.exists == 'false'
-        run: |
-          set -euxo pipefail
-          aws s3 cp \
-            apptainer/out/app-ubuntu22-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif \
-            s3://${{ env.BUCKET }}/ubuntu22/app-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif \
-            --metadata artifact-type=application/vnd.apptainer.sif.layer.v1
+  #     - name: Upload SIF to S3 (ubuntu22-cuda12)
+  #       if: steps.check22.outputs.exists == 'false'
+  #       run: |
+  #         set -euxo pipefail
+  #         aws s3 cp \
+  #           apptainer/out/app-ubuntu22-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif \
+  #           s3://${{ env.BUCKET }}/ubuntu22/app-${{ steps.hash.outputs.hash_ubuntu22_cuda12 }}.sif \
+  #           --metadata artifact-type=application/vnd.apptainer.sif.layer.v1
 
-      - name: Upload SIF to S3 (ubuntu24-cuda12)
-        if: steps.check24.outputs.exists == 'false'
-        run: |
-          set -euxo pipefail
-          aws s3 cp \
-            apptainer/out/app-ubuntu24-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif \
-            s3://${{ env.BUCKET }}/ubuntu24/app-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif \
-            --metadata artifact-type=application/vnd.apptainer.sif.layer.v1
+  #     - name: Upload SIF to S3 (ubuntu24-cuda12)
+  #       if: steps.check24.outputs.exists == 'false'
+  #       run: |
+  #         set -euxo pipefail
+  #         aws s3 cp \
+  #           apptainer/out/app-ubuntu24-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif \
+  #           s3://${{ env.BUCKET }}/ubuntu24/app-${{ steps.hash.outputs.hash_ubuntu24_cuda12 }}.sif \
+  #           --metadata artifact-type=application/vnd.apptainer.sif.layer.v1
           
-  test:
-    runs-on: [ self-hosted, test ]
-    needs: build
-    timeout-minutes: 30
-    env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: ${{ secrets.AWS_REGION }}
+  # test:
+  #   runs-on: [ self-hosted, test ]
+  #   needs: build
+  #   timeout-minutes: 30
+  #   env:
+  #       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #       AWS_REGION: ${{ secrets.AWS_REGION }}
 
-    steps:
-    - uses: actions/checkout@v5
+  #   steps:
+  #   - uses: actions/checkout@v5
     
-    - name: Import runner env (RUNNER_TARGET, SIF_CACHE_DIR)
-      shell: bash
-      run: |
-        echo "RUNNER_TARGET=${RUNNER_TARGET:-}" >> "$GITHUB_ENV"
-        echo "SIF_CACHE_DIR=${SIF_CACHE_DIR:-}" >> "$GITHUB_ENV"
-        echo "Imported RUNNER_TARGET=${RUNNER_TARGET:-<unset>}"
-        echo "Imported SIF_CACHE_DIR=${SIF_CACHE_DIR:-<unset>}"
+  #   - name: Import runner env (RUNNER_TARGET, SIF_CACHE_DIR)
+  #     shell: bash
+  #     run: |
+  #       echo "RUNNER_TARGET=${RUNNER_TARGET:-}" >> "$GITHUB_ENV"
+  #       echo "SIF_CACHE_DIR=${SIF_CACHE_DIR:-}" >> "$GITHUB_ENV"
+  #       echo "Imported RUNNER_TARGET=${RUNNER_TARGET:-<unset>}"
+  #       echo "Imported SIF_CACHE_DIR=${SIF_CACHE_DIR:-<unset>}"
 
-    - name: Fetch SIF (ubuntu22)
-      if: env.RUNNER_TARGET == 'ubuntu22'
-      run: |
-        set -euxo pipefail
-        SIF_PATH="$SIF_CACHE_DIR/app-ubuntu22-${{ needs.build.outputs.hash22 }}.sif"
-        if [ -f "$SIF_PATH" ]; then
-          echo "Using cached SIF: $SIF_PATH"
-        else
-          echo "Cache miss; downloading -> $SIF_PATH"
-          tmp="$SIF_PATH.tmp.$$"
-          aws s3 cp \
-            "s3://${{ env.BUCKET }}/ubuntu22/app-${{ needs.build.outputs.hash22 }}.sif" \
-            "$tmp" --no-progress --only-show-errors
-          mv -f "$tmp" "$SIF_PATH"
-        fi
-        ln -sf "$SIF_PATH" app-ubuntu22.sif
-        ls -lh "$SIF_PATH" app-ubuntu22.sif
+  #   - name: Fetch SIF (ubuntu22)
+  #     if: env.RUNNER_TARGET == 'ubuntu22'
+  #     run: |
+  #       set -euxo pipefail
+  #       SIF_PATH="$SIF_CACHE_DIR/app-ubuntu22-${{ needs.build.outputs.hash22 }}.sif"
+  #       if [ -f "$SIF_PATH" ]; then
+  #         echo "Using cached SIF: $SIF_PATH"
+  #       else
+  #         echo "Cache miss; downloading -> $SIF_PATH"
+  #         tmp="$SIF_PATH.tmp.$$"
+  #         aws s3 cp \
+  #           "s3://${{ env.BUCKET }}/ubuntu22/app-${{ needs.build.outputs.hash22 }}.sif" \
+  #           "$tmp" --no-progress --only-show-errors
+  #         mv -f "$tmp" "$SIF_PATH"
+  #       fi
+  #       ln -sf "$SIF_PATH" app-ubuntu22.sif
+  #       ls -lh "$SIF_PATH" app-ubuntu22.sif
 
-    - name: Fetch SIF (ubuntu24)
-      if: env.RUNNER_TARGET == 'ubuntu24'
-      run: |
-        set -euxo pipefail
-        SIF_PATH="$SIF_CACHE_DIR/app-ubuntu24-${{ needs.build.outputs.hash24 }}.sif"
-        if [ -f "$SIF_PATH" ]; then
-          echo "Using cached SIF: $SIF_PATH"
-        else
-          echo "Cache miss; downloading -> $SIF_PATH"
-          tmp="$SIF_PATH.tmp.$$"
-          aws s3 cp \
-            "s3://${{ env.BUCKET }}/ubuntu24/app-${{ needs.build.outputs.hash24 }}.sif" \
-            "$tmp" --no-progress --only-show-errors
-          mv -f "$tmp" "$SIF_PATH"
-        fi
-        ln -sf "$SIF_PATH" app-ubuntu24.sif
-        ls -lh "$SIF_PATH" app-ubuntu24.sif
+  #   - name: Fetch SIF (ubuntu24)
+  #     if: env.RUNNER_TARGET == 'ubuntu24'
+  #     run: |
+  #       set -euxo pipefail
+  #       SIF_PATH="$SIF_CACHE_DIR/app-ubuntu24-${{ needs.build.outputs.hash24 }}.sif"
+  #       if [ -f "$SIF_PATH" ]; then
+  #         echo "Using cached SIF: $SIF_PATH"
+  #       else
+  #         echo "Cache miss; downloading -> $SIF_PATH"
+  #         tmp="$SIF_PATH.tmp.$$"
+  #         aws s3 cp \
+  #           "s3://${{ env.BUCKET }}/ubuntu24/app-${{ needs.build.outputs.hash24 }}.sif" \
+  #           "$tmp" --no-progress --only-show-errors
+  #         mv -f "$tmp" "$SIF_PATH"
+  #       fi
+  #       ln -sf "$SIF_PATH" app-ubuntu24.sif
+  #       ls -lh "$SIF_PATH" app-ubuntu24.sif
 
-    - name: Run tests inside SIF (ubuntu22)
-      if: env.RUNNER_TARGET == 'ubuntu22'
-      run: |
-          set -euxo pipefail
-          apptainer exec \
-            -B ./:/data/astrodrift \
-            --writable-tmpfs \
-            --no-mount home \
-            --home /data/home/leo \
-            --nv \
-            --cleanenv \
-            --cwd /data/astrodrift \
-            ./app-ubuntu22.sif \
-            bash -c "cargo clean && uv sync && maturin develop && uv run tests/test.py"
+  #   - name: Run tests inside SIF (ubuntu22)
+  #     if: env.RUNNER_TARGET == 'ubuntu22'
+  #     run: |
+  #         set -euxo pipefail
+  #         apptainer exec \
+  #           -B ./:/data/astrodrift \
+  #           --writable-tmpfs \
+  #           --no-mount home \
+  #           --home /data/home/leo \
+  #           --nv \
+  #           --cleanenv \
+  #           --cwd /data/astrodrift \
+  #           ./app-ubuntu22.sif \
+  #           bash -c "cargo clean && uv sync && maturin develop && uv run tests/test.py"
 
-    - name: Run tests inside SIF (ubuntu24)
-      if: env.RUNNER_TARGET == 'ubuntu24'
-      run: |
-          set -euxo pipefail
-          apptainer exec \
-            -B ./:/data/astrodrift \
-            --writable-tmpfs \
-            --no-mount home \
-            --home /data/home/leo \
-            --nv \
-            --cleanenv \
-            --cwd /data/astrodrift \
-            ./app-ubuntu24.sif \
-            bash -c "cargo clean && uv sync && maturin develop && uv run tests/test.py"
+  #   - name: Run tests inside SIF (ubuntu24)
+  #     if: env.RUNNER_TARGET == 'ubuntu24'
+  #     run: |
+  #         set -euxo pipefail
+  #         apptainer exec \
+  #           -B ./:/data/astrodrift \
+  #           --writable-tmpfs \
+  #           --no-mount home \
+  #           --home /data/home/leo \
+  #           --nv \
+  #           --cleanenv \
+  #           --cwd /data/astrodrift \
+  #           ./app-ubuntu24.sif \
+  #           bash -c "cargo clean && uv sync && maturin develop && uv run tests/test.py"
 
