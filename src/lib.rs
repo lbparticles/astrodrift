@@ -4,8 +4,8 @@ use numpy::{PyArray1, PyArray2, PyArray3, PyArrayMethods, PyReadonlyArray2};
 use pyo3::prelude::*;
 use statrs::function::gamma::{gamma, gamma_lr};
 use std::f64::consts::PI;
-use std::fs::File;
-use std::io::Write;
+// use std::fs::File;
+// use std::io::Write;
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 const NF64: usize = 6;
@@ -51,28 +51,24 @@ fn build_sphericalcutoff_force_table(
     }
     (table, R_MIN, dr)
 }
-fn build_sphericalcutoff_eval_table(
-    amp: f64,
-    alpha: f64,
-    r1: f64,
-    rc: f64,
-) -> (Vec<f64>, f64, f64) {
-    let mut table = Vec::with_capacity(N_AR);
-    let dr = (R_MAX - R_MIN) / (N_AR as f64 - 1.0);
-    for i in 0..N_AR {
-        let r = R_MIN + i as f64 * dr;
-        let ratio = pow(r / rc, 2.);
-        let out = 2.
-            * PI
-            * pow(rc, 3. - alpha)
-            * (1. / rc)
-            * gamma(1. - alpha / 2.)
-            * gamma_lr(1. - alpha / 2., ratio)
-            - gamma(1.5 - alpha / 2.) * gamma_lr(1.5 - alpha / 2., ratio / r);
-        table.push(out);
-    }
-    (table, R_MIN, dr)
-}
+// fn build_sphericalcutoff_eval_table(amp: f64, alpha: f64, rc: f64) -> (Vec<f64>, f64, f64) {
+//     let mut table = Vec::with_capacity(N_AR);
+//     let dr = (R_MAX - R_MIN) / (N_AR as f64 - 1.0);
+//     for i in 0..N_AR {
+//         let r = R_MIN + i as f64 * dr;
+//         let ratio = pow(r / rc, 2.);
+//         let out = 2.
+//             * PI
+//             * amp
+//             * pow(rc, 3. - alpha)
+//             * (1. / rc)
+//             * gamma(1. - alpha / 2.)
+//             * gamma_lr(1. - alpha / 2., ratio)
+//             - gamma(1.5 - alpha / 2.) * gamma_lr(1.5 - alpha / 2., ratio / r);
+//         table.push(out);
+//     }
+//     (table, R_MIN, dr)
+// }
 
 /// An extension trait may be cleaner (e.g. let _ctx = cust::quick_init().into_py()?;)
 fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
@@ -167,8 +163,8 @@ fn integrate_gpu<'py>(
 
     let (ar_table_host, r_min, dr) =
         build_sphericalcutoff_force_table(bulge_amp, bulge_alpha, bulge_r1, bulge_rc);
-    let (ar_table_eval_host, r_min, dr) =
-        build_sphericalcutoff_eval_table(bulge_amp, bulge_alpha, bulge_r1, bulge_rc);
+    // let (ar_table_eval_host, r_min, dr) =
+    //     build_sphericalcutoff_eval_table(bulge_amp, bulge_alpha, bulge_rc);
     let dev_ar_table = py_runtime_err(DeviceBuffer::from_slice(&ar_table_host))?;
 
     loop {
@@ -241,7 +237,7 @@ fn integrate_gpu<'py>(
 
     // a few diagnostics
     let final_timestep = w_host[0] as usize;
-    let final_off = (final_timestep * n + 0) * 6;
+    let _final_off = (final_timestep * n + 0) * 6;
     // println!(
     //     "Particle 0 finished at t = {:.12}, timestep = {}",
     //     t_host[0], final_timestep
@@ -258,7 +254,7 @@ fn integrate_gpu<'py>(
     // );
 
     let w0 = w_host[0] as usize;
-    let traj_len = (w0 + 1).min(steps_cap);
+    let _traj_len = (w0 + 1).min(steps_cap);
     // let mut file = File::create("particle0_steps_with_time.csv")?;
     // writeln!(file, "timestep,time,x,y,z,vx,vy,vz")?;
 
@@ -280,7 +276,7 @@ fn integrate_gpu<'py>(
     // println!("Wrote {} rows to particle0_steps_with_time.csv", traj_len);
 
     let accepts0 = w_host[0] as usize; // steps advanced for particle 0
-    let accept_rate = if iter > 0 {
+    let _accept_rate = if iter > 0 {
         100.0 * (accepts0 as f64) / (iter as f64)
     } else {
         0.0
