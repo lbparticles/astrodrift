@@ -3,42 +3,15 @@ SHELL ["/bin/bash","-c"]
 
 WORKDIR /data/home/leo
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y install \
-    build-essential \
-    clang \
-    curl \
-    libssl-dev \
-    libtinfo-dev \
-    pkg-config \
-    xz-utils \
-    zlib1g-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-# Needed to build `path_tracer`, `optix/ex03_window` example
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y install \
-    cmake \
-    libfontconfig-dev \
-    libx11-xcb-dev \
-    libxcursor-dev \
-    libxi-dev \
-    libxinerama-dev \
-    libxrandr-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-# Get LLVM 7
-WORKDIR /data/llvm7
-
-# Install dependencies for building LLVM
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y install \
-    libffi-dev \
-    libedit-dev \
-    libncurses5-dev \
-    libxml2-dev \
-    python3 \
-    ninja-build && \
-    rm -rf /var/lib/apt/lists/*
+COPY container/shared/apt-packages.txt /tmp/apt-packages.txt
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive \
+        grep -vE '^\s*#|^\s*$' /tmp/apt-packages.txt \
+        | xargs -r apt-get -qq -y install \
+    && rm -rf /var/lib/apt/lists/*
 
 # Download and build LLVM 7.1.0 for all architectures
+WORKDIR /data/llvm7
 RUN curl -sSf -L -O https://github.com/llvm/llvm-project/releases/download/llvmorg-7.1.0/llvm-7.1.0.src.tar.xz && \
     tar -xf llvm-7.1.0.src.tar.xz && \
     cd llvm-7.1.0.src && \
@@ -69,42 +42,34 @@ RUN curl -sSf -L -O https://github.com/llvm/llvm-project/releases/download/llvmo
     rm -rf llvm-7.1.0.src* && \
     ln -s /usr/bin/llvm-config /usr/bin/llvm-config-7
 
-# Get Rust
+# Get Rustup
 ENV HOME=/data/home/leo
 RUN curl -sSf -L https://sh.rustup.rs | bash -s -- --default-toolchain none -y
 ENV PATH="/data/home/leo/.cargo/bin:$PATH"
 
+# Get NSight Systems
 ARG NSYS_URL=https://developer.nvidia.com/downloads/assets/tools/secure/nsight-systems/2024_4/
 ARG NSYS_PKG=NsightSystems-linux-cli-public-2024.4.1.61-3431596.deb
-
-RUN apt-get update && apt install -y wget libglib2.0-0
 RUN wget ${NSYS_URL}${NSYS_PKG} && dpkg -i $NSYS_PKG && rm $NSYS_PKG
 
+# Get uv
 ADD https://astral.sh/uv/0.9.7/install.sh /uv-installer.sh
-
-# Run the installer then remove it
 RUN sh /uv-installer.sh && rm /uv-installer.sh
-
-# Ensure the installed binary is on the `PATH`
 ENV PATH="/data/home/leo/.local/bin/:$PATH"
+
+# Install Python
 RUN uv python install 3.13
 RUN uv tool install maturin
 
+# Download Rust toolchain
 WORKDIR /data/astrodrift
 RUN --mount=type=bind,source=rust-toolchain.toml,target=/data/astrodrift/rust-toolchain.toml \
     rustup show
 
-
+# Sync uv packages
 RUN --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-install-project
-
-# RUN --mount=type=bind,source=Cargo.toml,target=Cargo.toml \
-#     cargo fetch  # Or cargo build --release for a binary
-# WORKDIR /data/astrodrift/kernels
-# RUN --mount=type=bind,source=kernels/Cargo.toml,target=Cargo.toml \
-#     cargo fetch # Or cargo build --release for a binary
-
 
 # Add nvvm to LD_LIBRARY_PATH.
 ENV LD_LIBRARY_PATH="/usr/local/cuda/nvvm/lib64:${LD_LIBRARY_PATH}"
