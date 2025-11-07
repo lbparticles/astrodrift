@@ -1,7 +1,3 @@
-from .potential import potential
-from .integrate import integrate
-from .ic import ic
-from .log import log
-from .output import output
+from .lib import simulation, bg_feature, part_group, test_group
 
-__all__ = ["potential", "integrate", "ic", "log", "output"]
+__all__ = ["simulation", "part_group", "bg_feature", "test_group"]

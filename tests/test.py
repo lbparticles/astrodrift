@@ -1,9 +1,12 @@
-from drift import integrate, potential, ic
+import drift as dft
 
 
 def main():
-    res = integrate(potential(), ic())
-    res.run()
+    gal = dft.bg_feature()
+    gmc = dft.part_group([])
+    iso = dft.test_group([])
+    sim = dft.simulation([gal, gmc, iso])
+    _dfs = sim.integrate()
 
 
 if __name__ == "__main__":
