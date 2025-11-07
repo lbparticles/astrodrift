@@ -97,7 +97,7 @@ jobs:
         with:
           mode: start
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          ec2-image-id: ami-08303b4993252b4b7
+          ec2-image-id: ami-0a83ec315e0c93010
           ec2-instance-type: c6a.8xlarge
           subnet-id: subnet-0496b03cda965787c
           security-group-id: sg-05309e81ca4f5e69b
@@ -122,19 +122,21 @@ jobs:
         run: |
           KEY="ubuntu22/docker22.tar"
           if aws s3api head-object --bucket "${{ env.BUCKET }}" --key "${KEY}" >/dev/null 2>&1; then
+            echo "Previous build found (ubuntu22)"
             tmp="/home/ubuntu/tmp"
             aws s3 cp "s3://${{ env.BUCKET }}/ubuntu22/docker22.tar" \
             "${tmp}/docker22.tar" --no-progress --only-show-errors
             docker load -i "$tmp/docker22.tar"
             rm -f "${tmp}/docker22.tar"
           else
-            echo "No previous build found (ubuntu24)"
+            echo "No previous build found (ubuntu22)"
           fi
       - name: Grab previous build if exists ubuntu24
         if: needs.start-runner.outputs.need24 == 'true'
         run: |
           KEY="ubuntu24/docker24.tar"
           if aws s3api head-object --bucket "${{ env.BUCKET }}" --key "${KEY}" >/dev/null 2>&1; then
+            echo "Previous build found (ubuntu24)"
             tmp="/home/ubuntu/tmp"
             aws s3 cp "s3://${{ env.BUCKET }}/ubuntu24/docker24.tar" \
             "${tmp}/docker24.tar" --no-progress --only-show-errors
@@ -181,6 +183,7 @@ jobs:
             docker22.tar \
             s3://${{ env.BUCKET }}/ubuntu22/docker22.tar \
             --metadata artifact-type=docker-image-archive
+          rm docker22.tar
 
       - name: Upload SIF to S3 (ubuntu22-cuda12)
         if: needs.start-runner.outputs.need22 == 'true'
