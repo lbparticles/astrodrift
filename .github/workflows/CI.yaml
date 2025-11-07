@@ -246,91 +246,31 @@ jobs:
           label: ${{ needs.start-runner.outputs.label }}
           ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
           
-  test:
-    runs-on: [ self-hosted, test ]
-    needs:
-      - start-runner
-      - build
-    timeout-minutes: 30
-    env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: ${{ secrets.AWS_REGION }}
+  test_after_build:
+    name: Run tests (after fresh build)
+    needs: [start-runner, build]
+    if: needs.start-runner.outputs.need_build == 'true'
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      bucket: ${{ env.BUCKET }}
+      hash22: ${{ needs.start-runner.outputs.hash22 }}
+      hash24: ${{ needs.start-runner.outputs.hash24 }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
 
-    steps:
-    - uses: actions/checkout@v5
-    
-    - name: Import runner env (RUNNER_TARGET, SIF_CACHE_DIR)
-      shell: bash
-      run: |
-        echo "RUNNER_TARGET=${RUNNER_TARGET:-}" >> "$GITHUB_ENV"
-        echo "SIF_CACHE_DIR=${SIF_CACHE_DIR:-}" >> "$GITHUB_ENV"
-        echo "Imported RUNNER_TARGET=${RUNNER_TARGET:-<unset>}"
-        echo "Imported SIF_CACHE_DIR=${SIF_CACHE_DIR:-<unset>}"
-
-    - name: Fetch SIF (ubuntu22)
-      if: env.RUNNER_TARGET == 'ubuntu22'
-      run: |
-        set -euxo pipefail
-        SIF_PATH="$SIF_CACHE_DIR/app-ubuntu22-${{ needs.start-runner.outputs.hash22 }}.sif"
-        if [ -f "$SIF_PATH" ]; then
-          echo "Using cached SIF: $SIF_PATH"
-        else
-          echo "Cache miss; downloading -> $SIF_PATH"
-          tmp="$SIF_PATH.tmp.$$"
-          aws s3 cp \
-            "s3://${{ env.BUCKET }}/ubuntu22/app-${{ needs.start-runner.outputs.hash22 }}.sif" \
-            "$tmp" --no-progress --only-show-errors
-          mv -f "$tmp" "$SIF_PATH"
-        fi
-        ln -sf "$SIF_PATH" app-ubuntu22.sif
-        ls -lh "$SIF_PATH" app-ubuntu22.sif
-
-    - name: Fetch SIF (ubuntu24)
-      if: env.RUNNER_TARGET == 'ubuntu24'
-      run: |
-        set -euxo pipefail
-        SIF_PATH="$SIF_CACHE_DIR/app-ubuntu24-${{ needs.start-runner.outputs.hash24 }}.sif"
-        if [ -f "$SIF_PATH" ]; then
-          echo "Using cached SIF: $SIF_PATH"
-        else
-          echo "Cache miss; downloading -> $SIF_PATH"
-          tmp="$SIF_PATH.tmp.$$"
-          aws s3 cp \
-            "s3://${{ env.BUCKET }}/ubuntu24/app-${{ needs.start-runner.outputs.hash24 }}.sif" \
-            "$tmp" --no-progress --only-show-errors
-          mv -f "$tmp" "$SIF_PATH"
-        fi
-        ln -sf "$SIF_PATH" app-ubuntu24.sif
-        ls -lh "$SIF_PATH" app-ubuntu24.sif
-
-    - name: Run tests inside SIF (ubuntu22)
-      if: env.RUNNER_TARGET == 'ubuntu22'
-      run: |
-          set -euxo pipefail
-          apptainer exec \
-            -B ./:/data/astrodrift \
-            --writable-tmpfs \
-            --no-mount home \
-            --home /data/home/leo \
-            --nv \
-            --cleanenv \
-            --cwd /data/astrodrift \
-            ./app-ubuntu22.sif \
-            bash -c "cargo clean && uv sync && maturin develop && uv run tests/test.py"
-
-    - name: Run tests inside SIF (ubuntu24)
-      if: env.RUNNER_TARGET == 'ubuntu24'
-      run: |
-          set -euxo pipefail
-          apptainer exec \
-            -B ./:/data/astrodrift \
-            --writable-tmpfs \
-            --no-mount home \
-            --home /data/home/leo \
-            --nv \
-            --cleanenv \
-            --cwd /data/astrodrift \
-            ./app-ubuntu24.sif \
-            bash -c "cargo clean && uv sync && maturin develop && uv run tests/test.py"
+  test_from_cache:
+    name: Run tests (using cached SIF)
+    needs: [start-runner]
+    if: needs.start-runner.outputs.need_build != 'true'
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      bucket: ${{ env.BUCKET }}
+      hash22: ${{ needs.start-runner.outputs.hash22 }}
+      hash24: ${{ needs.start-runner.outputs.hash24 }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
 
