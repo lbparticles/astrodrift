@@ -4,8 +4,6 @@ import enum
 import pandas as pd
 from typing import List, Set
 from abc import abstractmethod
-import astropy.units as u
-from astropy.units import Quantity
 
 
 class Engine(enum.Enum):
@@ -182,7 +180,7 @@ class SimulationFrame:
         """
         return
 
-    def integrate(self, time: u.typing.QuantityLike):
+    def integrate(self, time):
         """
         test drive
         """

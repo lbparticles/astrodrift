@@ -72,7 +72,7 @@ runs:
           --cleanenv \
           --cwd /data/astrodrift \
           ./app-ubuntu22.sif \
-          bash -c "cargo clean && uv sync && maturin develop && uv run tests/test.py"
+          bash -c "cargo clean && uv sync && maturin develop && uv run pytest && cargo test && ruff check && ty check"
 
     - name: Run tests inside SIF (ubuntu24)
       if: env.RUNNER_TARGET == 'ubuntu24'
@@ -88,4 +88,4 @@ runs:
           --cleanenv \
           --cwd /data/astrodrift \
           ./app-ubuntu24.sif \
-          bash -c "cargo clean && uv sync && maturin develop && uv run tests/test.py"
+          bash -c "cargo clean && uv sync && maturin develop && uv run pytest && cargo test && ruff check && ty check"

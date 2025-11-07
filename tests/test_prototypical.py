@@ -1,5 +1,5 @@
-import pytest
 import drift as dft
+import numpy as np
 
 
 def test_prototypical():
@@ -7,4 +7,5 @@ def test_prototypical():
     gmc = dft.part_group([])
     iso = dft.test_group([])
     sim = dft.simulation([gal, gmc, iso])
-    _dfs = sim.integrate()
+    ts = np.linspace(0, 1000, 401)
+    _dfs = sim.integrate(ts)
