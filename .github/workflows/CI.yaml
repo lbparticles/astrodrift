@@ -252,6 +252,7 @@ jobs:
     if: needs.start-runner.outputs.need_build == 'true'
     runs-on: [ self-hosted, test ]
     steps:
+      - uses: actions/checkout@v5
       - name: Run tests inside container
         uses: ./.github/actions/run-tests
         with:
@@ -269,6 +270,7 @@ jobs:
     if: needs.start-runner.outputs.need_build != 'true'
     runs-on: [ self-hosted, test ]
     steps:
+      - uses: actions/checkout@v5
       - name: Run tests inside container
         uses: ./.github/actions/run-tests
         with:
