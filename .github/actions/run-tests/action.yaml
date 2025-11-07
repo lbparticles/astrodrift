@@ -1,0 +1,91 @@
+name: "Run tests inside SIF"
+description: "Fetch SIF and run tests for ubuntu22/ubuntu24"
+inputs:
+  hash22:
+    description: "Hash for ubuntu22 build"
+    required: true
+  hash24:
+    description: "Hash for ubuntu24 build"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v5
+
+    - name: Import runner env (RUNNER_TARGET, SIF_CACHE_DIR)
+      shell: bash
+      run: |
+        echo "RUNNER_TARGET=${RUNNER_TARGET:-}" >> "$GITHUB_ENV"
+        echo "SIF_CACHE_DIR=${SIF_CACHE_DIR:-}" >> "$GITHUB_ENV"
+        echo "Imported RUNNER_TARGET=${RUNNER_TARGET:-<unset>}"
+        echo "Imported SIF_CACHE_DIR=${SIF_CACHE_DIR:-<unset>}"
+
+    - name: Fetch SIF (ubuntu22)
+      if: env.RUNNER_TARGET == 'ubuntu22'
+      shell: bash
+      run: |
+        set -euxo pipefail
+        SIF_PATH="$SIF_CACHE_DIR/app-ubuntu22-${{ inputs.hash22 }}.sif"
+        if [ -f "$SIF_PATH" ]; then
+          echo "Using cached SIF: $SIF_PATH"
+        else
+          echo "Cache miss; downloading -> $SIF_PATH"
+          tmp="$SIF_PATH.tmp.$$"
+          aws s3 cp \
+            "s3://${BUCKET}/ubuntu22/app-${{ inputs.hash22 }}.sif" \
+            "$tmp" --no-progress --only-show-errors
+          mv -f "$tmp" "$SIF_PATH"
+        fi
+        ln -sf "$SIF_PATH" app-ubuntu22.sif
+        ls -lh "$SIF_PATH" app-ubuntu22.sif
+
+    - name: Fetch SIF (ubuntu24)
+      if: env.RUNNER_TARGET == 'ubuntu24'
+      shell: bash
+      run: |
+        set -euxo pipefail
+        SIF_PATH="$SIF_CACHE_DIR/app-ubuntu24-${{ inputs.hash24 }}.sif"
+        if [ -f "$SIF_PATH" ]; then
+          echo "Using cached SIF: $SIF_PATH"
+        else
+          echo "Cache miss; downloading -> $SIF_PATH"
+          tmp="$SIF_PATH.tmp.$$"
+          aws s3 cp \
+            "s3://${BUCKET}/ubuntu24/app-${{ inputs.hash24 }}.sif" \
+            "$tmp" --no-progress --only-show-errors
+          mv -f "$tmp" "$SIF_PATH"
+        fi
+        ln -sf "$SIF_PATH" app-ubuntu24.sif
+        ls -lh "$SIF_PATH" app-ubuntu24.sif
+
+    - name: Run tests inside SIF (ubuntu22)
+      if: env.RUNNER_TARGET == 'ubuntu22'
+      shell: bash
+      run: |
+        set -euxo pipefail
+        apptainer exec \
+          -B ./:/data/astrodrift \
+          --writable-tmpfs \
+          --no-mount home \
+          --home /data/home/leo \
+          --nv \
+          --cleanenv \
+          --cwd /data/astrodrift \
+          ./app-ubuntu22.sif \
+          bash -c "cargo clean && uv sync && maturin develop && uv run tests/test.py"
+
+    - name: Run tests inside SIF (ubuntu24)
+      if: env.RUNNER_TARGET == 'ubuntu24'
+      shell: bash
+      run: |
+        set -euxo pipefail
+        apptainer exec \
+          -B ./:/data/astrodrift \
+          --writable-tmpfs \
+          --no-mount home \
+          --home /data/home/leo \
+          --nv \
+          --cleanenv \
+          --cwd /data/astrodrift \
+          ./app-ubuntu24.sif \
+          bash -c "cargo clean && uv sync && maturin develop && uv run tests/test.py"

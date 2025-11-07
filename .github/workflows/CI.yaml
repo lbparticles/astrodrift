@@ -250,27 +250,33 @@ jobs:
     name: Run tests (after fresh build)
     needs: [start-runner, build]
     if: needs.start-runner.outputs.need_build == 'true'
-    uses: ./.github/workflows/run-tests.yml
-    with:
-      bucket: ${{ env.BUCKET }}
-      hash22: ${{ needs.start-runner.outputs.hash22 }}
-      hash24: ${{ needs.start-runner.outputs.hash24 }}
-    secrets:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+    runs-on: [ self-hosted, test ]
+    steps:
+      - name: Run tests inside container
+        uses: ./.github/actions/run-tests
+        with:
+          hash22: ${{ needs.start-runner.outputs.hash22 }}
+          hash24: ${{ needs.start-runner.outputs.hash24 }}
+        env:
+          BUCKET: drift-oci-bucket
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
 
   test_from_cache:
     name: Run tests (using cached SIF)
     needs: [start-runner]
     if: needs.start-runner.outputs.need_build != 'true'
-    uses: ./.github/workflows/run-tests.yml
-    with:
-      bucket: ${{ env.BUCKET }}
-      hash22: ${{ needs.start-runner.outputs.hash22 }}
-      hash24: ${{ needs.start-runner.outputs.hash24 }}
-    secrets:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+    runs-on: [ self-hosted, test ]
+    steps:
+      - name: Run tests inside container
+        uses: ./.github/actions/run-tests
+        with:
+          hash22: ${{ needs.start-runner.outputs.hash22 }}
+          hash24: ${{ needs.start-runner.outputs.hash24 }}
+        env:
+          BUCKET: drift-oci-bucket
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
 
