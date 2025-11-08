@@ -7,15 +7,7 @@ libtinfo-dev
 pkg-config
 xz-utils
 zlib1g-dev
-
-# Needed to build `path_tracer`, `optix/ex03_window` example
 cmake
-libfontconfig-dev
-libx11-xcb-dev
-libxcursor-dev
-libxi-dev
-libxinerama-dev
-libxrandr-dev
 
 # Dependencies for building LLVM
 libffi-dev
@@ -23,8 +15,9 @@ libedit-dev
 libncurses5-dev
 libxml2-dev
 python3
+python3-dev
 ninja-build
 
 # NSYS
-wget 
+wget
 libglib2.0-0

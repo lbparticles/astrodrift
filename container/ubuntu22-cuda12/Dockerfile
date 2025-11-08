@@ -58,8 +58,10 @@ RUN sh /uv-installer.sh && rm /uv-installer.sh
 ENV PATH="/data/home/leo/.local/bin/:$PATH"
 
 # Install Python
-RUN uv python install 3.13
-RUN uv tool install maturin
+RUN uv python install 3.13.9
+RUN uv tool install maturin@1.9.6
+RUN uv tool install ruff@0.14.4
+RUN uv tool install ty@0.0.1a25
 
 # Download Rust toolchain
 WORKDIR /data/astrodrift

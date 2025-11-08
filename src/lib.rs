@@ -18,6 +18,40 @@ const DT_MAX: f64 = 0.25;
 
 const BLOCK_SIZE: u32 = 128;
 
+
+enum _Optimisation {
+    Recommended,
+    Spline,
+    PredictiveLut,
+}
+
+enum _Engine {
+    Gpu,
+    Cpu,
+}
+
+enum _IntMethod {
+    Newton,
+    RK54,
+    DOP853,
+    LeapFrog,
+}
+enum _Potential{
+    Custom,
+    Bovy14,
+    SprialArm,
+    Bar,
+    Plummer,
+    Point,
+    NFW,
+    SphericalWCutoff,
+}
+
+enum _Interpolation{
+    Linear, 
+    Cubic, 
+    Quintic,
+}
 fn grid_size(n: usize, block: u32) -> (u32, u32) {
     let blocks = ((n as u32) + block - 1) / block;
     (blocks, block)
@@ -51,24 +85,41 @@ fn build_sphericalcutoff_force_table(
     }
     (table, R_MIN, dr)
 }
-// fn build_sphericalcutoff_eval_table(amp: f64, alpha: f64, rc: f64) -> (Vec<f64>, f64, f64) {
-//     let mut table = Vec::with_capacity(N_AR);
-//     let dr = (R_MAX - R_MIN) / (N_AR as f64 - 1.0);
-//     for i in 0..N_AR {
-//         let r = R_MIN + i as f64 * dr;
-//         let ratio = pow(r / rc, 2.);
-//         let out = 2.
-//             * PI
-//             * amp
-//             * pow(rc, 3. - alpha)
-//             * (1. / rc)
-//             * gamma(1. - alpha / 2.)
-//             * gamma_lr(1. - alpha / 2., ratio)
-//             - gamma(1.5 - alpha / 2.) * gamma_lr(1.5 - alpha / 2., ratio / r);
-//         table.push(out);
-//     }
-//     (table, R_MIN, dr)
-// }
+fn _build_sphericalcutoff_eval_table(amp: f64, alpha: f64, rc: f64) -> (Vec<f64>, f64, f64) {
+    let mut table = Vec::with_capacity(N_AR);
+    let dr = (R_MAX - R_MIN) / (N_AR as f64 - 1.0);
+    for i in 0..N_AR {
+        let r = R_MIN + i as f64 * dr;
+        let ratio = pow(r / rc, 2.);
+        let out = 2.
+            * PI
+            * amp
+            * pow(rc, 3. - alpha)
+            * (1. / rc)
+            * gamma(1. - alpha / 2.)
+            * gamma_lr(1. - alpha / 2., ratio)
+            - gamma(1.5 - alpha / 2.) * gamma_lr(1.5 - alpha / 2., ratio / r);
+        table.push(out);
+    }
+    (table, R_MIN, dr)
+}
+
+fn _interp_particle_coeff_lut(_state3: f64,interp: Interpolation)->Vec<f64>{
+    match interp{
+        Interpolation::Linear=> {
+           return vec!(1.)     
+        },
+        Interpolation::Cubic=> {
+           return vec!(1.)     
+            
+        },
+        Interpolation::Quintic=> {
+           return vec!(1.)     
+            
+        }
+    }
+    
+}
 
 /// An extension trait may be cleaner (e.g. let _ctx = cust::quick_init().into_py()?;)
 fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {

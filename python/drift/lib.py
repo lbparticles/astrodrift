@@ -1,55 +1,17 @@
-from .drift_rs import integrate_gpu  # ty: ignore[unresolved-import]
-import numpy as np
-import enum
-import pandas as pd
 from typing import List, Set
-from abc import abstractmethod
 
+import numpy as np
+import pandas as pd
+import logging
 
-class Engine(enum.Enum):
-    GPU = enum.auto()
-    CPU = enum.auto()
-
-
-class IntMethod(enum.Enum):
-    NEWTON = enum.auto()
-    RK54 = enum.auto()
-    DOP853 = enum.auto()
-    LEAPFROG = enum.auto()
-
-
-class Optimisation(enum.Enum):
-    RECOMMENDED = enum.auto()
-    SPLINE = enum.auto()
-    PREDICTIVE_LUT = enum.auto()
-
-
-class Potential(enum.Enum):
-    CUSTOM = enum.auto()
-    BOVY14 = enum.auto()
-    SPRIAL_ARM = enum.auto()
-    BAR = enum.auto()
-    PLUMMER = enum.auto()
-    POINT = enum.auto()
-    NFW = enum.auto()
-    SPHERICALWCUTOFF = enum.auto()
-
-
-class IntegratorContainer:
-    @abstractmethod
-    def consume(self):
-        """"""
-        return
-
-
-class BackgroundFeature(IntegratorContainer):
-    def __init__(self):
-        """"""
-        return
-
-    def consume(self):
-        """"""
-        return
+from .config import Engine, Interpolation, IntMethod, Optimisation, Potential
+from .drift_rs import integrate_gpu  # ty: ignore[unresolved-import]
+from .integrator.container import (
+    BackgroundFeature,
+    IntegratorContainer,
+    ParticleGroup,
+    TestGroup,
+)
 
 
 def bg_feature(
@@ -58,34 +20,8 @@ def bg_feature(
     label="",
     LookUpTable: bool | None = None,
 ) -> BackgroundFeature:
-    """Background Feature"""
-    return BackgroundFeature()
-
-
-class ParticleGroup(IntegratorContainer):
-    def __init__(self):
-        """"""
-        return
-
-    def consume(self):
-        """"""
-        return
-
-
-class TestGroup(IntegratorContainer):
-    def __init__(self):
-        """"""
-        return
-
-    def consume(self):
-        """"""
-        return
-
-
-class Interpolation(enum.Enum):
-    LINEAR = enum.auto()
-    CUBIC = enum.auto()
-    QUINTIC = enum.auto()
+    """Background Feature Constructor"""
+    return BackgroundFeature(potential)
 
 
 def part_group(
@@ -94,20 +30,19 @@ def part_group(
     interpolation: Interpolation = Interpolation.QUINTIC,
     alpha_param=None,
 ) -> ParticleGroup:
-    return ParticleGroup()
+    """Particle Group Constructor"""
+    return ParticleGroup(istate, potential)
 
 
 def test_group(
     istate,
-    potential: Potential = Potential.PLUMMER,
-    interpolation: Interpolation = Interpolation.QUINTIC,
-    alpha_param=None,
 ) -> TestGroup:
-    return TestGroup()
+    """Test Particle Group Constructor"""
+    return TestGroup(istate)
 
 
 def simulation(
-    state,
+    *containers: IntegratorContainer,
     label: str = "",
     engine: Engine = Engine.GPU,
     method: IntMethod = IntMethod.RK54,
@@ -123,10 +58,13 @@ def simulation(
         potential: This is the first param.
         state: This is a second param.
         config:
-        label: auto-generates a name if none is provided, included in the ctx and debug info
-        engine: defines which version and implemntation to use, should be enum
+        label: auto-generates a name if none is provided, included in
+        the ctx and debug info
+        engine: defines which version and implemntation to use, should
+        be enum
         method: what integration method will the engine use?
-        optimisation: a list of optimisation features, or boolean that determines whether all or none of the optimisations are included
+        optimisation: a list of optimisation features, or boolean that
+        determines whether all or none of the optimisations are included
         debug: Sets debug flag
 
     Returns:
@@ -135,18 +73,18 @@ def simulation(
     Raises:
         KeyError: Raises an exception.
     """
-    return SimulationFrame([])
+    return SimulationFrame(*containers)
 
 
 class SimulationFrame:
     def __init__(
         self,
-        state: List[IntegratorContainer],
+        *containers: IntegratorContainer,
     ):
         """
-        SimulationFrame is the main class within the library, setting up the
-        framework work with all the datastructures and functions needed to
-        interact with the cffi
+        SimulationFrame is the main class within the library, setting up
+        the framework work with all the datastructures and functions
+        needed to interact with the cffi
 
         Args:
             potential: This is the first param.
@@ -158,6 +96,8 @@ class SimulationFrame:
         Raises:
             KeyError: Raises an exception.
         """
+        self.log = logging.getLogger("sim")
+        self.containers: List[IntegratorContainer] = list(containers)
         return
 
     def __repr__(self):
@@ -168,22 +108,21 @@ class SimulationFrame:
         print("DATAFRAME")
         return ""
 
-    def potential(self):
+    def add(self, *containers: IntegratorContainer):
         """
         test drive
         """
+        self.containers.extend(containers)
         return
 
-    def initial(self):
+    def integrate(self, time):
         """
         test drive
         """
-        return
-
-    def integrate(self):
-        """
-        test drive
-        """
+        self._warn_if_missing(
+            BackgroundFeature, "No background feature! Is this correct?"
+        )
+        self._warn_if_missing(TestGroup, "No test particles! Is this correct?")
         return
 
     def run(self):
@@ -203,3 +142,7 @@ class SimulationFrame:
         print(time.shape)
         return pd.DataFrame(state)
         # return self.output
+
+    def _warn_if_missing(self, cls, message):
+        if not any(isinstance(c, cls) for c in self.containers):
+            self.log.warning(message)

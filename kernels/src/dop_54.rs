@@ -63,15 +63,6 @@ fn miyamoto_nagai_force(x: f64, y: f64, z: f64, amp: f64, a: f64, b: f64) -> (f6
     (ax, ay, az)
 }
 
-// Previous
-#[inline(always)]
-fn compute_acceleration(t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-    let r2 = x * x + y * y + z * z;
-    let r32 = pow(r2, 1.5);
-    let a = -G * M_S / r32;
-    (a * x, a * y, a * z)
-}
-
 #[inline(always)]
 pub fn rk_norm(
     x: f64,
@@ -113,6 +104,48 @@ pub fn rk_norm(
     sqrt(sum / 6.0)
 }
 
+#[kernel]
+#[allow(improper_ctypes_definitions)]
+pub unsafe fn initial_acc(
+    state_out: *mut f64,
+    n: usize,
+    steps_cap: usize, // max number of steps in state_out
+    t: *mut f64,
+    w: *mut u32,
+    done: *mut u8,
+    t_end: f64,
+    atol: f64,
+    rtol: f64,
+    fac_min: f64,
+    fac_max: f64,
+    safety: f64,
+    dt_min: f64,
+    dt_max: f64,
+    error_out: *mut f64, // last
+    ar_table: *const f64,
+    r_min: f64,
+    dr: f64,
+    n_ar: u32,
+    time_direction: f64,
+) {
+    let tid = (thread::block_idx_x() * thread::block_dim_x() + thread::thread_idx_x()) as usize;
+    if tid >= n {
+        return;
+    }
+    let mut wi = *w.add(tid) as usize;
+    let potential= MW2014Potential::new(ar_table, r_min, dr, n_ar);
+    let mut ti = *t.add(tid);
+    let prev_offset = ((wi * n) + tid) * 9;
+    let x = *state_out.add(prev_offset + 0);
+    let y = *state_out.add(prev_offset + 1);
+    let z = *state_out.add(prev_offset + 2);
+    let (ax, ay, az) = potential.force(ti, x, y, z);
+    let pot_energy = potential.evaluate(ti, x, y, z);
+    *state_out.add(prev_offset + 6) = ax;
+    *state_out.add(prev_offset + 7) = ay;
+    *state_out.add(prev_offset + 8) = az;
+    *state_out.add(prev_offset + 9) = pot_energy;
+}
 /// Adaptive, branchless Dormand–Prince 5(4) stepper.
 /// Each launch attempts exactly one step per particle using its per-thread dt,
 /// computes the error, and then blends accept/reject outcomes
@@ -124,7 +157,6 @@ pub fn rk_norm(
 /// - t: current time per particle
 /// - dt: current step size per particle (candidate for next attempt)
 /// - w: write index per particle (0..steps_cap-1)
-/// - done: 0/1 flag. threads marked done perform masked no-ops
 #[kernel]
 #[allow(improper_ctypes_definitions)]
 pub unsafe fn dopr54_adaptive(
@@ -166,6 +198,7 @@ pub unsafe fn dopr54_adaptive(
     let mut wi = *w.add(tid) as usize;
 
     let sign = time_direction;
+    let potential = MW2014Potential::new(ar_table, r_min, dr, n_ar);
 
     // clamp dt and prevent overshoot
     let rem_dir = sign * (t_end - ti);
@@ -218,9 +251,7 @@ pub unsafe fn dopr54_adaptive(
         }
 
         let t_stage = ti + dt_eff * (Coeffs::C[i] as f64);
-        // let (axi, ayi, azi) = compute_acceleration(t_stage, xi, yi, zi);
-        let mw = MW2014Potential::new(ar_table, r_min, dr, n_ar);
-        let (axi, ayi, azi) = mw.force(t_stage, xi, yi, zi);
+        let (axi, ayi, azi) = potential.force(t_stage, xi, yi, zi);
 
         rk_x[i] = vxi;
         rk_y[i] = vyi;
