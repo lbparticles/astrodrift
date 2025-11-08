@@ -52,6 +52,7 @@ dependencies = [
 
 <details>
     <summary>Python full dependency tree</summary>
+
     ```
     astrodrift
     ├── numpy v2.3.4
@@ -87,6 +88,7 @@ cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_
 
 <details>
     <summary>Rust full dependency tree</summary>
+
     ```
     drift v0.1.0 (/data/astrodrift)
     |-- blastoff v0.1.0 (https://github.com/Rust-GPU/Rust-CUDA?branch=main#3b646e68)
