@@ -33,9 +33,9 @@ impl MW2014Potential {
             a: 16.0 / 8.0,
         };
         Self {
-            bulge: bulge,
-            disk: disk,
-            halo: halo,
+            bulge,
+            disk,
+            halo,
         }
     }
 }

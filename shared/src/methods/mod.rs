@@ -1,4 +1,5 @@
 mod dop54;
+pub use dop54::DormandPrince54;
 
 pub trait ButcherTableau {
     const ORDER: usize;

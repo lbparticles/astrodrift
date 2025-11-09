@@ -1,117 +1,9 @@
 use shared::{ButcherTableau, DormandPrince54 as Coeffs};
-use shared::combine_potentials;
 use shared::{MW2014Potential, Potential};
 use cuda_std::{kernel, thread};
-use libm::{atan2, cos, floor, log, pow, sin, sqrt};
-
-const M_S: f64 = 1.0;
-const G: f64 = 39.5;
-
-#[inline(always)]
-unsafe fn sphericalcutoff_force_tabled(
-    x: f64,
-    y: f64,
-    z: f64,
-    ar_table: *const f64,
-    r_min: f64,
-    dr: f64,
-    n_ar: u32,
-) -> (f64, f64, f64) {
-    let r2 = pow(x, 2.0) + pow(y, 2.0) + pow(z, 2.0);
-    if r2 == 0.0 {
-        return (0.0, 0.0, 0.0);
-    }
-    let r = sqrt(r2);
-    let t = (r - r_min) / dr;
-    let i = floor(t) as usize;
-    let f = t - i as f64;
-
-    // linear interpolation
-    let i0 = i.min((n_ar - 2) as usize);
-    let ar0 = *ar_table.add(i0);
-    let ar1 = *ar_table.add(i0 + 1);
-    let ar = (1.0 - f) * ar0 + f * ar1;
-
-    let ax = ar * x / r;
-    let ay = ar * y / r;
-    let az = ar * z / r;
-    (ax, ay, az)
-}
-
-fn navarro_frenk_white_force(x: f64, y: f64, z: f64, amp: f64, a: f64) -> (f64, f64, f64) {
-    let r2 = pow(x, 2.) + pow(y, 2.) + pow(z, 2.);
-    let r = sqrt(r2);
-    let ar = -amp * (log(1. + r / a) - r / (a + r)) / r2;
-    let ax = ar * (x / r);
-    let ay = ar * (y / r);
-    let az = ar * (z / r);
-    (ax, ay, az)
-}
-
-fn miyamoto_nagai_force(x: f64, y: f64, z: f64, amp: f64, a: f64, b: f64) -> (f64, f64, f64) {
-    let R2 = pow(x, 2.) + pow(y, 2.);
-    let R = sqrt(R2);
-    let z2 = pow(z, 2.);
-    let b2 = pow(b, 2.);
-    let sqrtz2b2 = sqrt(z2 + b2);
-    let pyth = pow(a + sqrtz2b2, 2.);
-    let denom = pow(pyth + R2, 3. / 2.);
-    let aR = -amp * (R / denom);
-    let ax = aR * (x / R);
-    let ay = aR * (y / R);
-    let az = -amp * (z * (a + sqrtz2b2)) / (sqrtz2b2 * denom);
-    (ax, ay, az)
-}
-
-// Previous
-#[inline(always)]
-fn compute_acceleration(t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-    let r2 = x * x + y * y + z * z;
-    let r32 = pow(r2, 1.5);
-    let a = -G * M_S / r32;
-    (a * x, a * y, a * z)
-}
-
-#[inline(always)]
-pub fn rk_norm(
-    x: f64,
-    x_new: f64,
-    err_x: f64,
-    y: f64,
-    y_new: f64,
-    err_y: f64,
-    z: f64,
-    z_new: f64,
-    err_z: f64,
-    vx: f64,
-    vx_new: f64,
-    err_vx: f64,
-    vy: f64,
-    vy_new: f64,
-    err_vy: f64,
-    vz: f64,
-    vz_new: f64,
-    err_vz: f64,
-    atol: f64,
-    rtol: f64,
-) -> f64 {
-    let sc_x = atol + rtol * f64::max(x.abs(), x_new.abs());
-    let sc_y = atol + rtol * f64::max(y.abs(), y_new.abs());
-    let sc_z = atol + rtol * f64::max(z.abs(), z_new.abs());
-    let sc_vx = atol + rtol * f64::max(vx.abs(), vx_new.abs());
-    let sc_vy = atol + rtol * f64::max(vy.abs(), vy_new.abs());
-    let sc_vz = atol + rtol * f64::max(vz.abs(), vz_new.abs());
-
-    // might need to guard against div by 0
-    let sum = pow(err_x / sc_x, 2.0)
-        + pow(err_y / sc_y, 2.0)
-        + pow(err_z / sc_z, 2.0)
-        + pow(err_vx / sc_vx, 2.0)
-        + pow(err_vy / sc_vy, 2.0)
-        + pow(err_vz / sc_vz, 2.0);
-
-    sqrt(sum / 6.0)
-}
+use super::norm::{State6,rk_norm};
+use libm::{pow};
+// use shared::combine_potentials;
 
 /// Adaptive, branchless Dormand–Prince 5(4) stepper.
 /// Each launch attempts exactly one step per particle using its per-thread dt,
@@ -125,6 +17,8 @@ pub fn rk_norm(
 /// - dt: current step size per particle (candidate for next attempt)
 /// - w: write index per particle (0..steps_cap-1)
 /// - done: 0/1 flag. threads marked done perform masked no-ops
+/// # Safety
+/// Typical GPU handoff shotgun shenanagins at play. Don't let a child //// play with this code unsupervised
 #[kernel]
 #[allow(improper_ctypes_definitions)]
 pub unsafe fn dopr54_adaptive(
@@ -157,13 +51,13 @@ pub unsafe fn dopr54_adaptive(
     }
 
     // per-particle
-    let done_i_u = *done.add(tid) as u32; // 0/1
+    let done_i_u = unsafe{*done.add(tid) as u32}; // 0/1
     let done_i = done_i_u as f64; // 0.0/1.0
     let not_done = 1.0_f64 - done_i;
 
-    let mut ti = *t.add(tid);
-    let mut dti = *dt.add(tid);
-    let mut wi = *w.add(tid) as usize;
+    let mut ti = unsafe{*t.add(tid)};
+    let mut dti = unsafe{*dt.add(tid)};
+    let mut wi = unsafe{*w.add(tid) as usize};
 
     let sign = time_direction;
 
@@ -179,12 +73,12 @@ pub unsafe fn dopr54_adaptive(
 
     // load the "previous/current" state from step 'wi'
     let prev_offset = ((wi * n) + tid) * 6;
-    let x = *state_out.add(prev_offset + 0);
-    let y = *state_out.add(prev_offset + 1);
-    let z = *state_out.add(prev_offset + 2);
-    let vx = *state_out.add(prev_offset + 3);
-    let vy = *state_out.add(prev_offset + 4);
-    let vz = *state_out.add(prev_offset + 5);
+    let x = unsafe{*state_out.add(prev_offset)};
+    let y = unsafe{*state_out.add(prev_offset + 1)};
+    let z = unsafe{*state_out.add(prev_offset + 2)};
+    let vx = unsafe{*state_out.add(prev_offset + 3)};
+    let vy = unsafe{*state_out.add(prev_offset + 4)};
+    let vz = unsafe{*state_out.add(prev_offset + 5)};
 
     // intermediate rk stage values
     let mut rk_x = [0.0f64; Coeffs::STAGES];
@@ -206,7 +100,7 @@ pub unsafe fn dopr54_adaptive(
         // contributions from prev stages using tableau A
         let mut j = 0usize;
         while j < i {
-            let aij = Coeffs::A[i][j] as f64;
+            let aij = Coeffs::A[i][j];
             let s = dt_eff * aij;
             xi += s * rk_x[j];
             yi += s * rk_y[j];
@@ -217,7 +111,7 @@ pub unsafe fn dopr54_adaptive(
             j += 1;
         }
 
-        let t_stage = ti + dt_eff * (Coeffs::C[i] as f64);
+        let t_stage = ti + dt_eff * Coeffs::C[i];
         // let (axi, ayi, azi) = compute_acceleration(t_stage, xi, yi, zi);
         let mw = MW2014Potential::new(ar_table, r_min, dr, n_ar);
         let (axi, ayi, azi) = mw.force(t_stage, xi, yi, zi);
@@ -239,7 +133,7 @@ pub unsafe fn dopr54_adaptive(
     let mut vz_new = vz;
 
     for i in 0..Coeffs::STAGES {
-        let b = Coeffs::B[i] as f64;
+        let b = Coeffs::B[i];
         let s = dt_eff * b;
         x_new += s * rk_x[i];
         y_new += s * rk_y[i];
@@ -258,7 +152,7 @@ pub unsafe fn dopr54_adaptive(
     let mut vz_hat = vz;
 
     for i in 0..Coeffs::STAGES {
-        let b_hat = Coeffs::B_HAT[i] as f64;
+        let b_hat = Coeffs::B_HAT[i];
         let s = dt_eff * b_hat;
         x_hat += s * rk_x[i];
         y_hat += s * rk_y[i];
@@ -275,14 +169,15 @@ pub unsafe fn dopr54_adaptive(
     let err_vx = vx_new - vx_hat;
     let err_vy = vy_new - vy_hat;
     let err_vz = vz_new - vz_hat;
-
+    let prev_state = State6{x,y,z,vx,vy,vz};
+    let curr_state = State6{x:x_new,y:y_new,z:z_new,vx:vx_new,vy:vy_new,vz:vz_new};
+    let erro_state = State6{x:err_x,y:err_y,z:err_z,vx:err_vx,vy:err_vy,vz:err_vz};
     let rk_err = rk_norm(
-        x, x_new, err_x, y, y_new, err_y, z, z_new, err_z, vx, vx_new, err_vx, vy, vy_new, err_vy,
-        vz, vz_new, err_vz, atol, rtol,
+        prev_state,curr_state,erro_state, atol, rtol,
     );
 
     if !error_out.is_null() {
-        *error_out.add(tid) = rk_err;
+        unsafe{*error_out.add(tid) = rk_err;}
     }
 
     let eps = 1.0e-18_f64; // to avoid err=0 blow-up
@@ -321,17 +216,17 @@ pub unsafe fn dopr54_adaptive(
     // compute next time
     let ti_new = ti + (accept_f * not_done) * dt_eff;
     if !time_out.is_null() {
-        *time_out.add(wi_capped * n + tid) = ti_new;
+        unsafe{*time_out.add(wi_capped * n + tid) = ti_new;}
     }
 
     // always write; on reject, this duplicates the prior state
     let out_offset = ((wi_capped * n) + tid) * 6;
-    *state_out.add(out_offset + 0) = x_out;
-    *state_out.add(out_offset + 1) = y_out;
-    *state_out.add(out_offset + 2) = z_out;
-    *state_out.add(out_offset + 3) = vx_out;
-    *state_out.add(out_offset + 4) = vy_out;
-    *state_out.add(out_offset + 5) = vz_out;
+    unsafe{*state_out.add(out_offset) = x_out;}
+    unsafe{*state_out.add(out_offset + 1) = y_out;}
+    unsafe{*state_out.add(out_offset + 2) = z_out;}
+    unsafe{*state_out.add(out_offset + 3) = vx_out;}
+    unsafe{*state_out.add(out_offset + 4) = vy_out;}
+    unsafe{*state_out.add(out_offset + 5) = vz_out;}
 
     // update time (only when accepted & not done); dt always updates for next attempt
     ti = ti_new;
@@ -343,8 +238,8 @@ pub unsafe fn dopr54_adaptive(
     let done_blend_u = done_i_u | done_new_u;
     let done_blend = (done_blend_u & 1) as u8;
 
-    *t.add(tid) = ti;
-    *dt.add(tid) = dti;
-    *w.add(tid) = wi as u32;
-    *done.add(tid) = done_blend;
+    unsafe{*t.add(tid) = ti;}
+    unsafe{*dt.add(tid) = dti;}
+    unsafe{*w.add(tid) = wi as u32;}
+    unsafe{*done.add(tid) = done_blend;}
 }

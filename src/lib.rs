@@ -19,7 +19,7 @@ const DT_MAX: f64 = 0.25;
 const BLOCK_SIZE: u32 = 128;
 
 fn grid_size(n: usize, block: u32) -> (u32, u32) {
-    let blocks = ((n as u32) + block - 1) / block;
+    let blocks = (n as u32).div_ceil(block);
     (blocks, block)
 }
 
@@ -75,17 +75,25 @@ fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
     res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
+type EngineOutput<'a> = PyResult<(Bound<'a, PyArray3<f64>>, Bound<'a, PyArray2<f64>>)>; 
+
+#[pyclass]
+#[derive(Clone)]
+struct Bounds {
+    steps_cap: usize,
+    atol: Option<f64>,
+    rtol: Option<f64>,
+}
+
 #[pyfunction]
 fn integrate_gpu<'py>(
     py: Python<'py>,
     state0: PyReadonlyArray2<'py, f64>,
-    steps_cap: usize,
     t_end: f64,
     dt0: f64,
-    atol: Option<f64>,
-    rtol: Option<f64>,
+    bounds: Bounds,
     reverse: Option<bool>,
-) -> PyResult<(Bound<'py, PyArray3<f64>>, Bound<'py, PyArray2<f64>>)> {
+) -> EngineOutput<'py> {
     // GIL held for entire function
 
     let ic = state0.as_array();
@@ -99,8 +107,9 @@ fn integrate_gpu<'py>(
         return Err(pyo3::exceptions::PyValueError::new_err("N must be > 0"));
     }
 
-    let atol = atol.unwrap(); // no-no. default?
-    let rtol = rtol.unwrap();
+    let atol = bounds.atol.unwrap(); // no-no. default?
+    let rtol = bounds.rtol.unwrap();
+    let steps_cap = bounds.steps_cap;
     let reverse = reverse.unwrap_or(false);
     let time_direction: f64 = if reverse { -1.0 } else { 1.0 };
 
@@ -122,13 +131,15 @@ fn integrate_gpu<'py>(
         // contiguous fast path
         for i in 0..n {
             let src = &slice[i * NF64..i * NF64 + NF64];
-            let off0 = (0 * n + i) * NF64;
+            let off0 = i * NF64;
+            // let off0 = (0 * n + i) * NF64;
             state_out[off0..off0 + NF64].copy_from_slice(src);
         }
     } else {
         // slow generic copy
         for i in 0..n {
-            let off0 = (0 * n + i) * NF64;
+            let off0 = i * NF64;
+            // let off0 = (0 * n + i) * NF64;
             let row = ic.row(i);
             state_out[off0..off0 + NF64].copy_from_slice(row.as_slice().unwrap());
         }
@@ -204,7 +215,7 @@ fn integrate_gpu<'py>(
         py_runtime_err(dev_done.copy_to(&mut done_host))?;
 
         // stop if all done
-        let any_active = done_host.iter().any(|&d| d == 0);
+        let any_active = done_host.contains(&0);
         if !any_active {
             break;
         }
@@ -237,7 +248,8 @@ fn integrate_gpu<'py>(
 
     // a few diagnostics
     let final_timestep = w_host[0] as usize;
-    let _final_off = (final_timestep * n + 0) * 6;
+    let _final_off = (final_timestep * n) * 6;
+    // let _final_off = (final_timestep * n + 0) * 6;
     // println!(
     //     "Particle 0 finished at t = {:.12}, timestep = {}",
     //     t_host[0], final_timestep

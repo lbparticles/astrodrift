@@ -1,3 +1,4 @@
-mod dop_54;
+mod engine;
+mod norm;
 
-pub use crate::dop_54::dopr54_adaptive;
+pub use crate::engine::dopr54_adaptive;
