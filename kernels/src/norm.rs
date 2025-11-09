@@ -1,5 +1,5 @@
 use libm::{pow, sqrt};
-
+#[derive(Clone,Copy)]
 pub struct State6 {
     pub x: f64,
     pub y: f64,

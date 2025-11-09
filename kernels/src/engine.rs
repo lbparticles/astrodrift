@@ -1,8 +1,10 @@
+#![no_std]
 use shared::{ButcherTableau, DormandPrince54 as Coeffs};
 use shared::{MW2014Potential, Potential};
 use cuda_std::{kernel, thread};
 use super::norm::{State6,rk_norm};
 use libm::{pow};
+use num_traits::NumCast;
 // use shared::combine_potentials;
 
 /// Adaptive, branchless Dormand–Prince 5(4) stepper.
@@ -45,19 +47,19 @@ pub unsafe fn dopr54_adaptive(
     n_ar: u32,
     time_direction: f64,
 ) {
-    let tid = (thread::block_idx_x() * thread::block_dim_x() + thread::thread_idx_x()) as usize;
+    let tid = usize::try_from(thread::block_idx_x() * thread::block_dim_x() + thread::thread_idx_x()).unwrap();
     if tid >= n {
         return;
     }
 
     // per-particle
-    let done_i_u = unsafe{*done.add(tid) as u32}; // 0/1
-    let done_i = done_i_u as f64; // 0.0/1.0
+    let done_i_u = unsafe{u32::try_from(*done.add(tid)).unwrap()}; // 0/1
+    let done_i = f64::try_from(done_i_u).unwrap(); // 0.0/1.0
     let not_done = 1.0_f64 - done_i;
 
     let mut ti = unsafe{*t.add(tid)};
     let mut dti = unsafe{*dt.add(tid)};
-    let mut wi = unsafe{*w.add(tid) as usize};
+    let mut wi = unsafe{usize::try_from(*w.add(tid)).unwrap()};
 
     let sign = time_direction;
 
@@ -192,7 +194,7 @@ pub unsafe fn dopr54_adaptive(
     let dt_new = sign * dt_new_mag;
 
     // accept = 1 if rk_err <= 1, else 0 (as float)
-    let accept_f = (rk_err <= 1.0) as u32 as f64;
+    let accept_f :f64 = NumCast::from(u32::try_from(rk_err <= 1.0).unwrap()).unwrap();
     let reject_f = 1.0_f64 - accept_f;
 
     // for already-done threads, mask all updates with 'not_done'
@@ -205,8 +207,8 @@ pub unsafe fn dopr54_adaptive(
     let vz_out = not_done * (accept_f * vz_new + reject_f * vz) + done_i * vz;
 
     // Increment write-step only if accepted & not done
-    let inc_u = (accept_f * not_done) as u32;
-    let wi_next = wi + inc_u as usize;
+    let inc_u: usize = NumCast::from(accept_f * not_done).unwrap();
+    let wi_next = wi + inc_u;
     let wi_capped = if wi_next < steps_cap {
         wi_next
     } else {
@@ -220,7 +222,7 @@ pub unsafe fn dopr54_adaptive(
     }
 
     // always write; on reject, this duplicates the prior state
-    let out_offset = ((wi_capped * n) + tid) * 6;
+    let out_offset = (usize::try_from(wi_capped * n).unwrap() + tid) * 6;
     unsafe{*state_out.add(out_offset) = x_out;}
     unsafe{*state_out.add(out_offset + 1) = y_out;}
     unsafe{*state_out.add(out_offset + 2) = z_out;}
@@ -234,12 +236,16 @@ pub unsafe fn dopr54_adaptive(
     wi = wi_capped;
 
     // once done, stay done
-    let done_new_u = (sign * (ti - t_end) >= 0.0) as u32;
-    let done_blend_u = done_i_u | done_new_u;
-    let done_blend = (done_blend_u & 1) as u8;
+    let done_new_u = sign * (ti - t_end) >= 0.0;
+    let done_blend_u = if ((done_i_u != 0) | done_new_u) { 
+        1u8 
+    } else { 
+        0u8 
+    };
+    let done_blend = (done_blend_u & 1);
 
     unsafe{*t.add(tid) = ti;}
     unsafe{*dt.add(tid) = dti;}
-    unsafe{*w.add(tid) = wi as u32;}
+    unsafe{*w.add(tid) = u32::try_from(wi).unwrap();}
     unsafe{*done.add(tid) = done_blend;}
 }
