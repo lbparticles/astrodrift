@@ -1,6 +1,6 @@
-use crate::butcher::{ButcherTableau, DormandPrince54 as Coeffs};
-use crate::combine_potentials;
-use crate::potential::{MW2014Potential, Potential};
+use shared::{ButcherTableau, DormandPrince54 as Coeffs};
+use shared::combine_potentials;
+use shared::{MW2014Potential, Potential};
 use cuda_std::{kernel, thread};
 use libm::{atan2, cos, floor, log, pow, sin, sqrt};
 

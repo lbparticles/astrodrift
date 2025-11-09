@@ -1,0 +1,12 @@
+[package]
+name = "shared"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+libm = "0.2"
+
+[features]
+# Add this if you want to use std features optionally (explained later)
+default = []
+std = []

@@ -21,6 +21,7 @@ rayon = "1.10.0"
 libm = "0.2.11"
 statrs = "0.18.0"
 numpy = "0.25.0"
+shared = { path = "shared" }
 
 [build-dependencies]
 cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_builder", branch = "main" }
