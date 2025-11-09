@@ -54,7 +54,7 @@ dependencies = [
 <details>
 <summary>Python full dependency tree</summary>
 
-
+```
 astrodrift
 ├── numpy v2.3.4
 ├── pandas v2.3.3
@@ -64,7 +64,7 @@ astrodrift
 │   ├── pytz v2025.2
 │   └── tzdata v2025.2
 └── patchelf v0.17.2.4
-
+```
 </details>
 <!-- PYTHON_DEPS_END -->
 
@@ -92,7 +92,7 @@ cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_
 <details>
     <summary>Rust full dependency tree</summary>
 
-
+```
 drift v0.1.0 (/data/astrodrift)
 ├── blastoff v0.1.0 (https://github.com/Rust-GPU/Rust-CUDA?branch=main#3b646e68)
 │   ├── bitflags v2.9.1
@@ -417,7 +417,7 @@ drift v0.1.0 (/data/astrodrift)
     │               ├── cc v1.2.30 (*)
     │               └── pkg-config v0.3.32
     ├── serde v1.0.219 (*)
-    └── serde_json v1.0.141 (*)
+    └── serde_json v1.0.141 (*)```
 
 </details>
 <!-- RUST_DEPS_END -->
