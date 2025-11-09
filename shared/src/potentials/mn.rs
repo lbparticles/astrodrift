@@ -1,5 +1,5 @@
-use libm::{pow, sqrt};
 use super::Potential;
+use libm::{pow, sqrt};
 
 #[derive(Clone, Copy)]
 pub struct MNPotential {

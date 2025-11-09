@@ -1,5 +1,5 @@
-use libm::{log, pow, sqrt};
 use super::Potential;
+use libm::{log, pow, sqrt};
 
 #[derive(Clone, Copy)]
 pub struct NFWPotential {
@@ -24,4 +24,3 @@ impl Potential for NFWPotential {
         (ax, ay, az)
     }
 }
-

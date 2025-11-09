@@ -1,16 +1,17 @@
+pub mod bovy14;
+pub mod custom_origins;
 pub mod mn;
 pub mod nfw;
 pub mod plummer;
 pub mod point;
-pub mod sphwcutoff;
-pub mod bovy14; // your MW2014Potential implementation
+pub mod sphwcutoff; // your MW2014Potential implementation
 
 pub use mn::MNPotential;
 pub use nfw::NFWPotential;
 pub use plummer::PlummerPotential;
 // pub use point::PointPotential; // if you have one
-pub use sphwcutoff::SphericalcutoffPotential;
 pub use bovy14::MW2014Potential;
+pub use sphwcutoff::SphericalcutoffPotential;
 
 pub trait Potential {
     fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64;
@@ -33,7 +34,6 @@ pub struct Sum<P, Q> {
     pub p: P,
     pub q: Q,
 }
-
 
 impl<P: Potential, Q: Potential> Potential for Sum<P, Q> {
     #[inline(always)]

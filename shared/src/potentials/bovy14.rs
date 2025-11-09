@@ -1,10 +1,5 @@
+use super::{MNPotential, NFWPotential, Potential, SphericalcutoffPotential};
 use crate::combine_potentials;
-use super::{
-    Potential,
-    MNPotential,
-    NFWPotential,
-    SphericalcutoffPotential,
-};
 
 #[derive(Clone, Copy)]
 pub struct MW2014Potential {
@@ -33,11 +28,7 @@ impl MW2014Potential {
             amp: 4.852_230_533_528,
             a: 16.0 / 8.0,
         };
-        Self {
-            bulge,
-            disk,
-            halo,
-        }
+        Self { bulge, disk, halo }
     }
 }
 

@@ -1,5 +1,5 @@
-use libm::{floor, pow, sqrt};
 use super::Potential;
+use libm::{floor, pow, sqrt};
 
 #[derive(Clone, Copy)]
 pub struct SphericalcutoffPotential {
@@ -35,4 +35,3 @@ impl Potential for SphericalcutoffPotential {
         (ax, ay, az)
     }
 }
-
