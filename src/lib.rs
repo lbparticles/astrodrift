@@ -75,7 +75,7 @@ fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
     res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
-type EngineOutput<'a> = PyResult<(Bound<'a, PyArray3<f64>>, Bound<'a, PyArray2<f64>>)>; 
+type EngineOutput<'a> = PyResult<(Bound<'a, PyArray3<f64>>, Bound<'a, PyArray2<f64>>)>;
 
 #[pyclass]
 #[derive(Clone)]

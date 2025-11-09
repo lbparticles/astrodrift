@@ -1,5 +1,5 @@
 use libm::{pow, sqrt};
-#[derive(Clone,Copy)]
+#[derive(Clone, Copy)]
 pub struct State6 {
     pub x: f64,
     pub y: f64,
@@ -9,6 +9,7 @@ pub struct State6 {
     pub vz: f64,
 }
 
+#[allow(clippy::inline_always)]
 #[inline(always)]
 pub fn rk_norm(
     prev_state: State6,
@@ -34,4 +35,3 @@ pub fn rk_norm(
 
     sqrt(sum / 6.0)
 }
-

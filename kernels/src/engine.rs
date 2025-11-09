@@ -1,10 +1,10 @@
-#![no_std]
+use super::norm::{State6, rk_norm};
+use cuda_std::{kernel, thread};
+use libm::pow;
+use num_traits::NumCast;
 use shared::{ButcherTableau, DormandPrince54 as Coeffs};
 use shared::{MW2014Potential, Potential};
-use cuda_std::{kernel, thread};
-use super::norm::{State6,rk_norm};
-use libm::{pow};
-use num_traits::NumCast;
+
 // use shared::combine_potentials;
 
 /// Adaptive, branchless Dormand–Prince 5(4) stepper.
@@ -13,14 +13,20 @@ use num_traits::NumCast;
 /// without control-flow branches.
 ///
 /// Buffers:
-/// - state_out: [steps_cap * n * 6] (step-major), with step 0 holding initial states.
-/// - time_out:  [steps_cap * n] physical time stored per step/particle
+/// - `state_out`: [`steps_cap` * n * 6] (step-major), with step 0 holding initial states.
+/// - `time_out`:  [`steps_cap` * n] physical time stored per step/particle
 /// - t: current time per particle
 /// - dt: current step size per particle (candidate for next attempt)
 /// - w: write index per particle (0..steps_cap-1)
 /// - done: 0/1 flag. threads marked done perform masked no-ops
+///
 /// # Safety
+///
 /// Typical GPU handoff shotgun shenanagins at play. Don't let a child //// play with this code unsupervised
+///
+/// # Panics
+///
+/// getting tid from gpu goodness
 #[kernel]
 #[allow(improper_ctypes_definitions)]
 pub unsafe fn dopr54_adaptive(
@@ -47,19 +53,19 @@ pub unsafe fn dopr54_adaptive(
     n_ar: u32,
     time_direction: f64,
 ) {
-    let tid = usize::try_from(thread::block_idx_x() * thread::block_dim_x() + thread::thread_idx_x()).unwrap();
+    let tid = (thread::block_idx_x() * thread::block_dim_x() + thread::thread_idx_x()) as usize;
     if tid >= n {
         return;
     }
 
     // per-particle
-    let done_i_u = unsafe{u32::try_from(*done.add(tid)).unwrap()}; // 0/1
-    let done_i = f64::try_from(done_i_u).unwrap(); // 0.0/1.0
+    let done_i_u = unsafe { <u32 as core::convert::From<u8>>::from(*done.add(tid)) }; // 0/1
+    let done_i = <f64 as core::convert::From<u32>>::from(done_i_u); // 0.0/1.0
     let not_done = 1.0_f64 - done_i;
 
-    let mut ti = unsafe{*t.add(tid)};
-    let mut dti = unsafe{*dt.add(tid)};
-    let mut wi = unsafe{usize::try_from(*w.add(tid)).unwrap()};
+    let mut ti = unsafe { *t.add(tid) };
+    let mut dti = unsafe { *dt.add(tid) };
+    let mut wi = unsafe { usize::try_from(*w.add(tid)).unwrap() };
 
     let sign = time_direction;
 
@@ -75,12 +81,12 @@ pub unsafe fn dopr54_adaptive(
 
     // load the "previous/current" state from step 'wi'
     let prev_offset = ((wi * n) + tid) * 6;
-    let x = unsafe{*state_out.add(prev_offset)};
-    let y = unsafe{*state_out.add(prev_offset + 1)};
-    let z = unsafe{*state_out.add(prev_offset + 2)};
-    let vx = unsafe{*state_out.add(prev_offset + 3)};
-    let vy = unsafe{*state_out.add(prev_offset + 4)};
-    let vz = unsafe{*state_out.add(prev_offset + 5)};
+    let x = unsafe { *state_out.add(prev_offset) };
+    let y = unsafe { *state_out.add(prev_offset + 1) };
+    let z = unsafe { *state_out.add(prev_offset + 2) };
+    let vx = unsafe { *state_out.add(prev_offset + 3) };
+    let vy = unsafe { *state_out.add(prev_offset + 4) };
+    let vz = unsafe { *state_out.add(prev_offset + 5) };
 
     // intermediate rk stage values
     let mut rk_x = [0.0f64; Coeffs::STAGES];
@@ -171,15 +177,36 @@ pub unsafe fn dopr54_adaptive(
     let err_vx = vx_new - vx_hat;
     let err_vy = vy_new - vy_hat;
     let err_vz = vz_new - vz_hat;
-    let prev_state = State6{x,y,z,vx,vy,vz};
-    let curr_state = State6{x:x_new,y:y_new,z:z_new,vx:vx_new,vy:vy_new,vz:vz_new};
-    let erro_state = State6{x:err_x,y:err_y,z:err_z,vx:err_vx,vy:err_vy,vz:err_vz};
-    let rk_err = rk_norm(
-        prev_state,curr_state,erro_state, atol, rtol,
-    );
+    let prev_state = State6 {
+        x,
+        y,
+        z,
+        vx,
+        vy,
+        vz,
+    };
+    let curr_state = State6 {
+        x: x_new,
+        y: y_new,
+        z: z_new,
+        vx: vx_new,
+        vy: vy_new,
+        vz: vz_new,
+    };
+    let erro_state = State6 {
+        x: err_x,
+        y: err_y,
+        z: err_z,
+        vx: err_vx,
+        vy: err_vy,
+        vz: err_vz,
+    };
+    let rk_err = rk_norm(prev_state, curr_state, erro_state, atol, rtol);
 
     if !error_out.is_null() {
-        unsafe{*error_out.add(tid) = rk_err;}
+        unsafe {
+            *error_out.add(tid) = rk_err;
+        }
     }
 
     let eps = 1.0e-18_f64; // to avoid err=0 blow-up
@@ -194,7 +221,8 @@ pub unsafe fn dopr54_adaptive(
     let dt_new = sign * dt_new_mag;
 
     // accept = 1 if rk_err <= 1, else 0 (as float)
-    let accept_f :f64 = NumCast::from(u32::try_from(rk_err <= 1.0).unwrap()).unwrap();
+    let accept_f: f64 =
+        NumCast::from(<u32 as core::convert::From<bool>>::from(rk_err <= 1.0)).unwrap();
     let reject_f = 1.0_f64 - accept_f;
 
     // for already-done threads, mask all updates with 'not_done'
@@ -218,17 +246,31 @@ pub unsafe fn dopr54_adaptive(
     // compute next time
     let ti_new = ti + (accept_f * not_done) * dt_eff;
     if !time_out.is_null() {
-        unsafe{*time_out.add(wi_capped * n + tid) = ti_new;}
+        unsafe {
+            *time_out.add(wi_capped * n + tid) = ti_new;
+        }
     }
 
     // always write; on reject, this duplicates the prior state
-    let out_offset = (usize::try_from(wi_capped * n).unwrap() + tid) * 6;
-    unsafe{*state_out.add(out_offset) = x_out;}
-    unsafe{*state_out.add(out_offset + 1) = y_out;}
-    unsafe{*state_out.add(out_offset + 2) = z_out;}
-    unsafe{*state_out.add(out_offset + 3) = vx_out;}
-    unsafe{*state_out.add(out_offset + 4) = vy_out;}
-    unsafe{*state_out.add(out_offset + 5) = vz_out;}
+    let out_offset = ((wi_capped * n) + tid) * 6;
+    unsafe {
+        *state_out.add(out_offset) = x_out;
+    }
+    unsafe {
+        *state_out.add(out_offset + 1) = y_out;
+    }
+    unsafe {
+        *state_out.add(out_offset + 2) = z_out;
+    }
+    unsafe {
+        *state_out.add(out_offset + 3) = vx_out;
+    }
+    unsafe {
+        *state_out.add(out_offset + 4) = vy_out;
+    }
+    unsafe {
+        *state_out.add(out_offset + 5) = vz_out;
+    }
 
     // update time (only when accepted & not done); dt always updates for next attempt
     ti = ti_new;
@@ -237,15 +279,24 @@ pub unsafe fn dopr54_adaptive(
 
     // once done, stay done
     let done_new_u = sign * (ti - t_end) >= 0.0;
-    let done_blend_u = if ((done_i_u != 0) | done_new_u) { 
-        1u8 
-    } else { 
-        0u8 
-    };
-    let done_blend = (done_blend_u & 1);
+    let done_blend_u = <u8 as core::convert::From<bool>>::from((done_i_u != 0) | done_new_u);
+    // let done_blend_u = if ((done_i_u != 0) | done_new_u) {
+    //     1u8
+    // } else {
+    //     0u8
+    // };
+    let done_blend = done_blend_u & 1;
 
-    unsafe{*t.add(tid) = ti;}
-    unsafe{*dt.add(tid) = dti;}
-    unsafe{*w.add(tid) = u32::try_from(wi).unwrap();}
-    unsafe{*done.add(tid) = done_blend;}
+    unsafe {
+        *t.add(tid) = ti;
+    }
+    unsafe {
+        *dt.add(tid) = dti;
+    }
+    unsafe {
+        *w.add(tid) = u32::try_from(wi).unwrap();
+    }
+    unsafe {
+        *done.add(tid) = done_blend;
+    }
 }
