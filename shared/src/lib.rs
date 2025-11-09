@@ -6,8 +6,8 @@
 #![allow(clippy::cast_sign_loss)]
 
 pub mod potentials; // or put your Potential trait code directly here
-pub mod methods;
+pub mod engines;
 
-pub use crate::methods::{ButcherTableau, DormandPrince54};
+pub use crate::engines::{ButcherTableau, DormandPrince54};
 pub use crate::potentials::{MW2014Potential, Potential};
 
