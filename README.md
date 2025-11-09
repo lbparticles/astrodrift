@@ -42,6 +42,7 @@ John Forbes
 # DEPENDENCIES
 
 ## Python
+<!-- PYTHON_DEPS_START -->
 ```
 dependencies = [
     "numpy>=1.24.4",
@@ -64,8 +65,10 @@ dependencies = [
     └── patchelf v0.17.2.4
   
 </details>
+<!-- PYTHON_DEPS_END -->
 
 ## Rust
+<!-- RUST_DEPS_START -->
 
 ```
 [dependencies]
@@ -415,6 +418,7 @@ cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_
         |-- serde v1.0.219 (*)
         `-- serde_json v1.0.141 (*)
 </details>
+<!-- RUST_DEPS_END -->
 
 ## Container
 
