@@ -72,21 +72,23 @@ astrodrift
 <!-- RUST_DEPS_START -->
 ```toml
 [dependencies]
-pyo3 = "0.25.1"
 blastoff = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "blastoff", branch = "main" }
 cuda_std = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_std", branch = "main" }
 cust = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust", branch = "main" }
 cust_raw = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust_raw", branch = "main", features = ["driver"] }
+glam = { version = "0.30.1", default-features = false, features = ["cuda", "nostd-libm"] }
+libm = "0.2.11"
 ndarray = { version = "0.16", features = ["approx"] }
 ndarray-rand = "0.15.0"
+numpy = "0.25.0"
+pyo3 = "0.25.1"
 rand = "0.9.2"
 rayon = "1.10.0"
-libm = "0.2.11"
 statrs = "0.18.0"
-numpy = "0.25.0"
 
 [build-dependencies]
 cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_builder", branch = "main" }
+
 ```
 
 <details>
@@ -417,8 +419,8 @@ drift v0.1.0 (/data/astrodrift)
     │               ├── cc v1.2.30 (*)
     │               └── pkg-config v0.3.32
     ├── serde v1.0.219 (*)
-    └── serde_json v1.0.141 (*)```
-
+    └── serde_json v1.0.141 (*)
+```
 </details>
 <!-- RUST_DEPS_END -->
 
