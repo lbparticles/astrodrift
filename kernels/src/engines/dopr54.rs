@@ -1,4 +1,4 @@
-use super::norm::{State6, rk_norm};
+use crate::norm::{State6, rk_norm};
 use cuda_std::{kernel, thread};
 use libm::pow;
 use num_traits::NumCast;
