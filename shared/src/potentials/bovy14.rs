@@ -14,6 +14,7 @@ pub struct MW2014Potential {
 }
 
 impl MW2014Potential {
+    #[must_use]
     pub const fn new(ar_table: *const f64, r_min: f64, dr: f64, n_ar: u32) -> Self {
         let bulge = SphericalcutoffPotential {
             ar_table,
@@ -23,13 +24,13 @@ impl MW2014Potential {
         };
 
         let disk = MNPotential {
-            amp: 0.7574802019,
+            amp: 0.757_480_201_9,
             a: 3.0 / 8.0,
             b: 0.28 / 8.0,
         };
 
         let halo = NFWPotential {
-            amp: 4.852230533528,
+            amp: 4.852_230_533_528,
             a: 16.0 / 8.0,
         };
         Self {
