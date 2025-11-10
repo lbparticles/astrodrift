@@ -29,11 +29,9 @@ fn quintic_interp(t: f64, coeff: QuinticCoeff)->f64 {
         + coeff.e * t
         + coeff.f
 }
-impl<T: Potential> Potential for CustomOriginsPotential<T>{
-    #[inline(always)]
-    fn evaluate(&self, _t: f64, _x: f64, _y: f64, _z: f64) -> f64 {0.0}
-    #[inline(always)]
-    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+impl<T:Potential> CustomOriginsPotential<T>{
+    
+    fn origins(&self,t:f64)->[[f64;3]; 10000]{
         let mut particles = [[0.0_f64; 3]; 10000];
         let t0 = floor(t / self.dt) as usize;
         for (i,p) in particles.iter_mut().enumerate().take(self.n) {
@@ -73,9 +71,24 @@ impl<T: Potential> Potential for CustomOriginsPotential<T>{
                 quintic_interp(t - (t0 as f64), y_coeff),
                 quintic_interp(t - (t0 as f64), z_coeff),
             ];
+        }       
+        particles
+    }
+}
+
+impl<T: Potential> Potential for CustomOriginsPotential<T>{
+    #[inline(always)]
+    fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
+        let mut total_eval = 0.0_f64;
+        for p in self.origins(t).iter().take(self.n) {
+            total_eval += self.potential.evaluate(t, x - p[0], y - p[1], z - p[2]);
         }
+        total_eval
+    }
+    #[inline(always)]
+    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         let mut total_force = (0.0_f64,0.0_f64,0.0_f64);
-        for p in particles.iter().take(self.n) {
+        for p in self.origins(t).iter().take(self.n) {
             let (f1,f2,f3) = self.potential.force(t, x - p[0], y - p[1], z - p[2]);
             total_force.0 += f1;
             total_force.1 += f2;

@@ -5,7 +5,12 @@ pub mod nfw;
 pub mod plummer;
 pub mod point;
 pub mod sphwcutoff; // your MW2014Potential implementation
+pub mod constant;
 
+#[cfg(test)]
+mod test;
+
+pub use constant::ConstPotential;
 pub use mn::MNPotential;
 pub use nfw::NFWPotential;
 pub use plummer::PlummerPotential;
@@ -48,6 +53,21 @@ impl<P: Potential, Q: Potential> Potential for Sum<P, Q> {
     }
 }
 
+/// Combine multiple potentials into one summed potential.
+///
+/// # Example
+///
+/// ```
+/// use shared::potentials::{ConstPotential, Sum};
+/// use shared::{Potential,combine_potentials};
+///
+/// let a = ConstPotential { value: 1.0 };
+/// let b = ConstPotential { value: 2.0 };
+///
+/// let combined = combine_potentials!(a, b);
+///
+/// assert_eq!(combined.evaluate(0.0, 0.0, 0.0, 0.0), 3.0);
+/// ```
 #[macro_export]
 macro_rules! combine_potentials {
     ($first:expr $(, $rest:expr)+ $(,)?) => {{
@@ -56,3 +76,4 @@ macro_rules! combine_potentials {
         acc
     }};
 }
+
