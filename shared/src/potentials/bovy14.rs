@@ -10,9 +10,10 @@ pub struct MW2014Potential {
 
 impl MW2014Potential {
     #[must_use]
-    pub const fn new(ar_table: *const f64, r_min: f64, dr: f64, n_ar: u32) -> Self {
+    pub const fn new(ar_table: *const f64,aer_table: *const f64, r_min: f64, dr: f64, n_ar: u32) -> Self {
         let bulge = SphericalcutoffPotential {
             ar_table,
+            aer_table,
             r_min,
             dr,
             n_ar,

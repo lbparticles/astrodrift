@@ -3,7 +3,7 @@ use cuda_std::{kernel, thread};
 use libm::pow;
 use num_traits::NumCast;
 use shared::{ButcherTableau, DormandPrince54 as Coeffs};
-use shared::{MW2014Potential, Potential};
+use shared::{Potential};
 
 // use shared::combine_potentials;
 
@@ -29,7 +29,8 @@ use shared::{MW2014Potential, Potential};
 /// getting tid from gpu goodness
 #[kernel]
 #[allow(improper_ctypes_definitions)]
-pub unsafe fn dopr54_adaptive(
+pub unsafe fn dopr54_adaptive<T:Potential + core::marker::Copy>(
+    potential: T,
     state_out: *mut f64,
     time_out: *mut f64,
     n: usize,
@@ -47,10 +48,6 @@ pub unsafe fn dopr54_adaptive(
     dt_min: f64,
     dt_max: f64,
     error_out: *mut f64, // last
-    ar_table: *const f64,
-    r_min: f64,
-    dr: f64,
-    n_ar: u32,
     time_direction: f64,
 ) {
     let tid = (thread::block_idx_x() * thread::block_dim_x() + thread::thread_idx_x()) as usize;
@@ -120,9 +117,7 @@ pub unsafe fn dopr54_adaptive(
         }
 
         let t_stage = ti + dt_eff * Coeffs::C[i];
-        // let (axi, ayi, azi) = compute_acceleration(t_stage, xi, yi, zi);
-        let mw = MW2014Potential::new(ar_table, r_min, dr, n_ar);
-        let (axi, ayi, azi) = mw.force(t_stage, xi, yi, zi);
+        let (axi, ayi, azi) = potential.force(t_stage, xi, yi, zi);
 
         rk_x[i] = vxi;
         rk_y[i] = vyi;
