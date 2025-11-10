@@ -1,9 +1,9 @@
 use shared::Potential;
 
 
-pub struct Container<T> {
-    potential: Potential<T>,
-    istate: mut *f64,
+pub struct Container {
+    potential: Box<dyn Potential>,
+    istate: Vec<f64>,
     dependencies: Vec<*mut Container<T>>,
 }
 

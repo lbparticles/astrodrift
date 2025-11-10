@@ -1,5 +1,6 @@
-use pyo3::prelude::*;
+use crate::consts::MAX_PARTICLES;
 use cust::prelude::*;
+use pyo3::prelude::*;
 use shared::Potential;
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
@@ -23,7 +24,6 @@ fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
     res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
-
 #[pyclass]
 #[derive(Clone)]
 pub struct Bounds {
@@ -32,16 +32,14 @@ pub struct Bounds {
     rtol: Option<f64>,
 }
 
-const MAX_PARTICLE = 10_000;
-
 pub fn dopr54_adaptive<T>(
     potential: Potential<T>,
-    state: [[f64;6],MAX_PARTICLES],
+    state: [[f64; 6]; MAX_PARTICLES],
     t_end: f64,
     dt0: f64,
     bounds: Option<Bounds>,
     reverse: Option<bool>,
-) ->  {
+) -> Vec<f64> {
     let n: usize = ic.shape()[0];
     if n == 0 {
         return Err(pyo3::exceptions::PyValueError::new_err("N must be > 0"));
@@ -163,6 +161,5 @@ pub fn dopr54_adaptive<T>(
     py_runtime_err(dev_w.copy_to(&mut w_host))?;
     py_runtime_err(dev_err.copy_to(&mut err_host))?;
 
-    Ok(state_out)
+    Vec::new(Ok(state_out))
 }
-

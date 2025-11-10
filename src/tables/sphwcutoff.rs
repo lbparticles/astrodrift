@@ -1,6 +1,6 @@
+use libm::pow;
 use statrs::function::gamma::{gamma, gamma_lr};
 use std::f64::consts::PI;
-use libm::pow;
 
 pub const N_AR: usize = 10000;
 const R_MIN: f64 = 1e-4;
@@ -49,4 +49,3 @@ pub fn build_sphericalcutoff_force_table(
 //     }
 //     (table, R_MIN, dr)
 // }
-

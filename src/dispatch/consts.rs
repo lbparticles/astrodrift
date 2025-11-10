@@ -1,0 +1,4 @@
+const MAX_PARTICLES = 10_000;
+const MAX_INTEGRATIONS = 3;
+const MAX_TIMESTEPS = 1000;
+const STATE_DIM = 11;
