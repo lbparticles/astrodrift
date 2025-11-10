@@ -140,7 +140,8 @@ class SimulationFrame:
             reverse=False,
         )
         print(time.shape)
-        return pd.DataFrame(state)
+        return True
+        # return pd.DataFrame(state)
         # return self.output
 
     def _warn_if_missing(self, cls, message):
