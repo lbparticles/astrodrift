@@ -6,7 +6,7 @@ def main():
     gmc = dft.part_group([])
     iso = dft.test_group([])
     sim = dft.simulation([gal, gmc, iso])
-    _dfs = sim.integrate()
+    _dfs = sim.run()
 
 
 if __name__ == "__main__":

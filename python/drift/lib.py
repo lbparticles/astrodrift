@@ -201,5 +201,6 @@ class SimulationFrame:
             reverse=False,
         )
         print(time.shape)
-        return pd.DataFrame(state)
+        return True
+        # return pd.DataFrame(state)
         # return self.output
