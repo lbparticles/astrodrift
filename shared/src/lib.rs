@@ -9,4 +9,4 @@ pub mod engines;
 pub mod potentials; // or put your Potential trait code directly here
 
 pub use crate::engines::{ButcherTableau, DormandPrince54};
-pub use crate::potentials::{MW2014Potential, Potential};
+pub use crate::potentials::{MW2014Potential, Potential, PotentialEnum};

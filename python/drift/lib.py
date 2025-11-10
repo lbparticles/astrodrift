@@ -27,12 +27,13 @@ class Optimisation(enum.Enum):
 class Potential(enum.Enum):
     CUSTOM = enum.auto()
     BOVY14 = enum.auto()
-    SPRIAL_ARM = enum.auto()
+    SPIRAL_ARM = enum.auto()
     BAR = enum.auto()
     PLUMMER = enum.auto()
     POINT = enum.auto()
     NFW = enum.auto()
     SPHERICALWCUTOFF = enum.auto()
+    MN = enum.auto()
 
 
 class IntegratorContainer:

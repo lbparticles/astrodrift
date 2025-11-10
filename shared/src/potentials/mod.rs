@@ -18,6 +18,21 @@ pub use plummer::PlummerPotential;
 pub use bovy14::MW2014Potential;
 pub use sphwcutoff::SphericalcutoffPotential;
 
+class Potential(enum.Enum):
+
+#[repr(usize)]
+pub enum PotentialEnum {
+    Custom=0, 
+    Bovy14=1, 
+    SpiralArm=2, 
+    Bar=3, 
+    Plummer=4, 
+    Point=5, 
+    NFW=6, 
+    Sphericalcutoff=7, 
+    MN=8,
+}
+
 pub trait Potential {
     fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64;
     fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64);
