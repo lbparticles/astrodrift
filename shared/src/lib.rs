@@ -2,7 +2,7 @@ struct PotentialRecipe {
     potential_id: PotentialEnum,
     fparams: [f64;6],
     uparams: [usize;6],
-    lutInfo: LookUpTable,
+    lutInfo: Option<LookUpTable>,
 }
 
 struct LookUpTable {
