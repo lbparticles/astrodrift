@@ -1,6 +1,7 @@
 use core::ops::Add;
 use libm::{atan2, cos, floor, log, pow, sin, sqrt};
 
+#[macro_export]
 macro_rules! unimplemented {
     () => {
         $crate::panicking::panic("not implemented")

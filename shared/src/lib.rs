@@ -1,3 +1,7 @@
+mod potentials;
+
+
+
 struct PotentialRecipe {
     potential_id: PotentialEnum,
     fparams: [f64;6],
@@ -7,6 +11,7 @@ struct PotentialRecipe {
 
 struct LookUpTable {
     id: usize,
+    offset: f64,
     length: usize,
 }
 
