@@ -9,6 +9,7 @@ name = "drift_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
+shared = { path = "shared"}
 pyo3 = "0.25.1"
 blastoff = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "blastoff", branch = "main" }
 cuda_std = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_std", branch = "main" }
