@@ -1,4 +1,3 @@
-[repr(C)]
 enum PotentialEnum {
     potential_id,
     params,
@@ -6,7 +5,6 @@ enum PotentialEnum {
 }
 
 
-[repr(C)]
 enum PotentialList {
     bovy14,
     plummer,
