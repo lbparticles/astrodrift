@@ -1,5 +1,5 @@
 use crate::butcher::{ButcherTableau,  DormandPrince54 as Coeffs};
-use crate::potential::{Potential};
+use shared::{Potential};
 use libm::{pow, sqrt};
 
 #[inline(always)]

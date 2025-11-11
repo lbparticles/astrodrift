@@ -1,4 +1,6 @@
-use libm::{log,pow, sqrt};
+use crate::combine_potentials;
+use crate::potentials::Potential;
+use crate::potentials::{SphericalcutoffPotential,MNPotential,NFWPotential};
 
 #[derive(Clone, Copy)]
 pub struct MW2014Potential {
@@ -8,7 +10,7 @@ pub struct MW2014Potential {
 }
 
 impl MW2014Potential {
-    pub const fn new(ar_table: *const f64, r_min: f64, dr: f64, n_ar: u32) -> Self {
+    pub const fn new(ar_table: *const f64, r_min: f64, dr: f64, n_ar: usize) -> Self {
         let bulge = SphericalcutoffPotential {
             ar_table,
             r_min,
@@ -35,11 +37,11 @@ impl MW2014Potential {
 }
 
 impl Potential for MW2014Potential {
-    fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
-        combine_potentials!(&self.bulge, &self.disk, &self.halo).evaluate(t, x, y, z)
-    }
-    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-        combine_potentials!(&self.bulge, &self.disk, &self.halo).force(t, x, y, z)
+    // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
+    //     combine_potentials!(&self.bulge, &self.disk, &self.halo).evaluate(t, x, y, z)
+    // }
+    fn force(&self, _t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+        combine_potentials!(&self.bulge, &self.disk, &self.halo).force(_t, x, y, z)
     }
 }
 

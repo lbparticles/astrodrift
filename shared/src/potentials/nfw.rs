@@ -1,4 +1,5 @@
 use libm::{log,pow, sqrt};
+use crate::potentials::Potential;
 
 #[derive(Clone, Copy)]
 pub struct NFWPotential {
@@ -6,12 +7,12 @@ pub struct NFWPotential {
     pub a: f64,
 }
 impl Potential for NFWPotential {
+    // #[inline(always)]
+    // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
+    //     0.
+    // }
     #[inline(always)]
-    fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
-        0.
-    }
-    #[inline(always)]
-    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+    fn force(&self, _t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         let r2 = pow(x, 2.) + pow(y, 2.) + pow(z, 2.);
         let r = sqrt(r2);
 

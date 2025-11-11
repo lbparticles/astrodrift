@@ -1,19 +1,19 @@
-use libm::{pow, sqrt};
+use libm::{floor,pow, sqrt};
+use crate::potentials::Potential;
 
 #[derive(Clone, Copy)]
 pub struct SphericalcutoffPotential {
     pub ar_table: *const f64,
     pub r_min: f64,
     pub dr: f64,
-    pub n_ar: u32,
+    pub n_ar: usize,
 }
 impl Potential for SphericalcutoffPotential {
+    // #[inline(always)]
+    // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
+    // }
     #[inline(always)]
-    fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
-        unimplemented!()
-    }
-    #[inline(always)]
-    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+    fn force(&self, _t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         let r2 = pow(x, 2.0) + pow(y, 2.0) + pow(z, 2.0);
         if r2 == 0.0 {
             return (0.0, 0.0, 0.0);

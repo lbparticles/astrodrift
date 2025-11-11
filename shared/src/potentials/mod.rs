@@ -1,30 +1,29 @@
-use core::ops::Add;
-use libm::{atan2, cos, floor, log, pow, sin, sqrt};
+pub mod bovy14;
+pub mod mn;
+pub mod nfw;
+pub mod plummer;
+pub mod sphwcutoff; // your MW2014Potential implementation
 
-#[macro_export]
-macro_rules! unimplemented {
-    () => {
-        $crate::panicking::panic("not implemented")
-    };
-    ($($arg:tt)+) => {
-        $crate::panic!("not implemented: {}", $crate::format_args!($($arg)+))
-    };
-}
+
+pub use mn::MNPotential;
+pub use nfw::NFWPotential;
+pub use plummer::PlummerPotential;
+// pub use point::PointPotential; // if you have one
+pub use bovy14::MW2014Potential;
+pub use sphwcutoff::SphericalcutoffPotential;
 
 pub trait Potential {
-    fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64;
+    // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64;
     fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64);
 }
 
 // let references to a potential also be a Potential (so &T works)
 impl<T: Potential + ?Sized> Potential for &T {
+    // #[inline(always)]
+    // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
+    // }
     #[inline(always)]
-    fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
-        unimplemented!();
-    }
-    #[inline(always)]
-    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-        (*self).force(t, x, y, z)
+    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {        (*self).force(t, x, y, z)
     }
 }
 
@@ -36,10 +35,10 @@ pub struct Sum<P, Q> {
 }
 
 impl<P: Potential, Q: Potential> Potential for Sum<P, Q> {
-    #[inline(always)]
-    fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
-        self.p.evaluate(t, x, y, z) + self.q.evaluate(t, x, y, z)
-    }
+    // #[inline(always)]
+    // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
+    //     self.p.evaluate(t, x, y, z) + self.q.evaluate(t, x, y, z)
+    // }
     #[inline(always)]
     fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         let (px, py, pz) = self.p.force(t, x, y, z);
@@ -53,7 +52,7 @@ impl<P: Potential, Q: Potential> Potential for Sum<P, Q> {
 macro_rules! combine_potentials {
     ($first:expr $(, $rest:expr)+ $(,)?) => {{
         let acc = $first;
-        $( let acc = $crate::potential::Sum { p: acc, q: $rest }; )+
+        $( let acc = $crate::potentials::Sum { p: acc, q: $rest }; )+
         acc
     }};
 }
