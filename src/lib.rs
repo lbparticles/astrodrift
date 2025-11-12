@@ -8,43 +8,48 @@ use std::f64::consts::PI;
 // use std::fs::File;
 // use std::io::Write;
 
-
-fn find_last_times_for_particles(
+fn find_last_times_and_indices(
     time_out: &[f64],
     ts: &[f64],
     n_particles: usize,
     steps_cap: usize,
-) -> Vec<Vec<Option<f64>>> {
+) -> (Vec<Vec<f64>>, Vec<Vec<isize>>) {
     assert_eq!(time_out.len(), n_particles * steps_cap);
 
-    // Results per particle
-    let mut results = Vec::with_capacity(n_particles);
+    let mut all_times = Vec::with_capacity(n_particles);
+    let mut all_indices = Vec::with_capacity(n_particles);
 
     for p in 0..n_particles {
-        // Extract this particle’s time series: p(t0), p(t1), …
-        let mut particle_times = Vec::with_capacity(steps_cap);
-        for t_step in 0..steps_cap {
-            particle_times.push(time_out[t_step * n_particles + p]);
+        let mut times_row = Vec::with_capacity(ts.len());
+        let mut idx_row = Vec::with_capacity(ts.len());
+
+        for window in ts.windows(1) {
+            let t_end = window[0];
+            let mut last_val = 0.0_f64;
+            let mut last_idx: isize = 0;
+
+            for step in 0..steps_cap {
+                last_idx = (step * n_particles + p) as isize;
+                last_val = time_out[last_idx as usize];
+                if last_val > t_end {
+                    last_idx = ((step-1) * n_particles + p) as isize;
+                    last_val = time_out[last_idx as usize];
+                    break;
+                }
+                if last_val == t_end {
+                    break;
+                }
+            }
+
+            times_row.push(last_val);
+            idx_row.push(last_idx);
         }
 
-        // Now apply the "last value in each ts interval" logic
-        let mut particle_result = Vec::with_capacity(ts.len());
-        for window in ts.windows(2) {
-            let (t_start, t_end) = (window[0], window[1]);
-            let found = particle_times
-                .iter()
-                .copied()
-                .filter(|&t| t >= t_start && t < t_end)
-                .last();
-            particle_result.push(found);
-        }
-
-        // For the last ts value (no next boundary)
-        particle_result.push(None);
-        results.push(particle_result);
+        all_times.push(times_row);
+        all_indices.push(idx_row);
     }
 
-    results
+    (all_times, all_indices)
 }
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
@@ -370,7 +375,7 @@ fn integrate_gpu2<'py>(
     atol: Option<f64>,
     rtol: Option<f64>,
     reverse: Option<bool>,
-) -> PyResult<(Bound<'py, PyArray3<f64>>, Bound<'py, PyArray2<f64>>,Bound<'py, PyArray2<f64>>)> {
+) -> PyResult<(Bound<'py, PyArray3<f64>>, Bound<'py, PyArray2<f64>>,Bound<'py, PyArray2<f64>>,Bound<'py, PyArray2<isize>>)> {
     // GIL held for entire function
 
     let ic = state0.as_array();
@@ -527,7 +532,7 @@ fn integrate_gpu2<'py>(
         );
     }
 
-    let app_ts0 = find_last_times_for_particles(
+    let (app_ts0,indices )= find_last_times_and_indices(
         &time_out,
         ts.as_slice().expect("ts must be contiguous"),
         n,
@@ -590,21 +595,15 @@ fn integrate_gpu2<'py>(
     // );
 
     // TODO: How to compute total energy when we have diverging times per particle?
-    let input = app_ts0.into_iter()
-    .map(|v| {
-        v.into_iter()
-            .map(|opt| opt.unwrap_or(f64::NAN))
-            .collect::<Vec<f64>>()
-    })
-    .collect::<Vec<Vec<f64>>>();
     // zero-copy wrap from vecs
-    let app_ts = PyArray2::from_vec2(py,&input)?;
+    let app_ts = PyArray2::from_vec2(py,&app_ts0)?;
+    let app_indices = PyArray2::from_vec2(py,&indices)?;
     let flat_state = PyArray1::from_vec(py, state_out);
     let arr_state = flat_state.reshape([steps_cap, n, 6])?;
     let flat_time = PyArray1::from_vec(py, time_out);
     let arr_time = flat_time.reshape([steps_cap, n])?;
 
-    Ok((arr_state, arr_time,app_ts))
+    Ok((arr_state, arr_time,app_ts,app_indices))
 }
 
 #[pymodule]

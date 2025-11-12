@@ -204,7 +204,7 @@ class SimulationFrame:
         state1[:, 0] = 0.9 + 0.2 * np.random.rand(N)
         state1[:, 4] = 1.0
         ts = np.linspace(0, 28.12458, 401)
-        state, time, app_ts = integrate_gpu2(
+        state, time, app_ts, indices = integrate_gpu2(
             state0,
             state1,
             ts,
@@ -216,8 +216,11 @@ class SimulationFrame:
             reverse=False,
         )
         print(28.12458 / 400)
+        print(indices[0, :])
         print(time[time > 0].shape[0] + 1)
-        print(app_ts[0, :-1] - ts[:-1])
+        print(app_ts[0, :] - ts)
+        print(time[indices[0, :10]])
+        print(time[:40])
         return True
         # return pd.DataFrame(state)
         # return self.output
