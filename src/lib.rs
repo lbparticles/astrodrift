@@ -8,49 +8,8 @@ use std::f64::consts::PI;
 // use std::fs::File;
 // use std::io::Write;
 
-fn find_last_times_and_indices(
-    time_out: &[f64],
-    ts: &[f64],
-    n_particles: usize,
-    steps_cap: usize,
-) -> (Vec<Vec<f64>>, Vec<Vec<isize>>) {
-    assert_eq!(time_out.len(), n_particles * steps_cap);
-
-    let mut all_times = Vec::with_capacity(n_particles);
-    let mut all_indices = Vec::with_capacity(n_particles);
-
-    for p in 0..n_particles {
-        let mut times_row = Vec::with_capacity(ts.len());
-        let mut idx_row = Vec::with_capacity(ts.len());
-
-        for window in ts.windows(1) {
-            let t_end = window[0];
-            let mut last_val = 0.0_f64;
-            let mut last_idx: isize = 0;
-
-            for step in 0..steps_cap {
-                last_idx = (step * n_particles + p) as isize;
-                last_val = time_out[last_idx as usize];
-                if last_val > t_end {
-                    last_idx = ((step-1) * n_particles + p) as isize;
-                    last_val = time_out[last_idx as usize];
-                    break;
-                }
-                if last_val == t_end {
-                    break;
-                }
-            }
-
-            times_row.push(last_val);
-            idx_row.push(last_idx);
-        }
-
-        all_times.push(times_row);
-        all_indices.push(idx_row);
-    }
-
-    (all_times, all_indices)
-}
+pub mod index_helpers;
+use index_helpers::find_last_times_and_indices;
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 const NF64: usize = 6;
@@ -532,11 +491,17 @@ fn integrate_gpu2<'py>(
         );
     }
 
+    let filled_lens: Vec<usize> = w_host
+        .iter()
+        .map(|&w| (w as usize + 1).min(steps_cap)) // accepted steps + initial state
+        .collect();
+
     let (app_ts0,indices )= find_last_times_and_indices(
         &time_out,
         ts.as_slice().expect("ts must be contiguous"),
         n,
         steps_cap,
+        &filled_lens
     );
     // println!("Integration finished after {} kernel launches.", iter);
 
@@ -612,3 +577,5 @@ fn drift_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(integrate_gpu2, m)?)?;
     Ok(())
 }
+
+
