@@ -191,14 +191,20 @@ fn integrate_gpu<'py>(
     //     w:dev_w.as_device_ptr().as_raw() as *mut u32,
     //     done:dev_done.as_device_ptr().as_raw() as *mut u8,
     // };
+    // let recipe = PotentialRecipe {
+    //     potential_id: PotentialNames::Bovy14,
+    //     fparams: [r_min, dr, 0., 0., 0., 0.],
+    //     uparams: [0, 0, 0, 0, 0, 0],
+    //     lut_info: Some(LookUpTable {
+    //         offset: 0.,
+    //         length: N_AR,
+    //     }),
+    // };
     let recipe = PotentialRecipe {
-        potential_id: PotentialNames::Bovy14,
-        fparams: [r_min, dr, 0., 0., 0., 0.],
+        potential_id: PotentialNames::Kepler,
+        fparams: [1., 0., 0., 0., 0., 0.],
         uparams: [0, 0, 0, 0, 0, 0],
-        lut_info: Some(LookUpTable {
-            offset: 0.,
-            length: N_AR,
-        }),
+        lut_info: None,
     };
     loop {
         unsafe {

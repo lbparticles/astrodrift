@@ -1,7 +1,7 @@
 use cust_core::{DeviceCopy};
 pub mod potentials;
 pub use crate::potentials::{Potential};
-pub use crate::potentials::{MW2014Potential,MNPotential,NFWPotential,PlummerPotential,SphericalcutoffPotential};
+pub use crate::potentials::{MW2014Potential,MNPotential,NFWPotential,PlummerPotential,SphericalcutoffPotential,KeplerPotential};
 
 
 #[derive(Clone,Copy,DeviceCopy)]
@@ -52,6 +52,7 @@ pub enum PotentialEnum {
     NFWPotential(NFWPotential),
     PlummerPotential(PlummerPotential),
     SphericalcutoffPotential(SphericalcutoffPotential),
+    KeplerPotential(KeplerPotential),
 }
 impl Potential for PotentialEnum {
     fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
@@ -61,6 +62,7 @@ impl Potential for PotentialEnum {
             PotentialEnum::NFWPotential(p) => p.force(t, x, y, z),
             PotentialEnum::PlummerPotential(p) => p.force(t, x, y, z),
             PotentialEnum::SphericalcutoffPotential(p) => p.force(t, x, y, z),
+            PotentialEnum::KeplerPotential(p) => p.force(t, x, y, z),
         }
     }
 
@@ -83,4 +85,5 @@ pub enum PotentialNames {
     MN,
     NFW,
     SphCutoff,
+    Kepler,
 }
