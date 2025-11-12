@@ -7,70 +7,7 @@ use libm::{floor, pow, sqrt};
 use crate::recipes::consume_recipe;
 use shared::{PotentialRecipe,PotentialNames,LookUpTable,StaticInterface};
 
-const M_S: f64 = 1.0;
-const G: f64 = 39.5;
-
-#[inline(always)]
-unsafe fn sphericalcutoff_force_tabled(
-    x: f64,
-    y: f64,
-    z: f64,
-    ar_table: *const f64,
-    r_min: f64,
-    dr: f64,
-    n_ar: u32,
-) -> (f64, f64, f64) {
-    let r2 = pow(x, 2.0) + pow(y, 2.0) + pow(z, 2.0);
-    if r2 == 0.0 {
-        return (0.0, 0.0, 0.0);
-    }
-    let r = sqrt(r2);
-    let t = (r - r_min) / dr;
-    let i = floor(t) as usize;
-    let f = t - i as f64;
-
-    // linear interpolation
-    let i0 = i.min((n_ar - 2) as usize);
-    let ar0 = *ar_table.add(i0);
-    let ar1 = *ar_table.add(i0 + 1);
-    let ar = (1.0 - f) * ar0 + f * ar1;
-
-    let ax = ar * x / r;
-    let ay = ar * y / r;
-    let az = ar * z / r;
-    (ax, ay, az)
-}
-
-
-
-#[inline(always)]
-fn compute_effective_dt(
-    ti: f64,
-    dti: f64,
-    t_end: f64,
-    sign: f64,
-    dt_min: f64,
-    dt_max: f64,
-) -> f64 {
-    let rem_dir = sign * (t_end - ti);
-    let rempos = if rem_dir > 0.0 { rem_dir } else { 0.0 };
-    let dt_mag = dti.abs();
-    let dt_eff_mag = f64::min(f64::max(dt_mag, dt_min), f64::min(dt_max, rempos));
-    sign * dt_eff_mag
-}
-#[inline(always)]
-fn thread_id_limit_check(n: usize) -> Option<usize> {
-    let tid = (thread::block_idx_x() * thread::block_dim_x() 
-        + thread::thread_idx_x()) as usize;
-    if tid >= n {
-        None
-    } else {
-        Some(tid)
-    }
-}
-
-#[inline(always)]
-unsafe fn finalize_step(
+unsafe fn post_step(
     tid: usize,
     n: usize,
     steps_cap: usize,
@@ -129,14 +66,6 @@ unsafe fn finalize_step(
     let done_blend_u = done_i_u | done_new_u;
     *done.add(tid) = (done_blend_u & 1) as u8;
 }
-
-fn expand_statics(statics: StaticInterface)-> (usize, usize, f64, f64, f64, f64, f64, f64, f64, f64, f64){
-    (statics.n,statics.steps_cap,statics.t_end,statics.atol,statics.rtol,statics.fac_min,statics.fac_max,statics.safety,statics.dt_min,statics.dt_max,statics.time_direction)
-}
-
-// fn expand_book(book: Bookkeeping)-> (*mut f64, *mut f64, *mut u32, *mut u8){
-//     (book.error_out,book.dt,book.w,book.done)
-// }
 
 #[kernel]
 pub unsafe fn dopr54_adaptive(
@@ -197,7 +126,7 @@ pub unsafe fn dopr54_adaptive(
     let dt_new = sign * dt_new_mag;
 
     // 7. finalize + write back
-    finalize_step(
+    post_step(
         tid, n, steps_cap, state_out, time_out,
         t, dt, w, done,
         ti, dt_eff, dt_new, accept,

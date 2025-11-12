@@ -1,4 +1,7 @@
-from .drift_rs import integrate_gpu  # ty: ignore[unresolved-import]
+from .drift_rs import (
+    # integrate_gpu,
+    integrate_gpu2,
+)  # ty: ignore[unresolved-import]
 import numpy as np
 import enum
 import pandas as pd
@@ -25,13 +28,14 @@ class Optimisation(enum.Enum):
 
 
 class Potential(enum.Enum):
-    CUSTOM = enum.auto()
+    # CUSTOM = enum.auto()
     BOVY14 = enum.auto()
-    SPRIAL_ARM = enum.auto()
-    BAR = enum.auto()
+    # SPRIAL_ARM = enum.auto()
+    # BAR = enum.auto()
     PLUMMER = enum.auto()
-    POINT = enum.auto()
+    # POINT = enum.auto()
     NFW = enum.auto()
+    MN = enum.auto()
     SPHERICALWCUTOFF = enum.auto()
 
 
@@ -63,9 +67,12 @@ def bg_feature(
 
 
 class ParticleGroup(IntegratorContainer):
-    def __init__(self):
+    def __init__(self, istate, potential, interpolation, alpha_param):
         """"""
-        return
+        self.istate = istate
+        self.potential = potential
+        self.interpolation = interpolation
+        self.alpha_param = alpha_param
 
     def consume(self):
         """"""
@@ -73,8 +80,10 @@ class ParticleGroup(IntegratorContainer):
 
 
 class TestGroup(IntegratorContainer):
-    def __init__(self):
+    def __init__(self, istate, beta_param):
         """"""
+        self.istate = istate
+        self.beta_param = beta_param
         return
 
     def consume(self):
@@ -94,16 +103,14 @@ def part_group(
     interpolation: Interpolation = Interpolation.QUINTIC,
     alpha_param=None,
 ) -> ParticleGroup:
-    return ParticleGroup()
+    return ParticleGroup(istate, potential, interpolation, alpha_param)
 
 
 def test_group(
     istate,
-    potential: Potential = Potential.PLUMMER,
-    interpolation: Interpolation = Interpolation.QUINTIC,
-    alpha_param=None,
+    beta_param=None,
 ) -> TestGroup:
-    return TestGroup()
+    return TestGroup(istate, beta_param)
 
 
 def simulation(
@@ -158,6 +165,7 @@ class SimulationFrame:
         Raises:
             KeyError: Raises an exception.
         """
+        self.state = state
         return
 
     def __repr__(self):
@@ -187,20 +195,29 @@ class SimulationFrame:
         return
 
     def run(self):
-        N = 100000
+        N = 1
         state0 = np.zeros((N, 6), dtype=np.float64)
-        state0[:, 0] = 1.0 + 0.02 * np.random.rand(N)
+        state0[:, 0] = 0.7 + 0.6 * np.random.rand(N)
         state0[:, 4] = 1.0
-        state, time = integrate_gpu(
+        N = 10000
+        state1 = np.zeros((N, 6), dtype=np.float64)
+        state1[:, 0] = 0.9 + 0.2 * np.random.rand(N)
+        state1[:, 4] = 1.0
+        ts = np.linspace(0, 28.12458, 401)
+        state, time, app_ts = integrate_gpu2(
             state0,
-            steps_cap=1000,
+            state1,
+            ts,
+            steps_cap=10000,
             t_end=28.12458,
             dt0=0.070311,
             atol=1e-11,
             rtol=1e-11,
             reverse=False,
         )
-        print(time.shape)
+        print(28.12458 / 400)
+        print(time[time > 0].shape[0] + 1)
+        print(app_ts[0, :-1] - ts[:-1])
         return True
         # return pd.DataFrame(state)
         # return self.output
