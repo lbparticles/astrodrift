@@ -28,3 +28,6 @@ cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_
 [package.metadata.maturin]
 name = "drift"
 
+[workspace]
+members = ["shared", "."]
+
