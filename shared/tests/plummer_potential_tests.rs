@@ -1,3 +1,33 @@
+//! # Plummer Potential Tests
+//!
+//! This module provides sanity and property tests for the **Plummer potential**, a
+//! smooth, spherically symmetric gravitational potential commonly used for
+//! star clusters and galactic bulges.
+//!
+//! The potential and force laws are:
+//!
+//! ```text
+//!     Φ(r) = -A / sqrt(r^2 + b^2)
+//!     F(r) = -A * r_vec / (r^2 + b^2)^(3/2)
+//! ```
+//!
+//! where
+//! - A      : amplitude (mass or GM scaling)
+//! - b      : scale length (softening radius)
+//! - r_vec  : position vector in Cartesian coordinates
+//! - r      : magnitude of position vector = sqrt(x^2 + y^2 + z^2)
+//!
+//! The force is finite at the origin, centrally directed, and asymptotically
+//! approaches the inverse-square law for `r >> b`.
+//!
+//! ```text
+//!             F(r)
+//!               |        /----
+//!               |       /     
+//!           0 --|------*---------→ r
+//!                     b/√2   (location of |F| peak)
+//! ```
+
 #![allow(clippy::excessive_precision)]
 
 use approx::{assert_abs_diff_eq, assert_relative_eq};
