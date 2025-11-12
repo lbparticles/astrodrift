@@ -439,22 +439,26 @@ fn integrate_gpu2<'py>(
         poll_number,
         time_direction,
     };
-    let recipe = PotentialRecipe {
-        potential_id: PotentialNames::Bovy14,
-        fparams: [r_min, dr, 0., 0., 0., 0.],
-        uparams: [0, 0, 0, 0, 0, 0],
-        lut_info: Some(LookUpTable {
-            offset: 0.,
-            length: N_AR,
-        }),
-    };
     // let recipe = PotentialRecipe {
-    //     potential_id: PotentialNames::Plummer,
-    //     fparams: [1., 0.8, 0., 0., 0., 0.],
+    //     potential_id: PotentialNames::Kepler,
+    //     fparams: [1., 0., 0., 0., 0., 0.],
     //     uparams: [0, 0, 0, 0, 0, 0],
     //     lut_info: None,
+    // // };
+    // let recipe = PotentialRecipe {
+    //     potential_id: PotentialNames::Bovy14,
+    //     fparams: [r_min, dr, 0., 0., 0., 0.],
+    //     uparams: [0, 0, 0, 0, 0, 0],
+    //     lut_info: Some(LookUpTable { offset: 0., length: N_AR }),
     // };
+    let recipe = PotentialRecipe {
+        potential_id: PotentialNames::Plummer,
+        fparams: [1., 0., 0., 0., 0., 0.],
+        uparams: [0, 0, 0, 0, 0, 0],
+        lut_info: None,
+    };
     let mut gate_out = vec![0_usize;n];
+    let mut dev_dt_out = vec![0_f64;n];
     loop {
         unsafe {
             py_runtime_err(launch!(
@@ -480,7 +484,11 @@ fn integrate_gpu2<'py>(
         // copy back "done" each iteration. Maybe we collapse this on device or do it less frequently?
         py_runtime_err(dev_done.copy_to(&mut done_host))?;
         py_runtime_err(dev_gate.copy_to(&mut gate_out))?;
-        // eprintln!("{:?}",gate_out);
+        py_runtime_err(dev_dt.copy_to(&mut dev_dt_out))?;
+        py_runtime_err(dev_err.copy_to(&mut err_host))?;
+        eprintln!("{:?}", gate_out);
+        eprintln!("{:?}", dev_dt_out);
+        eprintln!("{:?}", err_host);
         // stop if all done
         let any_active = done_host.iter().any(|&d| d == 0);
         if !any_active {

@@ -54,7 +54,8 @@ unsafe fn compute_effective_dt(
     dt_max: f64,
     poll_number: usize,
     gate: *mut usize,
-) -> f64 {
+) -> (bool, f64) {
+    let mut save_dt = true;
     let mut dt_mag = dti.abs();
     let rem_dur = sign * (t_end - ti);
     let rempos = if rem_dur > 0.0 { rem_dur } else { 0.0 };
@@ -65,9 +66,10 @@ unsafe fn compute_effective_dt(
     if check*sign > 0. { 
         *gate.add(tid) = curr_gate as usize + sign as usize; 
         dt_mag = (curr_gate as f64 +sign)*div_siz - ti;
+        save_dt = false;
     }
     dt_mag = f64::min(f64::max(dt_mag, dt_min), f64::min(dt_max, rempos));
-    sign * dt_mag
+    (save_dt, sign * dt_mag)
 }
 #[inline(always)]
 fn thread_id_limit_check(n: usize) -> Option<usize> {
@@ -102,6 +104,7 @@ unsafe fn finalize_step(
     sign: f64,
     done_i_u: u32,
     not_done: f64,
+    save_dt: bool,
 ) {
     // branchless masks
     let accept_f = if accept { 1.0 } else { 0.0 };
@@ -132,7 +135,9 @@ unsafe fn finalize_step(
 
     // update control parameters
     *t.add(tid) = ti_new;
-    *dt.add(tid) = dt_new;
+    if (save_dt) {
+        *dt.add(tid) = dt_new;
+    }
     *w.add(tid) = wi_capped as u32;
 
     // logical "done" blend — once done, stay done
@@ -184,7 +189,7 @@ pub unsafe fn dopr54_adaptive(
     let sign = time_direction;
 
     // 2. compute effective dt
-    let dt_eff = compute_effective_dt(tid,ti, dti, t_end, sign, dt_min, dt_max,poll_number,gate);
+    let (save_dt, dt_eff) = compute_effective_dt(tid,ti, dti, t_end, sign, dt_min, dt_max,poll_number,gate);
 
     // 3. load state
     let prev_offset = ((wi * n) + tid) * 6;
@@ -214,6 +219,6 @@ pub unsafe fn dopr54_adaptive(
         t, dt, w, done,
         ti, dt_eff, dt_new, accept,
         x5, x0, wi, t_end, sign,
-        done_i_u, not_done,
+        done_i_u, not_done, save_dt
     );
 }
