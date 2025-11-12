@@ -44,19 +44,30 @@ unsafe fn sphericalcutoff_force_tabled(
 
 
 #[inline(always)]
-fn compute_effective_dt(
+unsafe fn compute_effective_dt(
+    tid:usize,
     ti: f64,
     dti: f64,
     t_end: f64,
     sign: f64,
     dt_min: f64,
     dt_max: f64,
+    poll_number: usize,
+    gate: *mut usize,
 ) -> f64 {
-    let rem_dir = sign * (t_end - ti);
-    let rempos = if rem_dir > 0.0 { rem_dir } else { 0.0 };
-    let dt_mag = dti.abs();
-    let dt_eff_mag = f64::min(f64::max(dt_mag, dt_min), f64::min(dt_max, rempos));
-    sign * dt_eff_mag
+    let mut dt_mag = dti.abs();
+    let rem_dur = sign * (t_end - ti);
+    let rempos = if rem_dur > 0.0 { rem_dur } else { 0.0 };
+    let div_siz = t_end/((poll_number-1) as f64);
+    let curr_gate = floor(ti/div_siz);
+    // let curr_gate = *gate.add(tid);
+    let check = ti+dt_mag-(curr_gate as f64 +sign)*div_siz;
+    if check*sign > 0. { 
+        *gate.add(tid) = curr_gate as usize + sign as usize; 
+        dt_mag = (curr_gate as f64 +sign)*div_siz - ti;
+    }
+    dt_mag = f64::min(f64::max(dt_mag, dt_min), f64::min(dt_max, rempos));
+    sign * dt_mag
 }
 #[inline(always)]
 fn thread_id_limit_check(n: usize) -> Option<usize> {
@@ -130,8 +141,8 @@ unsafe fn finalize_step(
     *done.add(tid) = (done_blend_u & 1) as u8;
 }
 
-fn expand_statics(statics: StaticInterface)-> (usize, usize, f64, f64, f64, f64, f64, f64, f64, f64, f64){
-    (statics.n,statics.steps_cap,statics.t_end,statics.atol,statics.rtol,statics.fac_min,statics.fac_max,statics.safety,statics.dt_min,statics.dt_max,statics.time_direction)
+fn expand_statics(statics: StaticInterface)-> (usize, usize, f64, f64, f64, f64, f64, f64, f64, f64, usize, f64){
+    (statics.n,statics.steps_cap,statics.t_end,statics.atol,statics.rtol,statics.fac_min,statics.fac_max,statics.safety,statics.dt_min,statics.dt_max,statics.poll_number,statics.time_direction)
 }
 
 // fn expand_book(book: Bookkeeping)-> (*mut f64, *mut f64, *mut u32, *mut u8){
@@ -147,13 +158,14 @@ pub unsafe fn dopr54_adaptive(
     dt: *mut f64,
     w: *mut u32,
     done: *mut u8,
+    gate: *mut usize,
     statics : StaticInterface,
     // book: Bookkeeping,
     recipe: PotentialRecipe,
     supertable: *mut f64,
     // recipes: [PotentialRecipe;6],
 ) {
-    let (n,steps_cap,t_end,atol,rtol,fac_min,fac_max,safety,dt_min,dt_max,time_direction) = expand_statics(statics);
+    let (n,steps_cap,t_end,atol,rtol,fac_min,fac_max,safety,dt_min,dt_max,poll_number,time_direction) = expand_statics(statics);
     // let (error_out,dt,w,done) = expand_book(book);
     
     let tid = match thread_id_limit_check(n) {
@@ -172,7 +184,7 @@ pub unsafe fn dopr54_adaptive(
     let sign = time_direction;
 
     // 2. compute effective dt
-    let dt_eff = compute_effective_dt(ti, dti, t_end, sign, dt_min, dt_max);
+    let dt_eff = compute_effective_dt(tid,ti, dti, t_end, sign, dt_min, dt_max,poll_number,gate);
 
     // 3. load state
     let prev_offset = ((wi * n) + tid) * 6;

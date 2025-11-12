@@ -12,6 +12,8 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
+    "astropy>=7.1.1",
+    "galpy>=1.11.1",
     "numpy>=1.24.4",
     "pandas>=2.0.3",
     "patchelf>=0.17.2.4",

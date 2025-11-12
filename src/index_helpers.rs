@@ -24,7 +24,7 @@ pub fn find_preceding_step(
     }
     let step = lo.saturating_sub(1);
     let idx = (step * n_particles + p) as isize;
-    (time_out[idx as usize], idx)
+    (time_out[idx as usize], step as isize)
 }
 
 pub fn find_last_times_and_indices(

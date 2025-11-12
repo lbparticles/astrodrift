@@ -27,7 +27,7 @@ fn grid_size(n: usize, block: u32) -> (u32, u32) {
     (blocks, block)
 }
 
-const N_AR: usize = 10000;
+const N_AR: usize = 100000;
 const R_MIN: f64 = 1e-4;
 const R_MAX: f64 = 100.0;
 
@@ -182,6 +182,7 @@ fn integrate_gpu<'py>(
         safety: SAFETY,
         dt_min: DT_MIN,
         dt_max: DT_MAX,
+        poll_number:0,
         time_direction,
     };
     // let book = Bookkeeping{
@@ -327,7 +328,7 @@ fn integrate_gpu2<'py>(
     py: Python<'py>,
     state0: PyReadonlyArray2<'py, f64>,
     state1: PyReadonlyArray2<'py, f64>,
-    ts0: PyReadonlyArray1<'py, f64>,
+    poll_number: usize,
     steps_cap: usize,
     t_end: f64,
     dt0: f64,
@@ -343,7 +344,9 @@ fn integrate_gpu2<'py>(
             "state0 must be float64 with shape (N, 6)",
         ));
     }
-    let ts = ts0.as_array();
+    let ts: Vec<f64> = (0..poll_number)
+        .map(|i| t_end * (i as f64) / (poll_number as f64 - 1.))
+        .collect();
     let n: usize = ic.shape()[0];
     if n == 0 {
         return Err(pyo3::exceptions::PyValueError::new_err("N must be > 0"));
@@ -390,8 +393,9 @@ fn integrate_gpu2<'py>(
     let mut w_host = vec![0u32; n];
     let mut done_host = vec![0u8; n];
     let mut err_host = vec![0.0f64; n];
-
+    let mut gate_index = vec![0_usize;n];
     // device buffers
+    let dev_gate = py_runtime_err(DeviceBuffer::<usize>::from_slice(&gate_index))?;
     let dev_state_out = py_runtime_err(DeviceBuffer::<f64>::from_slice(&state_out))?;
     let dev_t = py_runtime_err(DeviceBuffer::<f64>::from_slice(&t_host))?;
     let dev_dt = py_runtime_err(DeviceBuffer::<f64>::from_slice(&dt_host))?;
@@ -426,6 +430,7 @@ fn integrate_gpu2<'py>(
         safety: SAFETY,
         dt_min: DT_MIN,
         dt_max: DT_MAX,
+        poll_number,
         time_direction,
     };
     let recipe = PotentialRecipe {
@@ -437,6 +442,13 @@ fn integrate_gpu2<'py>(
             length: N_AR,
         }),
     };
+    // let recipe = PotentialRecipe {
+    //     potential_id: PotentialNames::Plummer,
+    //     fparams: [1., 0.8, 0., 0., 0., 0.],
+    //     uparams: [0, 0, 0, 0, 0, 0],
+    //     lut_info: None,
+    // };
+    let mut gate_out = vec![0_usize;n];
     loop {
         unsafe {
             py_runtime_err(launch!(
@@ -448,6 +460,7 @@ fn integrate_gpu2<'py>(
                     dev_dt.as_device_ptr(),
                     dev_w.as_device_ptr(),
                     dev_done.as_device_ptr(),
+                    dev_gate.as_device_ptr(),
                     statics,
                     recipe,
                     dev_ar_table.as_device_ptr(),
@@ -460,7 +473,8 @@ fn integrate_gpu2<'py>(
 
         // copy back "done" each iteration. Maybe we collapse this on device or do it less frequently?
         py_runtime_err(dev_done.copy_to(&mut done_host))?;
-
+        py_runtime_err(dev_gate.copy_to(&mut gate_out))?;
+        // eprintln!("{:?}",gate_out);
         // stop if all done
         let any_active = done_host.iter().any(|&d| d == 0);
         if !any_active {
@@ -483,6 +497,7 @@ fn integrate_gpu2<'py>(
     py_runtime_err(dev_dt.copy_to(&mut dt_host))?;
     py_runtime_err(dev_w.copy_to(&mut w_host))?;
     py_runtime_err(dev_err.copy_to(&mut err_host))?;
+    // eprintln!("{:?}",time_out);
     
     let w0 = w_host[0] as usize;
     if w0 >= steps_cap - 1 {
@@ -495,10 +510,11 @@ fn integrate_gpu2<'py>(
         .iter()
         .map(|&w| (w as usize + 1).min(steps_cap)) // accepted steps + initial state
         .collect();
-
+    // eprintln!("{:?}",time_out);
+    // eprintln!("{:?}",ts);
     let (app_ts0,indices )= find_last_times_and_indices(
         &time_out,
-        ts.as_slice().expect("ts must be contiguous"),
+        &ts,
         n,
         steps_cap,
         &filled_lens

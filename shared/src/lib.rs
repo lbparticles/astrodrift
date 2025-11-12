@@ -16,6 +16,7 @@ pub struct StaticInterface {
     pub fac_max: f64,
     pub dt_min: f64,
     pub dt_max: f64,
+    pub poll_number: usize,
     pub time_direction: f64,
 }
 // #[derive(Clone,Copy,DeviceCopy)]
