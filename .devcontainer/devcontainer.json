@@ -1,0 +1,35 @@
+{
+  "name": "astrodrift-devcontainer",
+  "build": {
+    "dockerfile": "../container/ubuntu22-cuda12/Dockerfile",
+    "context": ".."
+  },
+  "runArgs": [
+    "--runtime=nvidia",
+    "--gpus",
+    "all",
+    "--memory", "32g"
+  ],
+  "remoteUser": "dev",
+  "updateRemoteUserUID": true,
+  "workspaceFolder": "/data/astrodrift",
+  // Avoid running a full login+interactive shell just to sniff env vars
+  "userEnvProbe": "none",
+  "containerEnv": {
+    "NVIDIA_DRIVER_CAPABILITIES": "all"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "ms-python.python"
+      ]
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+ "mounts": [
+   "source=/mnt/main/jack/src/astrodrift,target=/data/astrodrift,type=bind"
+ ]
+}

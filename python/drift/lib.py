@@ -9,7 +9,7 @@ from .drift_rs import (
     Debug,
     Interpolation,
     Interface,
-)  # ty: ignore[unresolved-import]
+)
 import numpy as np
 import enum
 import pandas as pd
@@ -217,6 +217,7 @@ class SimulationFrame:
             Interpolation.Quintic,
             Debug.ALL,
         )
+
         state, time, app_ts, indices = simulation_ctx(
             [
                 Recipe(
