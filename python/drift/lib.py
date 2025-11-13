@@ -1,8 +1,8 @@
 from .drift_rs import (
     # integrate_gpu,
     integrate_gpu2,
-    PyPotentialNames,
-    PyPotentialRecipe,
+    Potential,
+    Recipe,
 )  # ty: ignore[unresolved-import]
 import numpy as np
 import enum
@@ -33,18 +33,6 @@ class Optimisation(enum.Enum):
     PREDICTIVE_LUT = enum.auto()
 
 
-class Potential(enum.Enum):
-    # CUSTOM = enum.auto()
-    BOVY14 = enum.auto()
-    # SPRIAL_ARM = enum.auto()
-    # BAR = enum.auto()
-    PLUMMER = enum.auto()
-    # POINT = enum.auto()
-    NFW = enum.auto()
-    MN = enum.auto()
-    SPHERICALWCUTOFF = enum.auto()
-
-
 class IntegratorContainer:
     @abstractmethod
     def consume(self):
@@ -63,7 +51,7 @@ class BackgroundFeature(IntegratorContainer):
 
 
 def bg_feature(
-    potential: Potential = Potential.BOVY14,
+    potential: Potential = Potential.bovy14,
     alpha_param=None,
     label="",
     LookUpTable: bool | None = None,
@@ -105,7 +93,7 @@ class Interpolation(enum.Enum):
 
 def part_group(
     istate,
-    potential: Potential = Potential.PLUMMER,
+    potential: Potential = Potential.plummer,
     interpolation: Interpolation = Interpolation.QUINTIC,
     alpha_param=None,
 ) -> ParticleGroup:
@@ -241,9 +229,9 @@ class SimulationFrame:
         )
         state, time, app_ts, indices = integrate_gpu2(
             [
-                PyPotentialRecipe(
+                Recipe(
                     fparams=[1, 2, 3, 4, 5, 6],
-                    potential_id=PyPotentialNames.Kepler,
+                    potential_id=Potential.Kepler,
                     uparams=[0, 1, 2, 3, 4, 5],
                 )
             ],

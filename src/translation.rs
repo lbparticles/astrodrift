@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use shared::{PotentialNames, PotentialRecipe, LookUpTable};
 use std::fmt;
 
-#[pyclass]
+#[pyclass(name="Potential")]
 #[derive(Clone, Copy)]
 pub enum PyPotentialNames {
     Bovy14,
@@ -56,7 +56,7 @@ impl From<PyPotentialNames> for PotentialNames {
 // --- Structs as data containers ---
 
 
-#[pyclass]
+#[pyclass(name="Recipe")]
 #[derive(Clone)]
 pub struct PyPotentialRecipe {
     #[pyo3(get, set)]
