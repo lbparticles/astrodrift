@@ -4,7 +4,7 @@ use numpy::{PyArray1, PyArray2, PyArray3, PyArrayMethods, PyReadonlyArray2, PyRe
 use pyo3::prelude::*;
 use shared::{LookUpTable, PotentialNames, PotentialRecipe, StaticInterface};
 mod translation;
-use translation::{PyPotentialNames,PyPotentialRecipe};
+use translation::{PyPotentialNames,PyPotentialRecipe,PyIntMethod,PyEngine,PyOptimisation,PyInterpolation,PyDebug};
 use statrs::function::gamma::{gamma, gamma_lr};
 use std::f64::consts::PI;
 // use std::fs::File;
@@ -610,6 +610,11 @@ fn drift_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(integrate_gpu2, m)?)?;
     m.add_class::<PyPotentialNames>()?;
     m.add_class::<PyPotentialRecipe>()?;
+    m.add_class::<PyIntMethod>()?;
+    m.add_class::<PyOptimisation>()?;
+    m.add_class::<PyEngine>()?;
+    m.add_class::<PyDebug>()?;
+    m.add_class::<PyInterpolation>()?;
     Ok(())
 }
 

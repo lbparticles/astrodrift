@@ -3,6 +3,11 @@ from .drift_rs import (
     integrate_gpu2,
     Potential,
     Recipe,
+    Optimisation,
+    Engine,
+    Method,
+    Debug,
+    Interpolation,
 )  # ty: ignore[unresolved-import]
 import numpy as np
 import enum
@@ -13,24 +18,6 @@ from galpy.orbit import Orbit
 from galpy.potential import MWPotential2014, PlummerPotential
 import astropy.units as u
 import matplotlib.pyplot as plt
-
-
-class Engine(enum.Enum):
-    GPU = enum.auto()
-    CPU = enum.auto()
-
-
-class IntMethod(enum.Enum):
-    NEWTON = enum.auto()
-    RK54 = enum.auto()
-    DOP853 = enum.auto()
-    LEAPFROG = enum.auto()
-
-
-class Optimisation(enum.Enum):
-    RECOMMENDED = enum.auto()
-    SPLINE = enum.auto()
-    PREDICTIVE_LUT = enum.auto()
 
 
 class IntegratorContainer:
@@ -51,7 +38,7 @@ class BackgroundFeature(IntegratorContainer):
 
 
 def bg_feature(
-    potential: Potential = Potential.bovy14,
+    potential: Potential = Potential.Bovy14,
     alpha_param=None,
     label="",
     LookUpTable: bool | None = None,
@@ -93,7 +80,7 @@ class Interpolation(enum.Enum):
 
 def part_group(
     istate,
-    potential: Potential = Potential.plummer,
+    potential: Potential = Potential.Plummer,
     interpolation: Interpolation = Interpolation.QUINTIC,
     alpha_param=None,
 ) -> ParticleGroup:
@@ -111,9 +98,9 @@ def simulation(
     state,
     label: str = "",
     engine: Engine = Engine.GPU,
-    method: IntMethod = IntMethod.RK54,
-    optimisation: Set[Optimisation] | bool = {Optimisation.RECOMMENDED},
-    debug: bool = False,
+    method: Method = Method.RK54,
+    optimisation: Set[Optimisation] | bool = {Optimisation.Recommended},
+    debug: Debug = Debug.ALL,
 ):
     """
     constructor for SimulationFrame, takes in the configuration
@@ -143,6 +130,10 @@ class SimulationFrame:
     def __init__(
         self,
         state: List[IntegratorContainer],
+        optimisation: Set[Optimisation] | bool = {Optimisation.Recommended},
+        engine: Engine = Engine.GPU,
+        method: Method = Method.RK54,
+        debug: bool = Debug.WARN,
     ):
         """
         SimulationFrame is the main class within the library, setting up the
@@ -189,7 +180,7 @@ class SimulationFrame:
         return
 
     def run(self):
-        N = 1000
+        N = 10
         state0 = np.zeros((N, 6), dtype=np.float64)
         state0[:, 1] = 1
         state0[:, 3] = 1

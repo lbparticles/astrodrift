@@ -100,3 +100,42 @@ pub fn translate_recipe(r: PyPotentialRecipe,lut_info: Option<LookUpTable>) -> P
 }
 
 
+
+#[pyclass(name="Engine")]
+#[derive(Clone)]
+pub enum PyEngine{
+    GPU, 
+    CPU, 
+}
+
+#[pyclass(name="Method")]
+#[derive(Clone)]
+pub enum PyIntMethod{
+    Newton, 
+    RK54, 
+    DOP853, 
+    Leapfrog, 
+}
+
+#[pyclass(name="Optimisation")]
+#[derive(Clone)]
+pub enum PyOptimisation{
+    Recommended, 
+    Spline, 
+    PredictiveLUT, 
+}
+#[pyclass(name="Debug")]
+#[derive(Clone)]
+pub enum PyDebug{
+    ALL, 
+    INFO, 
+    WARN, 
+    ERROR,
+}
+#[pyclass(name="Interpolation")]
+#[derive(Clone)]
+pub enum PyInterpolation{
+    Linear, 
+    Cubic, 
+    Quintic, 
+}
