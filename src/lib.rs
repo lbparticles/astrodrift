@@ -3,6 +3,8 @@ use libm::pow;
 use numpy::{PyArray1, PyArray2, PyArray3, PyArrayMethods, PyReadonlyArray2, PyReadonlyArray1};
 use pyo3::prelude::*;
 use shared::{LookUpTable, PotentialNames, PotentialRecipe, StaticInterface};
+mod translation;
+use translation::{PyPotentialNames,PyPotentialRecipe};
 use statrs::function::gamma::{gamma, gamma_lr};
 use std::f64::consts::PI;
 // use std::fs::File;
@@ -332,6 +334,7 @@ fn integrate_gpu<'py>(
 #[pyfunction]
 fn integrate_gpu2<'py>(
     py: Python<'py>,
+    py_recipes: Vec<PyPotentialRecipe>,
     state0: PyReadonlyArray2<'py, f64>,
     state1: PyReadonlyArray2<'py, f64>,
     poll_number: usize,
@@ -605,6 +608,8 @@ fn integrate_gpu2<'py>(
 fn drift_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(integrate_gpu, m)?)?;
     m.add_function(wrap_pyfunction!(integrate_gpu2, m)?)?;
+    m.add_class::<PyPotentialNames>()?;
+    m.add_class::<PyPotentialRecipe>()?;
     Ok(())
 }
 

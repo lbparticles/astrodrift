@@ -1,6 +1,8 @@
 from .drift_rs import (
     # integrate_gpu,
     integrate_gpu2,
+    PyPotentialNames,
+    PyPotentialRecipe,
 )  # ty: ignore[unresolved-import]
 import numpy as np
 import enum
@@ -238,6 +240,13 @@ class SimulationFrame:
             )[0]
         )
         state, time, app_ts, indices = integrate_gpu2(
+            [
+                PyPotentialRecipe(
+                    fparams=[1, 2, 3, 4, 5, 6],
+                    potential_id=PyPotentialNames.Kepler,
+                    uparams=[0, 1, 2, 3, 4, 5],
+                )
+            ],
             state0,
             state0,
             2001,
