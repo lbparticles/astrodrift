@@ -43,7 +43,7 @@ pub fn find_last_times_and_indices(
     for p in 0..n_particles {
         let filled_len = filled_lens[p].min(steps_cap).max(1);
         let first = time_out[p];
-        let last  = time_out[(filled_len - 1) * n_particles + p];
+        let last = time_out[(filled_len - 1) * n_particles + p];
 
         let mut times_row = Vec::with_capacity(ts.len());
         let mut idx_row = Vec::with_capacity(ts.len());

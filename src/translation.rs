@@ -1,8 +1,8 @@
 use pyo3::prelude::*;
-use shared::{PotentialNames, PotentialRecipe, LookUpTable};
+use shared::{LookUpTable, PotentialNames, PotentialRecipe};
 use std::fmt;
 
-#[pyclass(name="Potential")]
+#[pyclass(name = "Potential")]
 #[derive(Clone, Copy)]
 pub enum PyPotentialNames {
     Bovy14,
@@ -11,6 +11,10 @@ pub enum PyPotentialNames {
     NFW,
     SphCutoff,
     Kepler,
+    CustomKepler,
+    CustomPlummer,
+    VariableCustomPlummer,
+    VariableCustomKepler,
 }
 
 impl fmt::Display for PyPotentialNames {
@@ -22,6 +26,10 @@ impl fmt::Display for PyPotentialNames {
             PyPotentialNames::NFW => "NFW",
             PyPotentialNames::SphCutoff => "SphCutoff",
             PyPotentialNames::Kepler => "Kepler",
+            PyPotentialNames::CustomKepler => "CustomKepler",
+            PyPotentialNames::CustomPlummer => "CustomPlummer",
+            PyPotentialNames::VariableCustomKepler => "VariableCustomKepler",
+            PyPotentialNames::VariableCustomPlummer=> "VariableCustomPlummer",
         };
         write!(f, "{s}")
     }
@@ -36,6 +44,10 @@ impl From<PotentialNames> for PyPotentialNames {
             PotentialNames::NFW => Self::NFW,
             PotentialNames::SphCutoff => Self::SphCutoff,
             PotentialNames::Kepler => Self::Kepler,
+            PotentialNames::CustomKepler => Self::CustomKepler ,
+            PotentialNames::CustomPlummer => Self::CustomPlummer ,
+            PotentialNames::VariableCustomKepler => Self::VariableCustomKepler ,
+            PotentialNames::VariableCustomPlummer=> Self::VariableCustomPlummer,
         }
     }
 }
@@ -49,14 +61,17 @@ impl From<PyPotentialNames> for PotentialNames {
             PyPotentialNames::NFW => Self::NFW,
             PyPotentialNames::SphCutoff => Self::SphCutoff,
             PyPotentialNames::Kepler => Self::Kepler,
+            PyPotentialNames::CustomKepler => Self::CustomKepler ,
+            PyPotentialNames::CustomPlummer => Self::CustomPlummer ,
+            PyPotentialNames::VariableCustomKepler => Self::VariableCustomKepler ,
+            PyPotentialNames::VariableCustomPlummer=> Self::VariableCustomPlummer,
         }
     }
 }
 
 // --- Structs as data containers ---
 
-
-#[pyclass(name="Recipe")]
+#[pyclass(name = "Recipe")]
 #[derive(Clone)]
 pub struct PyPotentialRecipe {
     #[pyo3(get, set)]
@@ -70,11 +85,7 @@ pub struct PyPotentialRecipe {
 #[pymethods]
 impl PyPotentialRecipe {
     #[new]
-    pub fn new(
-        fparams: [f64; 6],
-        potential_id: PyPotentialNames,
-        uparams: [usize; 6],
-    ) -> Self {
+    pub fn new(fparams: [f64; 6], potential_id: PyPotentialNames, uparams: [usize; 6]) -> Self {
         PyPotentialRecipe {
             fparams,
             potential_id,
@@ -90,52 +101,71 @@ impl PyPotentialRecipe {
     }
 }
 
-pub fn translate_recipe(r: PyPotentialRecipe,lut_info: Option<LookUpTable>) -> PotentialRecipe {
+pub fn translate_recipe(r: PyPotentialRecipe, goffset: &mut usize) -> PotentialRecipe {
+    let pot = r.potential_id.into();
+    let lut_info = match pot {
+        PotentialNames::Bovy14 
+        | PotentialNames::SphCutoff
+        | PotentialNames::CustomKepler
+        | PotentialNames::CustomPlummer
+        | PotentialNames::VariableCustomKepler
+        | PotentialNames::VariableCustomPlummer
+          => {
+            *goffset += r.uparams[5];
+            Some(LookUpTable {
+                offset: *goffset - r.uparams[5],
+                length: r.uparams[5],
+            })
+        }
+        PotentialNames::Plummer
+        | PotentialNames::Kepler
+        | PotentialNames::MN
+        | PotentialNames::NFW => None,
+    };
     PotentialRecipe {
         fparams: r.fparams,
-        potential_id: r.potential_id.into(),
+        potential_id: pot,
         uparams: r.uparams,
         lut_info: lut_info,
     }
 }
 
-
-
-#[pyclass(name="Engine")]
+#[pyclass(name = "Engine")]
 #[derive(Clone)]
-pub enum PyEngine{
-    GPU, 
-    CPU, 
+pub enum PyEngine {
+    GPU,
+    CPU,
 }
 
-#[pyclass(name="Method")]
+#[pyclass(name = "Method")]
 #[derive(Clone)]
-pub enum PyIntMethod{
-    Newton, 
-    RK54, 
-    DOP853, 
-    Leapfrog, 
+pub enum PyIntMethod {
+    Newton,
+    RK54,
+    DOP853,
+    Leapfrog,
 }
 
-#[pyclass(name="Optimisation")]
+#[pyclass(name = "Optimisation")]
 #[derive(Clone)]
-pub enum PyOptimisation{
-    Recommended, 
-    Spline, 
-    PredictiveLUT, 
+pub enum PyOptimisation {
+    Recommended,
+    Spline,
+    PredictiveLUT,
 }
-#[pyclass(name="Debug")]
+#[pyclass(name = "Debug")]
 #[derive(Clone)]
-pub enum PyDebug{
-    ALL, 
-    INFO, 
-    WARN, 
+pub enum PyDebug {
+    ALL,
+    INFO,
+    WARN,
     ERROR,
 }
-#[pyclass(name="Interpolation")]
+#[pyclass(name = "Interpolation")]
 #[derive(Clone)]
-pub enum PyInterpolation{
-    Linear, 
-    Cubic, 
-    Quintic, 
+pub enum PyInterpolation {
+    Linear,
+    Cubic,
+    Quintic,
 }
+

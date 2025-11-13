@@ -28,17 +28,22 @@ fn single_particle_exact_and_between() {
     let time_out = vec![0.0, 0.10, 0.21, 0.33, 0.60];
 
     // Desired evenly spaced targets (all within [0, t_end])
-    let desired_ts = vec![0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60];
+    let desired_ts = vec![
+        0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60,
+    ];
     let filled_lens = vec![steps_cap; n];
 
-    let (times, indices) = find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
+    let (times, indices) =
+        find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
 
     assert_eq!(times.len(), n);
     assert_eq!(indices.len(), n);
     assert_eq!(times[0].len(), desired_ts.len());
     assert_eq!(indices[0].len(), desired_ts.len());
 
-    let expected_times  = vec![0.0, 0.0, 0.10, 0.10, 0.10, 0.21, 0.21, 0.33, 0.33, 0.33, 0.33, 0.33, 0.60];
+    let expected_times = vec![
+        0.0, 0.0, 0.10, 0.10, 0.10, 0.21, 0.21, 0.33, 0.33, 0.33, 0.33, 0.33, 0.60,
+    ];
     let expected_indices = vec![0isize, 0, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 4];
 
     assert_eq!(times[0], expected_times);
@@ -57,7 +62,8 @@ fn two_particles() {
     let desired_ts = vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
     let filled_lens = vec![steps_cap; n];
 
-    let (times, indices) = find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
+    let (times, indices) =
+        find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
 
     let expected_p0_times = vec![0.0, 0.0, 0.2, 0.2, 0.2, 0.5, 0.5, 0.5, 0.5, 0.5, 1.0];
     let expected_p0_indices = vec![0, 0, 2, 2, 2, 4, 4, 4, 4, 4, 6];
@@ -85,7 +91,8 @@ fn empty_desired_ts_returns_empty_rows() {
     let desired_ts: Vec<f64> = vec![];
     let filled_lens = vec![steps_cap; n];
 
-    let (times, indices) = find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
+    let (times, indices) =
+        find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
 
     assert_eq!(times.len(), n);
     assert_eq!(indices.len(), n);
@@ -101,7 +108,8 @@ fn duplicate_desired_times_produce_duplicate_outputs() {
     let desired_ts = vec![0.5, 0.5, 0.5];
     let filled_lens = vec![steps_cap; n];
 
-    let (times, indices) = find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
+    let (times, indices) =
+        find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
 
     assert_eq!(times[0], vec![0.5, 0.5, 0.5]);
     assert_eq!(indices[0], vec![2, 2, 2]);
@@ -121,15 +129,22 @@ fn larger_n_indexing() {
     let desired_ts = (0..=8).map(|k| k as f64 * 0.1).collect::<Vec<_>>();
     let filled_lens = vec![steps_cap; n];
 
-    let (times, indices) = find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
+    let (times, indices) =
+        find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
 
     // For p3 and ts=0.4, preceding time is 0.4 at step=1 -> idx = 1*4 + 3 = 7
-    let pos_04 = desired_ts.iter().position(|&t| (t - 0.4).abs() < 1e-15).unwrap();
+    let pos_04 = desired_ts
+        .iter()
+        .position(|&t| (t - 0.4).abs() < 1e-15)
+        .unwrap();
     assert_eq!(times[3][pos_04], 0.4);
     assert_eq!(indices[3][pos_04], 7);
 
     // For p2 and ts=0.5, preceding time is 0.3 at step=1 -> idx = 1*4 + 2 = 6
-    let pos_05 = desired_ts.iter().position(|&t| (t - 0.5).abs() < 1e-15).unwrap();
+    let pos_05 = desired_ts
+        .iter()
+        .position(|&t| (t - 0.5).abs() < 1e-15)
+        .unwrap();
     assert_eq!(times[2][pos_05], 0.3);
     assert_eq!(indices[2][pos_05], 6);
 }
@@ -146,7 +161,8 @@ fn clamp_before_first_and_after_last() {
     let desired_ts = vec![0.05, 0.1, 0.35, 0.8, 0.85, 0.9, 0.95];
     let filled_lens = vec![steps_cap; n];
 
-    let (times, indices) = find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
+    let (times, indices) =
+        find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
 
     // p0: clamp 0.05 -> 0.1, clamp 0.85/0.9/0.95 -> 0.8
     assert_eq!(times[0], vec![0.1, 0.1, 0.2, 0.8, 0.8, 0.8, 0.8]);
@@ -160,7 +176,7 @@ fn clamp_before_first_and_after_last() {
 #[test]
 #[should_panic]
 fn panics_on_len_mismatch() {
-    let n = 2usize; 
+    let n = 2usize;
     let steps_cap = 3usize;
     let time_out = vec![0.0; 5]; // should be 6
     let filled_lens = vec![steps_cap; n];
@@ -240,11 +256,11 @@ fn respects_filled_len_ignores_trailing_zeros() {
     let (times, indices) =
         find_last_times_and_indices(&time_out, &desired_ts, n, steps_cap, &filled_lens);
 
-    let expected_p0_times   = vec![0.0, 0.0, 0.2, 0.2, 0.5, 0.5, 0.5, 0.5];
-    let expected_p0_indices = vec![0isize, 0,    2,   2,   4,   4,   4,   4];
+    let expected_p0_times = vec![0.0, 0.0, 0.2, 0.2, 0.5, 0.5, 0.5, 0.5];
+    let expected_p0_indices = vec![0isize, 0, 2, 2, 4, 4, 4, 4];
 
-    let expected_p1_times   = vec![0.0, 0.0, 0.1, 0.1, 0.4, 0.4, 0.4, 0.9];
-    let expected_p1_indices = vec![1isize, 1,    3,   3,   5,   5,   5,   7];
+    let expected_p1_times = vec![0.0, 0.0, 0.1, 0.1, 0.4, 0.4, 0.4, 0.9];
+    let expected_p1_indices = vec![1isize, 1, 3, 3, 5, 5, 5, 7];
 
     assert_eq!(times.len(), n);
     assert_eq!(indices.len(), n);

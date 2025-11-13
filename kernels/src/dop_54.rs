@@ -7,42 +7,6 @@ use libm::{floor, pow, sqrt};
 use crate::recipes::consume_recipe;
 use shared::{PotentialRecipe,PotentialNames,LookUpTable,StaticInterface};
 
-const M_S: f64 = 1.0;
-const G: f64 = 39.5;
-
-#[inline(always)]
-unsafe fn sphericalcutoff_force_tabled(
-    x: f64,
-    y: f64,
-    z: f64,
-    ar_table: *const f64,
-    r_min: f64,
-    dr: f64,
-    n_ar: u32,
-) -> (f64, f64, f64) {
-    let r2 = pow(x, 2.0) + pow(y, 2.0) + pow(z, 2.0);
-    if r2 == 0.0 {
-        return (0.0, 0.0, 0.0);
-    }
-    let r = sqrt(r2);
-    let t = (r - r_min) / dr;
-    let i = floor(t) as usize;
-    let f = t - i as f64;
-
-    // linear interpolation
-    let i0 = i.min((n_ar - 2) as usize);
-    let ar0 = *ar_table.add(i0);
-    let ar1 = *ar_table.add(i0 + 1);
-    let ar = (1.0 - f) * ar0 + f * ar1;
-
-    let ax = ar * x / r;
-    let ay = ar * y / r;
-    let az = ar * z / r;
-    (ax, ay, az)
-}
-
-
-
 #[inline(always)]
 unsafe fn compute_effective_dt(
     tid:usize,

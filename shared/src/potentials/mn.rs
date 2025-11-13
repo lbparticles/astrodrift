@@ -1,5 +1,5 @@
-use libm::{pow, sqrt};
 use crate::potentials::Potential;
+use libm::{pow, sqrt};
 
 #[derive(Clone, Copy)]
 pub struct MNPotential {
