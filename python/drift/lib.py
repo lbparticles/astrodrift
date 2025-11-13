@@ -1,6 +1,6 @@
 from .drift_rs import (
     # integrate_gpu,
-    integrate_gpu2,
+    simulation_ctx,
     Potential,
     Recipe,
     Optimisation,
@@ -8,6 +8,7 @@ from .drift_rs import (
     Method,
     Debug,
     Interpolation,
+    Interface,
 )  # ty: ignore[unresolved-import]
 import numpy as np
 import enum
@@ -72,16 +73,10 @@ class TestGroup(IntegratorContainer):
         return
 
 
-class Interpolation(enum.Enum):
-    LINEAR = enum.auto()
-    CUBIC = enum.auto()
-    QUINTIC = enum.auto()
-
-
 def part_group(
     istate,
     potential: Potential = Potential.Plummer,
-    interpolation: Interpolation = Interpolation.QUINTIC,
+    interpolation: Interpolation = Interpolation.Quintic,
     alpha_param=None,
 ) -> ParticleGroup:
     return ParticleGroup(istate, potential, interpolation, alpha_param)
@@ -179,147 +174,6 @@ class SimulationFrame:
         """
         return
 
-    # def run(self):
-    #     N = 10
-    #     state0 = np.zeros((N, 6), dtype=np.float64)
-    #     state0[:, 1] = 1
-    #     state0[:, 3] = 1
-        # state0[:, 0] = 0.7 + 0.6 * np.random.rand(N)
-
-    #     # N = 10000
-    #     # state1 = np.zeros((N, 6), dtype=np.float64)
-    #     # state1[:, 0] = 0.9 + 0.2 * np.random.rand(N)
-    #     # state1[:, 4] = 1.0
-    #     # ts = np.linspace(0, 28.12458, 401)
-    #     # ts = np.linspace(0, 28.12458, 401)
-    #     o = Orbit(
-    #         [1, 0, 1, 0, 0, 3 * np.pi / 2], ro=8 * u.kpc, vo=220 * u.km / u.s
-    #     )
-    #     o.integrate(
-    #         2
-    #         * np.pi
-    #         * 8
-    #         * u.kpc
-    #         / (220 * u.km / u.s)
-    #         * np.linspace(0, 5, 2001),
-    #         KeplerPotential(),
-    #         # PlummerPotential(ro=8.0, vo=220.0),
-    #         method="dopr54_c",
-    #         atol=1e-11,
-    #         rtol=1e-11,
-    #     )
-    #     print(
-    #         o.x(
-    #             2
-    #             * np.pi
-    #             * 8
-    #             * u.kpc
-    #             / (220 * u.km / u.s)
-    #             * np.linspace(0, 2, 801)
-    #         )[0]
-    #     )
-    #     state, time, app_ts, indices = integrate_gpu2(
-    #         state0,
-    #         state0,
-    #         2001,
-    #         steps_cap=8000,
-    #         # t_end=28.12458,
-    #         t_end=10 * np.pi,
-    #         dt0=0.070311,
-    #         atol=1e-14,
-    #         rtol=1e-14,
-    #         reverse=False,
-    #     )
-    #     # print(28.12458 / 400)
-    #     # print(indices[0, :])
-    #     # print(time[time > 0].shape[0] + 1)
-    #     # print(app_ts[0, :])
-    #     # print(indices.shape)
-    #     # print(time.T.shape)
-    #     # print(app_ts[0, :])
-    #     # print(indices[0, :])
-    #     # print(time.shape)
-    #     # print(time[:, 0])
-    #     # print(8 * state.T[0, 0, indices[0, :]])
-    #     # print(
-    #     #     2 * np.pi * 8 * u.kpc / (220 * u.km / u.s) * np.linspace(0, 1, 401)
-    #     # )
-    #     # plt.plot(
-    #     #     2 * np.pi * 8 * u.kpc / (220 * u.km / u.s) * np.linspace(0, 1, 401),
-    #     #     o.x(
-    #     #         2
-    #     #         * np.pi
-    #     #         * 8
-    #     #         * u.kpc
-    #     #         / (220 * u.km / u.s)
-    #     #         * np.linspace(0, 1, 401)
-    #     #     ),
-    #     # )
-    #     ax = plt.axes()
-    #     ax.plot(
-    #         223.6 * np.linspace(0, 5, 2001),
-    #         np.log10(
-    #             np.abs(
-    #                 (
-    #                     np.sqrt(
-    #                         o.x(
-    #                             2
-    #                             * np.pi
-    #                             * 8
-    #                             * u.kpc
-    #                             / (220 * u.km / u.s)
-    #                             * np.linspace(0, 5, 2001)
-    #                         )
-    #                         - 8 * state.T[0, 0, indices[0, :]]
-    #                     )
-    #                     ** 2
-    #                     + (
-    #                         o.y(
-    #                             2
-    #                             * np.pi
-    #                             * 8
-    #                             * u.kpc
-    #                             / (220 * u.km / u.s)
-    #                             * np.linspace(0, 5, 2001)
-    #                         )
-    #                         - 8 * state.T[0, 1, indices[0, :]]
-    #                     )
-    #                     ** 2
-    #                 )
-    #             )
-    #         ),
-    #     )
-    #     ax.set_xlabel("t [Myr]")
-    #     ax.set_ylabel(r"log10 $|\epsilon|$")
-    #     # print(time.shape)
-    #     # print(state.shape)
-    #     # print(indices[0, :])
-    #     # plt.plot(time[: indices[0, -1], 0], state[: indices[0, -1], 0, 0])
-    #     # plt.plot(
-    #     #     2 * np.pi * 8 * u.kpc / (220 * u.km / u.s) * np.linspace(0, 1, 401),
-    #     #     8 * state.T[0, 0, indices[0, :]],
-    #     # )
-    #     plt.savefig("uhoh.png", dpi=600)
-    #     plt.close()
-    #     ax = plt.axes()
-    #     ax.plot(
-    #         223.6 * np.linspace(0, 5, 2001),
-    #         np.sqrt(
-    #             (state.T[0, 0, indices[0, :]]) ** 2
-    #             + (state.T[1, 0, indices[0, :]]) ** 2
-    #         ),
-    #     )
-    #     plt.savefig("error.png", dpi=600)
-    #     # print(np.max(indices, axis=1))
-    #     # print(time[indices])
-    #     # ts = np.linspace(0, 2 * np.pi, 401)
-    #     # print(time[:401, 0] - ts)
-    #     # print(time[:40])
-    #     # print(np.linspace(0, 28.12458, 401))
-    #     return True
-    #     # return pd.DataFrame(state)
-    #     # return self.output
-
     def run(self):
         pot = KeplerPotential(normalize=1.0)
         o = Orbit([1.0, 0.0, 1.0, 0.0, 0.0, 0.0])
@@ -349,23 +203,30 @@ class SimulationFrame:
         state0[:, 4] = 1.0
         state0[:, 5] = 0.0
 
-        state, time, app_ts, indices = integrate_gpu2(
+        config = Interface(
+            n_times,
+            8000,
+            t_max,
+            0.1,
+            1e-6,
+            1e-6,
+            False,
+            Engine.GPU,
+            Method.RK54,
+            Optimisation.Recommended,
+            Interpolation.Quintic,
+            Debug.ALL,
+        )
+        state, time, app_ts, indices = simulation_ctx(
             [
                 Recipe(
-                    fparams=[1, 2, 3, 4, 5, 6],
+                    fparams=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     potential_id=Potential.Kepler,
-                    uparams=[0, 1, 2, 3, 4, 5],
+                    uparams=[0, 0, 0, 0, 0, 0],
                 )
             ],
-            state0,
-            state0,
-            n_times,
-            steps_cap=8000,
-            t_end=t_max,
-            dt0=0.1,
-            atol=1e-6,
-            rtol=1e-6,
-            reverse=False,
+            [state0],
+            config,
         )
 
         print("max stored time:", time[:, 0].max())
@@ -406,4 +267,3 @@ class SimulationFrame:
         # plt.close(fig)
 
         return True
-
