@@ -13,6 +13,8 @@ use std::f64::consts::PI;
 pub mod index_helpers;
 use index_helpers::find_last_times_and_indices;
 
+pub mod dopr54_cpu;
+
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 const NF64: usize = 6;
 // FIXME: double check in MPA impl
