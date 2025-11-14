@@ -43,6 +43,16 @@ pub struct PotentialRecipe {
     pub potential_id: PotentialNames,
 }
 
+impl Default for PotentialRecipe {
+    fn default() -> PotentialRecipe {
+        PotentialRecipe{
+            fparams: [0.0_f64; 6],
+            uparams: [0_usize; 6],
+            potential_id: PotentialNames::Kepler,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum PotentialEnum {
     MW2014Potential(MW2014Potential),

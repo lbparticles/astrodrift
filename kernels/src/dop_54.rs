@@ -183,24 +183,24 @@ pub unsafe fn dopr54_adaptive(
     let rk = compute_rk_stages(ti, dt_eff, x0, &pot);
 
     // // 5. combine 4th/5th order solutions
-    // let x5 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B);
-    // let x4 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B_HAT);
+    let x5 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B);
+    let x4 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B_HAT);
 
     // // 6. adapt step
-    // let (dt_new_mag, rk_err, accept) = adaptive_step_control(
-    //     x5, x4, x0,
-    //     atol, rtol, safety, fac_min,
-    //     fac_max, dt_min, dt_max, dti.abs()
-    // );
+    let (dt_new_mag, rk_err, accept) = adaptive_step_control(
+        x5, x4, x0,
+        atol, rtol, safety, fac_min,
+        fac_max, dt_min, dt_max, dti.abs()
+    );
 
-    // let dt_new = sign * dt_new_mag;
+    let dt_new = sign * dt_new_mag;
 
-    // // 7. finalize + write back
-    // finalize_step(
-    //     tid, n, steps_cap, state_out, time_out,
-    //     t, dt, w, done,
-    //     ti, dt_eff, dt_new, accept,
-    //     x5, x0, wi, t_end, sign,
-    //     done_i_u, not_done, save_dt
-    // );
+    // 7. finalize + write back
+    finalize_step(
+        tid, n, steps_cap, state_out, time_out,
+        t, dt, w, done,
+        ti, dt_eff, dt_new, accept,
+        x5, x0, wi, t_end, sign,
+        done_i_u, not_done, save_dt
+    );
 }

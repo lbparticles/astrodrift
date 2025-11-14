@@ -15,7 +15,6 @@ use translation::{
     PyPotentialRecipe, translate_recipe,
 };
 
-const NF64: usize = 6;
 // FIXME: double check in MPA impl
 const FAC_MIN: f64 = 0.33;
 const FAC_MAX: f64 = 6.0;
@@ -80,11 +79,22 @@ impl PyInterface {
     }
 }
 
+fn states_to_nested_vec(states: Vec<PyReadonlyArray2<'_, f64>>) -> Vec<Vec<Vec<f64>>> {
+    states
+        .into_iter()
+        .map(|arr| {
+            arr.as_array()
+                .outer_iter()
+                .map(|row| row.to_vec())
+                .collect::<Vec<Vec<f64>>>()
+        })
+        .collect()
+}
 #[pyfunction]
 fn simulation_ctx<'py>(
     _py: Python<'py>,
     py_recipes: Vec<Vec<PyPotentialRecipe>>,
-    states: Vec<PyReadonlyArray2<'py, f64>>,
+    initial_conditions: Vec<PyReadonlyArray2<'py, f64>>,
     config: PyInterface,
 ) -> PyResult<()>
 // PyResult<(
@@ -95,14 +105,7 @@ fn simulation_ctx<'py>(
 // )>
 {
     let _ctx = py_runtime_err(cust::quick_init())?;
-    let ic = states[0].as_array();
-    eprintln!("Inside");
-
-    let n: usize = ic.shape()[0];
-
-    if n == 0 {
-        return Err(pyo3::exceptions::PyValueError::new_err("N must be > 0"));
-    }
+    let states = states_to_nested_vec(initial_conditions);
 
     let time_direction: f64 = if config.reverse { -1.0 } else { 1.0 };
     let target_t_end = if config.reverse {
@@ -111,32 +114,19 @@ fn simulation_ctx<'py>(
         config.t_end
     };
 
-    let mut state_out = vec![0.0f64; config.steps_cap * n * NF64];
-
-    if let Some(slice) = ic.as_slice() {
-        for i in 0..n {
-            let src = &slice[i * NF64..i * NF64 + NF64];
-            let off0 = (0 * n + i) * NF64;
-            state_out[off0..off0 + NF64].copy_from_slice(src);
-        }
-    } else {
-        // slow generic copy
-        for i in 0..n {
-            let off0 = (0 * n + i) * NF64;
-            let row = ic.row(i);
-            state_out[off0..off0 + NF64].copy_from_slice(row.as_slice().unwrap());
-        }
-    }
     let mut goffset: usize = 0;
-    let lookuptable: Vec<f64> = Vec::new();
 
-    let recipes = py_recipes[0]
+    let stages = py_recipes
         .iter()
-        .map(|recipe| translate_recipe(recipe, &mut goffset))
+        .map(|stage| stage
+            .iter()
+            .map(|recipe| translate_recipe(recipe, &mut goffset))
+            .collect())
         .collect();
+
     let statics = StaticInterface {
+        n: 0,
         t_end: target_t_end,
-        n,
         steps_cap: config.steps_cap,
         atol: config.atol,
         rtol: config.rtol,
@@ -152,10 +142,9 @@ fn simulation_ctx<'py>(
     let (_results, _debug) = match config.engine {
         PyEngine::CPU => (0.0f64, 0.0f64),
         PyEngine::GPU => py_runtime_err(gpu_dispatch(
-            &mut state_out,
-            recipes,
+            states,
+            stages,
             statics,
-            lookuptable,
             config,
         ))?,
     };

@@ -2,6 +2,7 @@ use libm::pow;
 use statrs::function::gamma::{gamma, gamma_lr};
 use std::f64::consts::PI;
 
+#[allow(dead_code)]
 pub fn mass(r2: f64, alpha: f64, rc: f64) -> f64 {
     2.0 * PI
         * pow(rc, 3.0 - alpha)
@@ -9,6 +10,7 @@ pub fn mass(r2: f64, alpha: f64, rc: f64) -> f64 {
         * gamma_lr(1.5 - 0.5 * alpha, r2 / (rc * rc))
 }
 
+#[allow(dead_code)]
 pub fn build_sphericalcutoff_force_table(
     amp: f64,
     alpha: f64,
