@@ -1,7 +1,7 @@
 use cust_core::DeviceCopy;
 pub mod potentials;
 pub use crate::potentials::Potential;
-pub use crate::potentials::wrapper::{CustomOrigin};
+pub use crate::potentials::wrapper::CustomOrigin;
 pub use crate::potentials::{
     KeplerPotential, MNPotential, MW2014Potential, NFWPotential, PlummerPotential,
     SphericalcutoffPotential,
@@ -35,14 +35,15 @@ pub struct StaticInterface {
 //     // pub done: DevicePointer<u8>,
 // }
 
+#[repr(C)]
 #[derive(Clone, Copy, DeviceCopy)]
 pub struct PotentialRecipe {
     pub fparams: [f64; 6],
-    pub potential_id: PotentialNames,
     pub uparams: [usize; 6],
+    pub potential_id: PotentialNames,
 }
 
-// #[derive(Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum PotentialEnum {
     MW2014Potential(MW2014Potential),
     MNPotential(MNPotential),
@@ -54,16 +55,6 @@ pub enum PotentialEnum {
     CustomPlummer(CustomOrigin<PlummerPotential>),
 }
 
-// #[derive(Clone, Copy)]
-// pub enum PotentialEnum {
-//     MW2014Potential(MW2014Potential),
-//     MNPotential(MNPotential),
-//     NFWPotential(NFWPotential),
-//     PlummerPotential(PlummerPotential),
-//     SphericalcutoffPotential(SphericalcutoffPotential),
-//     KeplerPotential(KeplerPotential),
-//     CustomOriginsPotential(CustomOriginsPotential),
-// }
 impl Potential for PotentialEnum {
     fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         match self {
@@ -90,14 +81,15 @@ impl Potential for PotentialEnum {
     // }
 }
 
+#[repr(C)]
 #[derive(Clone, Copy, DeviceCopy)]
 pub enum PotentialNames {
-    Bovy14,
-    Plummer,
-    MN,
-    NFW,
-    SphCutoff,
-    Kepler,
-    CustomKepler,
-    CustomPlummer,
+    Kepler = 0,
+    Plummer = 1,
+    MN = 2,
+    NFW = 3,
+    SphCutoff = 4,
+    Bovy14 = 5,
+    CustomKepler = 6,
+    CustomPlummer = 7,
 }

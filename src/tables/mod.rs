@@ -17,7 +17,7 @@ pub fn build_sphericalcutoff_force_table(
     n: usize,
     r_min: f64,
     r_max: f64,
-) -> (Vec<f64>, f64, f64) {
+) -> Vec<f64> {
     let mut table = Vec::with_capacity(n);
     let dr = (r_max - r_min) / (n as f64 - 1.0);
     for i in 0..n {
@@ -27,7 +27,7 @@ pub fn build_sphericalcutoff_force_table(
         let ar = -m / r2;
         table.push(ar);
     }
-    (table, r_min, dr)
+    table
 }
 
 fn _build_sphericalcutoff_eval_table(
@@ -37,7 +37,7 @@ fn _build_sphericalcutoff_eval_table(
     n: usize,
     r_min: f64,
     r_max: f64,
-) -> (Vec<f64>, f64, f64) {
+) -> Vec<f64> {
     let mut table = Vec::with_capacity(n);
     let dr = (r_max - r_max) / (n as f64 - 1.0);
     for i in 0..n {
@@ -53,5 +53,5 @@ fn _build_sphericalcutoff_eval_table(
             - gamma(1.5 - alpha / 2.) * gamma_lr(1.5 - alpha / 2., ratio / r);
         table.push(out);
     }
-    (table, r_min, dr)
+    table
 }

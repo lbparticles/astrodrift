@@ -3,7 +3,7 @@ use crate::index_helpers::find_last_times_and_indices;
 use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
-use shared::{PotentialRecipe, StaticInterface};
+use shared::{PotentialNames, PotentialRecipe, StaticInterface};
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 
@@ -53,7 +53,6 @@ pub fn gpu_dispatch(
     let dev_done = py_runtime_err(DeviceBuffer::<u8>::from_slice(&done_host))?;
     let dev_err = py_runtime_err(DeviceBuffer::<f64>::from_slice(&err_host))?;
     let dev_time_out = py_runtime_err(DeviceBuffer::<f64>::zeroed(config.steps_cap * statics.n))?;
-    let dev_recipes = py_runtime_err(DeviceBuffer::<PotentialRecipe>::from_slice(&recipes))?;
 
     // we launch until all threads are done (or we hit capacity)
     let (grid, block) = grid_size(n, BLOCK_SIZE);
@@ -64,19 +63,74 @@ pub fn gpu_dispatch(
     let bulge_alpha = 1.8;
     let bulge_r1 = 1.0;
     let bulge_rc = 1.9 / 8.0;
-
-    let (ar_table_host, _r_min, _dr) = build_sphericalcutoff_force_table(
-        bulge_amp,
-        bulge_alpha,
-        bulge_r1,
-        bulge_rc,
-        N_AR,
-        R_MIN,
-        R_MAX,
-    );
-    let dev_ar_table = py_runtime_err(DeviceBuffer::from_slice(&ar_table_host))?;
+    let supertable: Vec<f64> = Vec::new();
+    // let supertable = build_sphericalcutoff_force_table(
+    //     bulge_amp,
+    //     bulge_alpha,
+    //     bulge_r1,
+    //     bulge_rc,
+    //     recipes[0].uparams[1],
+    //     recipes[0].fparams[0],
+    //     recipes[0].fparams[0]+(recipes[0].uparams[1] as f64)*recipes[0].fparams[1],
+    // );
+    let dev_supertable = py_runtime_err(DeviceBuffer::from_slice(&supertable))?;
     let _gate_out = vec![0_usize; n];
     let _dev_dt_out = vec![0_f64; n];
+    let mut first_ten: [PotentialRecipe; 10] = [
+        PotentialRecipe {
+            fparams: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            potential_id: PotentialNames::Kepler,
+            uparams: [0, 0, 0, 0, 0, 0],
+        },
+        PotentialRecipe {
+            fparams: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            potential_id: PotentialNames::Kepler,
+            uparams: [0, 0, 0, 0, 0, 0],
+        },
+        PotentialRecipe {
+            fparams: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            potential_id: PotentialNames::Kepler,
+            uparams: [0, 0, 0, 0, 0, 0],
+        },
+        PotentialRecipe {
+            fparams: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            potential_id: PotentialNames::Kepler,
+            uparams: [0, 0, 0, 0, 0, 0],
+        },
+        PotentialRecipe {
+            fparams: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            potential_id: PotentialNames::Kepler,
+            uparams: [0, 0, 0, 0, 0, 0],
+        },
+        PotentialRecipe {
+            fparams: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            potential_id: PotentialNames::Kepler,
+            uparams: [0, 0, 0, 0, 0, 0],
+        },
+        PotentialRecipe {
+            fparams: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            potential_id: PotentialNames::Kepler,
+            uparams: [0, 0, 0, 0, 0, 0],
+        },
+        PotentialRecipe {
+            fparams: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            potential_id: PotentialNames::Kepler,
+            uparams: [0, 0, 0, 0, 0, 0],
+        },
+        PotentialRecipe {
+            fparams: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            potential_id: PotentialNames::Kepler,
+            uparams: [0, 0, 0, 0, 0, 0],
+        },
+        PotentialRecipe {
+            fparams: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            potential_id: PotentialNames::Kepler,
+            uparams: [0, 0, 0, 0, 0, 0],
+        },
+    ];
+    let count = recipes.len().min(10);
+    first_ten[..count].copy_from_slice(&recipes[..count]);
+    // eprintln!("{:?} {:?}",first_ten[0].fparams,first_ten[0].uparams);
 
     loop {
         unsafe {
@@ -91,8 +145,8 @@ pub fn gpu_dispatch(
                     dev_done.as_device_ptr(),
                     dev_gate.as_device_ptr(),
                     statics,
-                    dev_recipes.as_device_ptr(),
-                    dev_ar_table.as_device_ptr(),
+                    first_ten,
+                    dev_supertable.as_device_ptr(),
                 )
             ))?;
         }

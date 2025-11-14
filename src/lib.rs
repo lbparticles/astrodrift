@@ -96,6 +96,7 @@ fn simulation_ctx<'py>(
 {
     let _ctx = py_runtime_err(cust::quick_init())?;
     let ic = states[0].as_array();
+    eprintln!("Inside");
 
     let n: usize = ic.shape()[0];
 
@@ -128,7 +129,11 @@ fn simulation_ctx<'py>(
     }
     let mut goffset: usize = 0;
     let lookuptable: Vec<f64> = Vec::new();
-    let recipes = vec![translate_recipe(py_recipes[0][0].clone(), &mut goffset); 1];
+
+    let recipes = py_recipes[0]
+        .iter()
+        .map(|recipe| translate_recipe(recipe, &mut goffset))
+        .collect();
     let statics = StaticInterface {
         t_end: target_t_end,
         n,

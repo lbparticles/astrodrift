@@ -5,7 +5,7 @@ use crate::handshake::{load_state,store_state};
 use cuda_std::{kernel, thread};
 use libm::{floor, pow, sqrt};
 use crate::recipes::consume_recipe;
-use shared::{PotentialRecipe,PotentialNames,StaticInterface};
+use shared::{PotentialRecipe,PotentialEnum,PotentialNames,StaticInterface,KeplerPotential};
 
 #[inline(always)]
 unsafe fn compute_effective_dt(
@@ -130,7 +130,7 @@ pub unsafe fn dopr54_adaptive(
     gate: *mut usize,
     statics : StaticInterface,
     // book: Bookkeeping,
-    recipe: PotentialRecipe,
+    recipe: [PotentialRecipe;10],
     supertable: *mut f64,
     // recipes: [PotentialRecipe;6],
 ) {
@@ -160,29 +160,47 @@ pub unsafe fn dopr54_adaptive(
     let x0 = load_state(state_out, prev_offset);
 
     // 4. compute RK stages
-    let potential = consume_recipe(recipe,supertable);
+    let mut potential:[PotentialEnum;10] = [PotentialEnum::KeplerPotential(KeplerPotential{amp:0.0});10];
+    // potential[0] = PotentialEnum::KeplerPotential(KeplerPotential{amp:recipe[0].fparams[0]});
+    // potential[0] = PotentialEnum::KeplerPotential(KeplerPotential{amp:recipe[0].fparams[0]});
+    // let r = recipe[0];
+    // for i in 0..10{
+    //     potential[0] = PotentialEnum::KeplerPotential(KeplerPotential{amp:recipe[i].fparams[0]});
+    // }
+    // let lutptr: *const f64 = core::ptr::null();
+    // potential[0]= csc(recipe[0],lutptr);
+    // potential[0]= kepler_recipe(recipe[0]);
+    #[unsafe(no_mangle)]
+    #[unsafe(link_section = ".const")]
+    pub static LUT_BOVY14: [f64; 1024] = [0.0; 1024]; // or whatever length  
+	let lutptr: *const f64 = &LUT_BOVY14 as *const f64;
+
+    for (i,r) in recipe.into_iter().enumerate(){
+        potential[i] = consume_recipe(r,lutptr);
+    }
+    let pot = potential[0];
     // let potential = MW2014Potential::new(ar_table, r_min, dr, n_ar);
-    let rk = compute_rk_stages(ti, dt_eff, x0, &potential);
+    let rk = compute_rk_stages(ti, dt_eff, x0, &pot);
 
-    // 5. combine 4th/5th order solutions
-    let x5 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B);
-    let x4 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B_HAT);
+    // // 5. combine 4th/5th order solutions
+    // let x5 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B);
+    // let x4 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B_HAT);
 
-    // 6. adapt step
-    let (dt_new_mag, rk_err, accept) = adaptive_step_control(
-        x5, x4, x0,
-        atol, rtol, safety, fac_min,
-        fac_max, dt_min, dt_max, dti.abs()
-    );
+    // // 6. adapt step
+    // let (dt_new_mag, rk_err, accept) = adaptive_step_control(
+    //     x5, x4, x0,
+    //     atol, rtol, safety, fac_min,
+    //     fac_max, dt_min, dt_max, dti.abs()
+    // );
 
-    let dt_new = sign * dt_new_mag;
+    // let dt_new = sign * dt_new_mag;
 
-    // 7. finalize + write back
-    finalize_step(
-        tid, n, steps_cap, state_out, time_out,
-        t, dt, w, done,
-        ti, dt_eff, dt_new, accept,
-        x5, x0, wi, t_end, sign,
-        done_i_u, not_done, save_dt
-    );
+    // // 7. finalize + write back
+    // finalize_step(
+    //     tid, n, steps_cap, state_out, time_out,
+    //     t, dt, w, done,
+    //     ti, dt_eff, dt_new, accept,
+    //     x5, x0, wi, t_end, sign,
+    //     done_i_u, not_done, save_dt
+    // );
 }

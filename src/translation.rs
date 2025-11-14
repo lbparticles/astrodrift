@@ -64,7 +64,7 @@ impl From<PyPotentialNames> for PotentialNames {
 // --- Structs as data containers ---
 
 #[pyclass(name = "Recipe")]
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct PyPotentialRecipe {
     #[pyo3(get, set)]
     pub fparams: [f64; 6],
@@ -100,7 +100,7 @@ impl PyPotentialRecipe {
 // uparams: basePotential_u1, empty, secondWrapper_offset, secondWrapper_length,
 //          firstWrapper_offset, firstWrapper_length
 //
-pub fn translate_recipe(r: PyPotentialRecipe, goffset: &mut usize) -> PotentialRecipe {
+pub fn translate_recipe(r: &PyPotentialRecipe, goffset: &mut usize) -> PotentialRecipe {
     let pot = r.potential_id.into();
     match pot {
         PotentialNames::Bovy14
@@ -125,10 +125,10 @@ pub fn translate_recipe(r: PyPotentialRecipe, goffset: &mut usize) -> PotentialR
         | PotentialNames::Kepler
         | PotentialNames::MN
         | PotentialNames::NFW => PotentialRecipe {
-        fparams: r.fparams,
-        potential_id: pot,
-        uparams: r.uparams,
-        }
+            fparams: r.fparams,
+            potential_id: pot,
+            uparams: r.uparams,
+        },
     }
 }
 

@@ -220,11 +220,18 @@ class SimulationFrame:
 
         state, time, app_ts, indices = simulation_ctx(
             [
-                Recipe(
-                    fparams=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    potential_id=Potential.Kepler,
-                    uparams=[0, 0, 0, 0, 0, 0],
-                )
+                [
+                    Recipe(
+                        fparams=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        potential_id=Potential.Kepler,
+                        uparams=[0, 0, 0, 0, 0, 0],
+                    )
+                    # Recipe(
+                    #     fparams=[3.0, 32.0, 0.0, 0.0, 0.0, 0.0],
+                    #     potential_id=Potential.Bovy14,
+                    #     uparams=[10000, 0, 0, 0, 0, 0],
+                    # )
+                ]
             ],
             [state0],
             config,

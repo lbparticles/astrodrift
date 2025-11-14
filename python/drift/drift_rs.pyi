@@ -5,7 +5,6 @@ from typing import Sequence, Tuple
 import numpy as np
 from numpy.typing import NDArray
 
-
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -18,13 +17,13 @@ class Potential(Enum):
     integrator. They select which analytic potential is used for the force
     calculation.
     """
+
     Bovy14: int
     Plummer: int
     MN: int
     NFW: int
     SphCutoff: int
     Kepler: int
-
 
 class Engine(Enum):
     """
@@ -33,9 +32,9 @@ class Engine(Enum):
     - GPU: run on CUDA GPU (if available)
     - CPU: run on CPU (TODO: when implemented)
     """
+
     GPU: int
     CPU: int
-
 
 class Method(Enum):
     """
@@ -46,11 +45,11 @@ class Method(Enum):
     - DOP853: Higher-order Dormand–Prince method (not yet wired in)
     - Leapfrog: Symplectic leapfrog (not yet wired in)
     """
+
     Newton: int
     RK54: int
     DOP853: int
     Leapfrog: int
-
 
 class Optimisation(Enum):
     """
@@ -60,10 +59,10 @@ class Optimisation(Enum):
     - Spline: enable spline-based interpolation (TODO)
     - PredictiveLUT: enable predictive lookup-table use (TODO)
     """
+
     Recommended: int
     Spline: int
     PredictiveLUT: int
-
 
 class Debug(Enum):
     """
@@ -74,11 +73,11 @@ class Debug(Enum):
     - WARN: warnings only
     - ERROR: only error messages
     """
+
     ALL: int
     INFO: int
     WARN: int
     ERROR: int
-
 
 class Interpolation(Enum):
     """
@@ -88,10 +87,10 @@ class Interpolation(Enum):
     - Cubic
     - Quintic
     """
+
     Linear: int
     Cubic: int
     Quintic: int
-
 
 # ---------------------------------------------------------------------------
 # Data containers
@@ -122,7 +121,6 @@ class Recipe:
         uparams: Sequence[int],
     ) -> None: ...
     def __repr__(self) -> str: ...
-
 
 class Interface:
     """
@@ -174,7 +172,6 @@ class Interface:
     ) -> None: ...
     # internal fields are not exposed as Python properties in the Rust code,
     # so we do not declare attributes here to avoid misleading type checkers.
-
 
 # ---------------------------------------------------------------------------
 # Top-level functions
