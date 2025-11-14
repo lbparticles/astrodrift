@@ -13,6 +13,7 @@ pub use plummer::PlummerPotential;
 pub use bovy14::MW2014Potential;
 pub use kepler::KeplerPotential;
 pub use sphwcutoff::SphericalcutoffPotential;
+pub use wrapper::CustomOrigin;
 
 pub trait Potential {
     // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64;

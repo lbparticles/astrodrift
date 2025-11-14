@@ -1,10 +1,10 @@
 use shared::{PotentialRecipe,PotentialNames,PotentialEnum};
 use bovy14::bovy14_recipe;
 use mn::mn_recipe;
-use plummer::plummer_recipe;
+use plummer::{custom_plummer_recipe,plummer_recipe};
 use nfw::nfw_recipe;
 use sphwcutoff::sphwcutoff_recipe;
-use kepler::kepler_recipe;
+use kepler::{custom_kepler_recipe,kepler_recipe};
 
 pub mod bovy14;
 pub mod mn;
@@ -21,5 +21,7 @@ pub unsafe fn consume_recipe(recipe:PotentialRecipe,lutptr: *const f64)-> Potent
         PotentialNames::MN=>mn_recipe(recipe),
         PotentialNames::NFW=>nfw_recipe(recipe),
         PotentialNames::SphCutoff=>sphwcutoff_recipe(recipe,lutptr),
+        PotentialNames::CustomKepler=>custom_kepler_recipe(recipe,lutptr),
+        PotentialNames::CustomPlummer=>custom_plummer_recipe(recipe,lutptr),
     }
 }

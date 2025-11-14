@@ -1,9 +1,9 @@
+use crate::PyInterface;
+use crate::index_helpers::find_last_times_and_indices;
+use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
 use shared::{PotentialRecipe, StaticInterface};
-use crate::tables::build_sphericalcutoff_force_table;
-use crate::PyInterface;
-use crate::index_helpers::find_last_times_and_indices;
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 
@@ -21,7 +21,13 @@ fn grid_size(n: usize, block: u32) -> (u32, u32) {
     (blocks, block)
 }
 
-pub fn gpu_dispatch(state_out:&mut Vec<f64>,recipes:Vec<PotentialRecipe>,statics:StaticInterface,_lut:Vec<f64>,config:PyInterface )->PyResult<(f64,f64)>{
+pub fn gpu_dispatch(
+    state_out: &mut Vec<f64>,
+    recipes: Vec<PotentialRecipe>,
+    statics: StaticInterface,
+    _lut: Vec<f64>,
+    config: PyInterface,
+) -> PyResult<(f64, f64)> {
     let n = statics.n;
     let ts: Vec<f64> = (0..config.poll_number)
         .map(|i| config.t_end * (i as f64) / (config.poll_number as f64 - 1.))
@@ -37,7 +43,7 @@ pub fn gpu_dispatch(state_out:&mut Vec<f64>,recipes:Vec<PotentialRecipe>,statics
     let mut w_host = vec![0u32; statics.n];
     let done_host = vec![0u8; statics.n];
     let mut err_host = vec![0.0f64; statics.n];
-    let gate_index = vec![0_usize;statics.n];
+    let gate_index = vec![0_usize; statics.n];
     // device buffers
     let dev_gate = py_runtime_err(DeviceBuffer::<usize>::from_slice(&gate_index))?;
     let dev_state_out = py_runtime_err(DeviceBuffer::<f64>::from_slice(&state_out))?;
@@ -59,11 +65,18 @@ pub fn gpu_dispatch(state_out:&mut Vec<f64>,recipes:Vec<PotentialRecipe>,statics
     let bulge_r1 = 1.0;
     let bulge_rc = 1.9 / 8.0;
 
-    let (ar_table_host, _r_min, _dr) =
-        build_sphericalcutoff_force_table(bulge_amp, bulge_alpha, bulge_r1, bulge_rc,N_AR,R_MIN,R_MAX);
+    let (ar_table_host, _r_min, _dr) = build_sphericalcutoff_force_table(
+        bulge_amp,
+        bulge_alpha,
+        bulge_r1,
+        bulge_rc,
+        N_AR,
+        R_MIN,
+        R_MAX,
+    );
     let dev_ar_table = py_runtime_err(DeviceBuffer::from_slice(&ar_table_host))?;
-    let _gate_out = vec![0_usize;n];
-    let _dev_dt_out = vec![0_f64;n];
+    let _gate_out = vec![0_usize; n];
+    let _dev_dt_out = vec![0_f64; n];
 
     loop {
         unsafe {
@@ -116,7 +129,7 @@ pub fn gpu_dispatch(state_out:&mut Vec<f64>,recipes:Vec<PotentialRecipe>,statics
     py_runtime_err(dev_dt.copy_to(&mut dt_host))?;
     py_runtime_err(dev_w.copy_to(&mut w_host))?;
     py_runtime_err(dev_err.copy_to(&mut err_host))?;
-    
+
     let w0 = w_host[0] as usize;
     if w0 >= config.steps_cap - 1 {
         eprintln!(
@@ -128,13 +141,7 @@ pub fn gpu_dispatch(state_out:&mut Vec<f64>,recipes:Vec<PotentialRecipe>,statics
         .iter()
         .map(|&w| (w as usize + 1).min(config.steps_cap)) // accepted steps + initial state
         .collect();
-    let (_app_ts0,_indices )= find_last_times_and_indices(
-        &time_out,
-        &ts,
-        statics.n,
-        config.steps_cap,
-        &filled_lens
-    );
-    Ok((0.0,0.0))
+    let (_app_ts0, _indices) =
+        find_last_times_and_indices(&time_out, &ts, statics.n, config.steps_cap, &filled_lens);
+    Ok((0.0, 0.0))
 }
-

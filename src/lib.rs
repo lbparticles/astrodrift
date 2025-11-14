@@ -1,13 +1,13 @@
 // use libm::pow;
-use numpy::{PyReadonlyArray2};
+use numpy::PyReadonlyArray2;
 use pyo3::prelude::*;
-use shared::{StaticInterface};
+use shared::StaticInterface;
 // use std::f64::consts::PI;
 
+mod dispatch;
 mod index_helpers;
 mod tables;
 mod translation;
-mod dispatch;
 use crate::dispatch::gpu_dispatch;
 
 use translation::{
@@ -92,11 +92,10 @@ fn simulation_ctx<'py>(
 //     Bound<'py, PyArray2<f64>>,
 //     Bound<'py, PyArray2<f64>>,
 //     Bound<'py, PyArray2<isize>>,
-// )> 
-    {
+// )>
+{
     let _ctx = py_runtime_err(cust::quick_init())?;
     let ic = states[0].as_array();
-
 
     let n: usize = ic.shape()[0];
 
@@ -127,9 +126,9 @@ fn simulation_ctx<'py>(
             state_out[off0..off0 + NF64].copy_from_slice(row.as_slice().unwrap());
         }
     }
-    let mut goffset:usize = 0;
+    let mut goffset: usize = 0;
     let lookuptable: Vec<f64> = Vec::new();
-    let recipes = vec![translate_recipe(py_recipes[0][0].clone(),&mut goffset);1];
+    let recipes = vec![translate_recipe(py_recipes[0][0].clone(), &mut goffset); 1];
     let statics = StaticInterface {
         t_end: target_t_end,
         n,
@@ -146,9 +145,14 @@ fn simulation_ctx<'py>(
     };
 
     let (_results, _debug) = match config.engine {
-        PyEngine::CPU => (0.0f64,0.0f64),
+        PyEngine::CPU => (0.0f64, 0.0f64),
         PyEngine::GPU => py_runtime_err(gpu_dispatch(
-            &mut state_out, recipes, statics,lookuptable, config))?,
+            &mut state_out,
+            recipes,
+            statics,
+            lookuptable,
+            config,
+        ))?,
     };
 
     // let app_ts = PyArray2::from_vec2(py, &debug.app_ts0)?;

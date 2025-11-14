@@ -1,6 +1,6 @@
+use libm::pow;
 use statrs::function::gamma::{gamma, gamma_lr};
 use std::f64::consts::PI;
-use libm::pow;
 
 pub fn mass(r2: f64, alpha: f64, rc: f64) -> f64 {
     2.0 * PI
@@ -30,7 +30,14 @@ pub fn build_sphericalcutoff_force_table(
     (table, r_min, dr)
 }
 
-fn _build_sphericalcutoff_eval_table(amp: f64, alpha: f64, rc: f64,n:usize,r_min:f64,r_max:f64) -> (Vec<f64>, f64, f64) {
+fn _build_sphericalcutoff_eval_table(
+    amp: f64,
+    alpha: f64,
+    rc: f64,
+    n: usize,
+    r_min: f64,
+    r_max: f64,
+) -> (Vec<f64>, f64, f64) {
     let mut table = Vec::with_capacity(n);
     let dr = (r_max - r_max) / (n as f64 - 1.0);
     for i in 0..n {

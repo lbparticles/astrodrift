@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use shared::{LookUpTable, PotentialNames, PotentialRecipe};
+use shared::{PotentialNames, PotentialRecipe};
 use std::fmt;
 
 #[pyclass(name = "Potential")]
@@ -13,8 +13,6 @@ pub enum PyPotentialNames {
     Kepler,
     CustomKepler,
     CustomPlummer,
-    VariableCustomPlummer,
-    VariableCustomKepler,
 }
 
 impl fmt::Display for PyPotentialNames {
@@ -28,8 +26,6 @@ impl fmt::Display for PyPotentialNames {
             PyPotentialNames::Kepler => "Kepler",
             PyPotentialNames::CustomKepler => "CustomKepler",
             PyPotentialNames::CustomPlummer => "CustomPlummer",
-            PyPotentialNames::VariableCustomKepler => "VariableCustomKepler",
-            PyPotentialNames::VariableCustomPlummer=> "VariableCustomPlummer",
         };
         write!(f, "{s}")
     }
@@ -44,10 +40,8 @@ impl From<PotentialNames> for PyPotentialNames {
             PotentialNames::NFW => Self::NFW,
             PotentialNames::SphCutoff => Self::SphCutoff,
             PotentialNames::Kepler => Self::Kepler,
-            PotentialNames::CustomKepler => Self::CustomKepler ,
-            PotentialNames::CustomPlummer => Self::CustomPlummer ,
-            PotentialNames::VariableCustomKepler => Self::VariableCustomKepler ,
-            PotentialNames::VariableCustomPlummer=> Self::VariableCustomPlummer,
+            PotentialNames::CustomKepler => Self::CustomKepler,
+            PotentialNames::CustomPlummer => Self::CustomPlummer,
         }
     }
 }
@@ -61,10 +55,8 @@ impl From<PyPotentialNames> for PotentialNames {
             PyPotentialNames::NFW => Self::NFW,
             PyPotentialNames::SphCutoff => Self::SphCutoff,
             PyPotentialNames::Kepler => Self::Kepler,
-            PyPotentialNames::CustomKepler => Self::CustomKepler ,
-            PyPotentialNames::CustomPlummer => Self::CustomPlummer ,
-            PyPotentialNames::VariableCustomKepler => Self::VariableCustomKepler ,
-            PyPotentialNames::VariableCustomPlummer=> Self::VariableCustomPlummer,
+            PyPotentialNames::CustomKepler => Self::CustomKepler,
+            PyPotentialNames::CustomPlummer => Self::CustomPlummer,
         }
     }
 }
@@ -101,32 +93,42 @@ impl PyPotentialRecipe {
     }
 }
 
+//
+// potential_id: PotentialEnum
+// fparams: basePotential_f1, basePotential_f2, basePotential_f3,
+//          empty, empty, empty
+// uparams: basePotential_u1, empty, secondWrapper_offset, secondWrapper_length,
+//          firstWrapper_offset, firstWrapper_length
+//
 pub fn translate_recipe(r: PyPotentialRecipe, goffset: &mut usize) -> PotentialRecipe {
     let pot = r.potential_id.into();
-    let lut_info = match pot {
-        PotentialNames::Bovy14 
+    match pot {
+        PotentialNames::Bovy14
         | PotentialNames::SphCutoff
         | PotentialNames::CustomKepler
-        | PotentialNames::CustomPlummer
-        | PotentialNames::VariableCustomKepler
-        | PotentialNames::VariableCustomPlummer
-          => {
+        | PotentialNames::CustomPlummer => {
             *goffset += r.uparams[5];
-            Some(LookUpTable {
-                offset: *goffset - r.uparams[5],
-                length: r.uparams[5],
-            })
+            PotentialRecipe {
+                fparams: r.fparams,
+                potential_id: pot,
+                uparams: [
+                    r.uparams[0],
+                    r.uparams[0],
+                    r.uparams[0],
+                    r.uparams[0],
+                    *goffset - r.uparams[5],
+                    r.uparams[5],
+                ],
+            }
         }
         PotentialNames::Plummer
         | PotentialNames::Kepler
         | PotentialNames::MN
-        | PotentialNames::NFW => None,
-    };
-    PotentialRecipe {
+        | PotentialNames::NFW => PotentialRecipe {
         fparams: r.fparams,
         potential_id: pot,
         uparams: r.uparams,
-        lut_info: lut_info,
+        }
     }
 }
 
@@ -168,4 +170,3 @@ pub enum PyInterpolation {
     Cubic,
     Quintic,
 }
-

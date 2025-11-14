@@ -5,7 +5,7 @@ use crate::handshake::{load_state,store_state};
 use cuda_std::{kernel, thread};
 use libm::{floor, pow, sqrt};
 use crate::recipes::consume_recipe;
-use shared::{PotentialRecipe,PotentialNames,LookUpTable,StaticInterface};
+use shared::{PotentialRecipe,PotentialNames,StaticInterface};
 
 #[inline(always)]
 unsafe fn compute_effective_dt(

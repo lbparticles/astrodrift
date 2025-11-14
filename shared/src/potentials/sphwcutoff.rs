@@ -10,7 +10,7 @@ pub struct SphericalcutoffPotential {
 }
 impl SphericalcutoffPotential {
     #[inline(always)]
-    fn radial_force_table(&self,r:f64)->f64{
+    fn radial_force_table(&self, r: f64) -> f64 {
         let t = (r - self.r_min) / self.dr;
         let i = floor(t) as usize;
         let f = t - i as f64;
@@ -19,7 +19,6 @@ impl SphericalcutoffPotential {
         let i0 = i.min((self.n_ar - 2) as usize);
         let (ar0, ar1) = unsafe { (*self.ar_table.add(i0), *self.ar_table.add(i0 + 1)) };
         (1.0 - f) * ar0 + f * ar1
-        
     }
 }
 impl Potential for SphericalcutoffPotential {
