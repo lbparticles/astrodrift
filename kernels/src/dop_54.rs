@@ -141,66 +141,52 @@ pub unsafe fn dopr54_adaptive(
         Some(tid) => tid,
         None => return,
     };
+    while *done.add(tid) == 0 {
+        // 1. load current state
+        let done_i_u = *done.add(tid) as u32;
+        let not_done = 1.0 - (done_i_u as f64);
+        let mut ti = *t.add(tid);
+        let mut dti = *dt.add(tid);
+        let mut wi = *w.add(tid) as usize;
+        let sign = time_direction;
 
+        // 2. compute effective dt
+        let (save_dt, dt_eff) = compute_effective_dt(tid,ti, dti, t_end, sign, dt_min, dt_max,poll_number,gate);
 
+        // 3. load state
+        let prev_offset = ((wi * n) + tid) * 6;
+        let x0 = load_state(state_out, prev_offset);
 
-    // 1. load current state
-    let done_i_u = *done.add(tid) as u32;
-    let not_done = 1.0 - (done_i_u as f64);
-    let mut ti = *t.add(tid);
-    let mut dti = *dt.add(tid);
-    let mut wi = *w.add(tid) as usize;
-    let sign = time_direction;
+        // 4. compute RK stages
+        let mut potential:[PotentialEnum;10] = [PotentialEnum::KeplerPotential(KeplerPotential{amp:0.0});10];
 
-    // 2. compute effective dt
-    let (save_dt, dt_eff) = compute_effective_dt(tid,ti, dti, t_end, sign, dt_min, dt_max,poll_number,gate);
+        for (i,r) in recipe.into_iter().enumerate(){
+            potential[i] = consume_recipe(r,supertable);
+        }
+        let pot = potential[0];
+        // let potential = MW2014Potential::new(ar_table, r_min, dr, n_ar);
+        let rk = compute_rk_stages(ti, dt_eff, x0, &pot);
 
-    // 3. load state
-    let prev_offset = ((wi * n) + tid) * 6;
-    let x0 = load_state(state_out, prev_offset);
+        // // 5. combine 4th/5th order solutions
+        let x5 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B);
+        let x4 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B_HAT);
 
-    // 4. compute RK stages
-    let mut potential:[PotentialEnum;10] = [PotentialEnum::KeplerPotential(KeplerPotential{amp:0.0});10];
-    // potential[0] = PotentialEnum::KeplerPotential(KeplerPotential{amp:recipe[0].fparams[0]});
-    // potential[0] = PotentialEnum::KeplerPotential(KeplerPotential{amp:recipe[0].fparams[0]});
-    // let r = recipe[0];
-    // for i in 0..10{
-    //     potential[0] = PotentialEnum::KeplerPotential(KeplerPotential{amp:recipe[i].fparams[0]});
-    // }
-    // let lutptr: *const f64 = core::ptr::null();
-    // potential[0]= csc(recipe[0],lutptr);
-    // potential[0]= kepler_recipe(recipe[0]);
-    #[unsafe(no_mangle)]
-    #[unsafe(link_section = ".const")]
-    pub static LUT_BOVY14: [f64; 1024] = [0.0; 1024]; // or whatever length  
-	let lutptr: *const f64 = &LUT_BOVY14 as *const f64;
+        // // 6. adapt step
+        let (dt_new_mag, rk_err, accept) = adaptive_step_control(
+            x5, x4, x0,
+            atol, rtol, safety, fac_min,
+            fac_max, dt_min, dt_max, dti.abs()
+        );
 
-    for (i,r) in recipe.into_iter().enumerate(){
-        potential[i] = consume_recipe(r,lutptr);
+        let dt_new = sign * dt_new_mag;
+
+        // 7. finalize + write back
+        finalize_step(
+            tid, n, steps_cap, state_out, time_out,
+            t, dt, w, done,
+            ti, dt_eff, dt_new, accept,
+            x5, x0, wi, t_end, sign,
+            done_i_u, not_done, save_dt
+        );
     }
-    let pot = potential[0];
-    // let potential = MW2014Potential::new(ar_table, r_min, dr, n_ar);
-    let rk = compute_rk_stages(ti, dt_eff, x0, &pot);
-
-    // // 5. combine 4th/5th order solutions
-    let x5 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B);
-    let x4 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B_HAT);
-
-    // // 6. adapt step
-    let (dt_new_mag, rk_err, accept) = adaptive_step_control(
-        x5, x4, x0,
-        atol, rtol, safety, fac_min,
-        fac_max, dt_min, dt_max, dti.abs()
-    );
-
-    let dt_new = sign * dt_new_mag;
-
-    // 7. finalize + write back
-    finalize_step(
-        tid, n, steps_cap, state_out, time_out,
-        t, dt, w, done,
-        ti, dt_eff, dt_new, accept,
-        x5, x0, wi, t_end, sign,
-        done_i_u, not_done, save_dt
-    );
 }

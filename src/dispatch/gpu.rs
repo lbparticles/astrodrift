@@ -70,48 +70,28 @@ pub fn gpu_dispatch(
         let count = stage.len().min(10);
         let dev_supertable = py_runtime_err(DeviceBuffer::from_slice(&supertable))?;
         clamp_recipes[..count].copy_from_slice(&stage[..count]);
-        loop {
-            unsafe {
-                py_runtime_err(launch!(
-                    kernel<<<grid, block, 0, stream>>>(
-                        dev_state_out.as_device_ptr(),
-                        dev_time_out.as_device_ptr(),
-                        dev_t.as_device_ptr(),
-                        dev_err.as_device_ptr(),
-                        dev_dt.as_device_ptr(),
-                        dev_w.as_device_ptr(),
-                        dev_done.as_device_ptr(),
-                        dev_gate.as_device_ptr(),
-                        StaticInterface{n,..statics},
-                        clamp_recipes,
-                        dev_supertable.as_device_ptr(),
-                    )
-                ))?;
-            }
-
-            py_runtime_err(stream.synchronize())?;
-            iter += 1;
-
-            let any_active = done_host.iter().any(|&d| d == 0);
-            if !any_active {
-                break;
-            }
-            if iter >= max_outer_iters {
-                // eprintln!(
-                //     "Reached max iterations ({}) before all particles finished; stopping.",
-                //     max_outer_iters
-                // );
-                break;
-            }
+        unsafe {
+            py_runtime_err(launch!(
+                kernel<<<grid, block, 0, stream>>>(
+                    dev_state_out.as_device_ptr(),
+                    dev_time_out.as_device_ptr(),
+                    dev_t.as_device_ptr(),
+                    dev_err.as_device_ptr(),
+                    dev_dt.as_device_ptr(),
+                    dev_w.as_device_ptr(),
+                    dev_done.as_device_ptr(),
+                    dev_gate.as_device_ptr(),
+                    StaticInterface{n,..statics},
+                    clamp_recipes,
+                    dev_supertable.as_device_ptr(),
+                )
+            ))?;
         }
+
+        py_runtime_err(stream.synchronize())?;
+        
         let _gate_out = vec![0_usize; n];
         let _dev_dt_out = vec![0_f64; n];
-        let filled_lens: Vec<usize> = w_host
-            .iter()
-            .map(|&w| (w as usize + 1).min(config.steps_cap)) // accepted steps + initial state
-            .collect();
-        let (_app_ts0, indices) =
-            find_last_times_and_indices(&time_out, &ts, n, config.steps_cap, &filled_lens);
         // construct_coeff_table(indices,state_out);
         py_runtime_err(dev_state_out.copy_to(&mut state_out))?;
         py_runtime_err(dev_time_out.copy_to(&mut time_out))?;
@@ -119,6 +99,14 @@ pub fn gpu_dispatch(
         py_runtime_err(dev_dt.copy_to(&mut dt_host))?;
         py_runtime_err(dev_w.copy_to(&mut w_host))?;
         py_runtime_err(dev_err.copy_to(&mut err_host))?;
+        // println!("{:?}",time_out);
+        // println!("{:?}",state_out);
+        let filled_lens: Vec<usize> = w_host
+            .iter()
+            .map(|&w| (w as usize + 1).min(config.steps_cap)) // accepted steps + initial state
+            .collect();
+        let (_app_ts0, indices) =
+            find_last_times_and_indices(&time_out, &ts, n, config.steps_cap, &filled_lens);
         let w0 = w_host[0] as usize;
         if w0 >= config.steps_cap - 1 {
             eprintln!(
