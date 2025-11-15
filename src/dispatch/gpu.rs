@@ -1,9 +1,9 @@
-use crate::PyInterface;
+use crate::python::PyConfig;
 use crate::index_helpers::find_last_times_and_indices;
 // use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
-use shared::{PotentialRecipe, StaticInterface};
+use shared::{PotentialRecipe, Config};
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 
@@ -22,8 +22,8 @@ fn grid_size(n: usize, block: u32) -> (u32, u32) {
 pub fn gpu_dispatch(
     states: Vec<Vec<Vec<f64>>>,
     stages: Vec<Vec<PotentialRecipe>>,
-    statics: StaticInterface,
-    config: PyInterface,
+    config: Config,
+    py_config: PyConfig,
 ) -> PyResult<(f64, f64)> {
 
     let ts: Vec<f64> = (0..config.poll_number)
@@ -33,21 +33,18 @@ pub fn gpu_dispatch(
     let stream = py_runtime_err(Stream::new(StreamFlags::DEFAULT, None))?;
     let kernel = py_runtime_err(module.get_function("dopr54_adaptive"))?;
 
-    let mut iter = 0usize;
-    let max_outer_iters = 200_000usize; // guard against infinite loops; can raise
-
     for (stage, initial_condition) in stages.iter().zip(states.iter()) {
         let n: usize = initial_condition.len();
-        let mut state_out = vec![0.0f64; config.steps_cap * n * NF64];
+        let mut state_out = vec![0.0f64; py_config.steps_cap * n * NF64];
         for (i, row) in initial_condition.iter().enumerate() {
             let off0 = (0 * n + i) * NF64;
             state_out[off0..off0 + NF64].copy_from_slice(row);
         }
 
         let (grid, block) = grid_size(n, BLOCK_SIZE);
-        let mut time_out = vec![0.0f64; config.steps_cap * n];
+        let mut time_out = vec![0.0f64; py_config.steps_cap * n];
         let mut t_host = vec![0.0f64; n];
-        let mut dt_host = vec![statics.time_direction * config.dt0; n];
+        let mut dt_host = vec![config.time_direction * py_config.dt0; n];
         let mut w_host = vec![0u32; n];
         let done_host = vec![0u8; n];
         let mut err_host = vec![0.0f64; n];
@@ -60,7 +57,7 @@ pub fn gpu_dispatch(
         let dev_w = py_runtime_err(DeviceBuffer::<u32>::from_slice(&w_host))?;
         let dev_done = py_runtime_err(DeviceBuffer::<u8>::from_slice(&done_host))?;
         let dev_err = py_runtime_err(DeviceBuffer::<f64>::from_slice(&err_host))?;
-        let dev_time_out = py_runtime_err(DeviceBuffer::<f64>::zeroed(config.steps_cap * n))?;
+        let dev_time_out = py_runtime_err(DeviceBuffer::<f64>::zeroed(py_config.steps_cap * n))?;
     
         if n == 0 {
             return Err(pyo3::exceptions::PyValueError::new_err("N must be > 0"));
@@ -81,7 +78,7 @@ pub fn gpu_dispatch(
                     dev_w.as_device_ptr(),
                     dev_done.as_device_ptr(),
                     dev_gate.as_device_ptr(),
-                    StaticInterface{n,..statics},
+                    Config{n,..config},
                     clamp_recipes,
                     dev_supertable.as_device_ptr(),
                 )
@@ -103,12 +100,12 @@ pub fn gpu_dispatch(
         // println!("{:?}",state_out);
         let filled_lens: Vec<usize> = w_host
             .iter()
-            .map(|&w| (w as usize + 1).min(config.steps_cap)) // accepted steps + initial state
+            .map(|&w| (w as usize + 1).min(py_config.steps_cap)) // accepted steps + initial state
             .collect();
-        let (_app_ts0, indices) =
-            find_last_times_and_indices(&time_out, &ts, n, config.steps_cap, &filled_lens);
+        let (_app_ts0, _indices) =
+            find_last_times_and_indices(&time_out, &ts, n, py_config.steps_cap, &filled_lens);
         let w0 = w_host[0] as usize;
-        if w0 >= config.steps_cap - 1 {
+        if w0 >= py_config.steps_cap - 1 {
             eprintln!(
                 "WARNING: particle 0 hit steps_cap-1; last step may have been overwritten multiple times."
             );

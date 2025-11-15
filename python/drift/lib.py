@@ -194,7 +194,7 @@ class SimulationFrame:
         )
 
         # Drift
-        N = 1
+        N = 15000
         state0 = np.zeros((N, 6), dtype=np.float64)
         state0[:, 0] = 1.0
         state0[:, 1] = 0.0

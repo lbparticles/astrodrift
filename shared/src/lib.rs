@@ -9,7 +9,7 @@ pub use crate::potentials::{
 // mod macros;
 
 #[derive(Clone, Copy, DeviceCopy)]
-pub struct StaticInterface {
+pub struct Config {
     pub n: usize,
     pub steps_cap: usize,
     pub t_end: f64,
@@ -23,17 +23,6 @@ pub struct StaticInterface {
     pub poll_number: usize,
     pub time_direction: f64,
 }
-// #[derive(Clone,Copy,DeviceCopy)]
-// pub struct Bookkeeping {
-//     pub error_out: *mut f64, // last
-//     pub dt: *mut f64,
-//     pub w: *mut u32,
-//     pub done: *mut u8,
-//     // pub error_out: DevicePointer<f64>, // last
-//     // pub dt: DevicePointer<f64>,
-//     // pub w: DevicePointer<u32>,
-//     // pub done: DevicePointer<u8>,
-// }
 
 #[repr(C)]
 #[derive(Clone, Copy, DeviceCopy)]
