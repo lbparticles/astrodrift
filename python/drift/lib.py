@@ -11,14 +11,20 @@ from .drift_rs import (
     Interface,
 )
 import numpy as np
-import enum
-import pandas as pd
+
+# import enum
+# import pandas as pd
 from typing import List, Set
 from abc import abstractmethod
 from galpy.orbit import Orbit
-from galpy.potential import MWPotential2014, PlummerPotential, KeplerPotential
-import astropy.units as u
-import matplotlib.pyplot as plt
+from galpy.potential import (
+    # MWPotential2014,
+    # PlummerPotential,
+    KeplerPotential,
+)
+
+# import astropy.units as u
+# import matplotlib.pyplot as plt
 
 
 class IntegratorContainer:
@@ -128,7 +134,7 @@ class SimulationFrame:
         optimisation: Set[Optimisation] | bool = {Optimisation.Recommended},
         engine: Engine = Engine.GPU,
         method: Method = Method.RK54,
-        debug: bool = Debug.WARN,
+        debug: Debug = Debug.WARN,
     ):
         """
         SimulationFrame is the main class within the library, setting up the
