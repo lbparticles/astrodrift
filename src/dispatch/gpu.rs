@@ -20,12 +20,6 @@ fn grid_size(n: usize, block: u32) -> (u32, u32) {
 }
 
 
-fn calc_coeff(x0:f64,v0:f64,a0:f64,x1:f64,v1:f64,a1:f64)->(f64,f64,f64,f64,f64,f64){
-    let (d,e,f) = (0.5*a0,v0,x0);
-    let (gamma,mu,nu) = (x1-x0-v0-d,v1-a0-v0,a1-a0);
-    let (a,b,c) = (6.*gamma-3.*mu+0.5*nu,-15.*gamma+7.*mu-nu,10.*gamma-4.*mu+0.5*nu);
-    (a,b,c,d,e,f)
-}
 
 pub fn gather_states(
     src: &[f64],
@@ -94,9 +88,9 @@ pub fn gpu_dispatch(
     let stream = py_runtime_err(Stream::new(StreamFlags::DEFAULT, None))?;
     let kernel = py_runtime_err(module.get_function("dopr54_adaptive"))?;
     let post_kernel = py_runtime_err(module.get_function("post_kernel"))?;
+    let coeff_kernel = py_runtime_err(module.get_function("coeff_kernel"))?;
 
     for (stage, initial_condition) in stages.iter().zip(states.iter()) {
-        eprintln!("{:?}",initial_condition);
         let n: usize = initial_condition.len();
         let mut state_out = vec![0.0f64; py_config.steps_cap * n * NF64];
         for (i, row) in initial_condition.iter().enumerate() {
@@ -171,9 +165,6 @@ pub fn gpu_dispatch(
     indices.iter().flat_map(|x| x.iter().map(|&x| x as usize)).collect();
         // let eq_state = gather_states(&state_out,&flat_indices,n,config.poll_number);
         let post_state : Vec<f64> = gather_states_nested_extended(&state_out,&indices,n,config.poll_number).iter().flat_map(|x| x.iter().map(|&x| x as f64)).collect();
-        eprintln!("{:?}",post_state.len());
-        eprintln!("{:?}",indices[0].len());
-        eprintln!("{:?}",n);
         let dev_post_state = py_runtime_err(DeviceBuffer::<f64>::from_slice(&post_state))?;
         unsafe {
             py_runtime_err(launch!(
@@ -186,12 +177,24 @@ pub fn gpu_dispatch(
             ))?;
         }
         py_runtime_err(stream.synchronize())?;
-        eprintln!("{:?}",config.poll_number * n * 9);
         let mut post_state_out= vec![0.0f64; config.poll_number * n * 9 ];
         py_runtime_err(dev_post_state.copy_to(&mut post_state_out))?;
-        // eprintln!("Init Kernel");
-        eprintln!("{:?}",post_state_out);
-        // eprintln!("{:?}",eq_state);
+
+        let mut coeff_out = vec![0.0f64; (config.poll_number-1) * n * 18 ];
+        let dev_coeff = py_runtime_err(DeviceBuffer::<f64>::from_slice(&coeff_out))?;
+
+        unsafe {
+            py_runtime_err(launch!(
+                coeff_kernel<<<grid, block, 0, stream>>>(
+                    dev_post_state.as_device_ptr(),
+                    dev_coeff.as_device_ptr(),
+                    Config{n,..config},
+                    clamp_recipes,
+                    dev_supertable.as_device_ptr(),
+                )
+            ))?;
+        }
+        py_runtime_err(dev_coeff.copy_to(&mut coeff_out))?;
         let w0 = w_host[0] as usize;
         if w0 >= py_config.steps_cap - 1 {
             eprintln!(
