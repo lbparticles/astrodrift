@@ -19,6 +19,67 @@ fn grid_size(n: usize, block: u32) -> (u32, u32) {
     (blocks, block)
 }
 
+
+fn calc_coeff(x0:f64,v0:f64,a0:f64,x1:f64,v1:f64,a1:f64)->(f64,f64,f64,f64,f64,f64){
+    let (d,e,f) = (0.5*a0,v0,x0);
+    let (gamma,mu,nu) = (x1-x0-v0-d,v1-a0-v0,a1-a0);
+    let (a,b,c) = (6.*gamma-3.*mu+0.5*nu,-15.*gamma+7.*mu-nu,10.*gamma-4.*mu+0.5*nu);
+    (a,b,c,d,e,f)
+}
+
+pub fn gather_states(
+    src: &[f64],
+    indices: &[usize],
+    n_particles: usize,
+    n_divisions: usize,
+) -> Vec<f64> {
+    // Each state has exactly 6 floats
+    const STATE_LEN: usize = 6;
+
+    // The total length of the result array
+    let total_len = n_particles * n_divisions * STATE_LEN;
+    let mut dst = Vec::with_capacity(total_len);
+
+    for &idx in indices {
+        let start = idx * STATE_LEN;
+        let end = start + STATE_LEN;
+        // Safety: assumes src has at least `end` elements
+        dst.extend_from_slice(&src[start..end]);
+    }
+
+    dst
+}
+
+pub fn gather_states_nested_extended(
+    src: &[f64],
+    indices: &[Vec<isize>],
+    n_particles: usize,
+    n_divisions: usize,
+) -> Vec<Vec<f64>> {
+    const STATE_LEN_IN: usize = 6; // from the source
+    const STATE_LEN_OUT: usize = 9; // desired output length per state
+
+    let mut all = Vec::with_capacity(indices.len());
+
+    for particle_indices in indices {
+        let mut states = Vec::with_capacity(particle_indices.len() * STATE_LEN_OUT);
+
+        for &i in particle_indices {
+            let idx = i as usize;
+
+            // Copy the 6 source floats
+            states.extend_from_slice(&src[idx * STATE_LEN_IN..idx * STATE_LEN_IN + STATE_LEN_IN]);
+
+            // Extend with 3 additional values (0.0 placeholders here)
+            states.extend_from_slice(&[0.0; STATE_LEN_OUT - STATE_LEN_IN]);
+        }
+
+        all.push(states);
+    }
+
+    all
+}
+
 pub fn gpu_dispatch(
     states: Vec<Vec<Vec<f64>>>,
     stages: Vec<Vec<PotentialRecipe>>,
@@ -32,8 +93,10 @@ pub fn gpu_dispatch(
     let module = py_runtime_err(Module::from_ptx(PTX, &[]))?;
     let stream = py_runtime_err(Stream::new(StreamFlags::DEFAULT, None))?;
     let kernel = py_runtime_err(module.get_function("dopr54_adaptive"))?;
+    let post_kernel = py_runtime_err(module.get_function("post_kernel"))?;
 
     for (stage, initial_condition) in stages.iter().zip(states.iter()) {
+        eprintln!("{:?}",initial_condition);
         let n: usize = initial_condition.len();
         let mut state_out = vec![0.0f64; py_config.steps_cap * n * NF64];
         for (i, row) in initial_condition.iter().enumerate() {
@@ -102,8 +165,33 @@ pub fn gpu_dispatch(
             .iter()
             .map(|&w| (w as usize + 1).min(py_config.steps_cap)) // accepted steps + initial state
             .collect();
-        let (_app_ts0, _indices) =
+        let (ts0, step, indices) =
             find_last_times_and_indices(&time_out, &ts, n, py_config.steps_cap, &filled_lens);
+        let flat_indices: Vec<usize> =
+    indices.iter().flat_map(|x| x.iter().map(|&x| x as usize)).collect();
+        // let eq_state = gather_states(&state_out,&flat_indices,n,config.poll_number);
+        let post_state : Vec<f64> = gather_states_nested_extended(&state_out,&indices,n,config.poll_number).iter().flat_map(|x| x.iter().map(|&x| x as f64)).collect();
+        eprintln!("{:?}",post_state.len());
+        eprintln!("{:?}",indices[0].len());
+        eprintln!("{:?}",n);
+        let dev_post_state = py_runtime_err(DeviceBuffer::<f64>::from_slice(&post_state))?;
+        unsafe {
+            py_runtime_err(launch!(
+                post_kernel<<<grid, block, 0, stream>>>(
+                    dev_post_state.as_device_ptr(),
+                    Config{n,..config},
+                    clamp_recipes,
+                    dev_supertable.as_device_ptr(),
+                )
+            ))?;
+        }
+        py_runtime_err(stream.synchronize())?;
+        eprintln!("{:?}",config.poll_number * n * 9);
+        let mut post_state_out= vec![0.0f64; config.poll_number * n * 9 ];
+        py_runtime_err(dev_post_state.copy_to(&mut post_state_out))?;
+        // eprintln!("Init Kernel");
+        eprintln!("{:?}",post_state_out);
+        // eprintln!("{:?}",eq_state);
         let w0 = w_host[0] as usize;
         if w0 >= py_config.steps_cap - 1 {
             eprintln!(

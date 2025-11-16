@@ -5,7 +5,7 @@ use crate::handshake::{load_state,store_state};
 use cuda_std::{kernel, thread};
 use libm::{floor, pow, sqrt};
 use crate::recipes::consume_recipe;
-use shared::{PotentialRecipe,PotentialEnum,PotentialNames,StaticInterface,KeplerPotential};
+use shared::{PotentialRecipe,PotentialEnum,PotentialNames,Config,KeplerPotential};
 
 #[inline(always)]
 unsafe fn compute_effective_dt(
@@ -36,7 +36,7 @@ unsafe fn compute_effective_dt(
     (save_dt, sign * dt_mag)
 }
 #[inline(always)]
-fn thread_id_limit_check(n: usize) -> Option<usize> {
+pub fn thread_id_limit_check(n: usize) -> Option<usize> {
     let tid = (thread::block_idx_x() * thread::block_dim_x() 
         + thread::thread_idx_x()) as usize;
     if tid >= n {
@@ -110,7 +110,7 @@ unsafe fn finalize_step(
     *done.add(tid) = (done_blend_u & 1) as u8;
 }
 
-fn expand_statics(statics: StaticInterface)-> (usize, usize, f64, f64, f64, f64, f64, f64, f64, f64, usize, f64){
+pub fn expand_statics(statics: Config)-> (usize, usize, f64, f64, f64, f64, f64, f64, f64, f64, usize, f64){
     (statics.n,statics.steps_cap,statics.t_end,statics.atol,statics.rtol,statics.fac_min,statics.fac_max,statics.safety,statics.dt_min,statics.dt_max,statics.poll_number,statics.time_direction)
 }
 
@@ -128,7 +128,7 @@ pub unsafe fn dopr54_adaptive(
     w: *mut u32,
     done: *mut u8,
     gate: *mut usize,
-    statics : StaticInterface,
+    statics : Config,
     // book: Bookkeeping,
     recipe: [PotentialRecipe;10],
     supertable: *mut f64,

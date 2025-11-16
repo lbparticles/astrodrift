@@ -60,7 +60,7 @@ Rust tests (observed test files exist):
 ## Linting and style
 
 - Python (ruff.toml):
-  - line-length=88, indent-width=4, double quotes, target-version="py39".
+  - line-length=80, indent-width=4, double quotes, target-version="py313".
   - Lint selects E4, E7, E9, F; fixable=ALL.
 - Rust: rustfmt and clippy components are specified in rust-toolchain.toml.
 
@@ -84,7 +84,7 @@ Rust tests (observed test files exist):
 
 ## Gotchas and non-obvious details
 
-- Python versions: pyproject.toml requires Python >=3.13, while ruff.toml sets target-version="py39". Be consistent when configuring local tooling.
+- Python versions: pyproject.toml requires Python >=3.13 and ruff.toml sets target-version="py313" (consistent).
 - GPU environment:
   - Runtime requires NVIDIA drivers; CI uses containers with CUDA 12 (ubuntu22/24). Local builds load PTX at runtime; use provided containers/devcontainer for reproducibility.
 - Container scripts are templates/examples:
