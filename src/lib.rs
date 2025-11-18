@@ -1,25 +1,17 @@
 use pyo3::prelude::*;
 
-mod dispatch;
-mod index_helpers;
-mod tables;
-mod python;
 mod bootstrap;
+mod dispatch;
 mod dopr54_cpu;
-
+pub mod index_helpers;
+mod python;
+mod tables;
 
 use crate::bootstrap::simulation_ctx;
 use crate::python::{
-    PyPotentialNames,
+    PyConfig, PyDebug, PyEngine, PyIntMethod, PyInterpolation, PyOptimisation, PyPotentialNames,
     PyPotentialRecipe,
-    PyIntMethod,
-    PyOptimisation,
-    PyEngine,
-    PyDebug,
-    PyInterpolation,
-    PyConfig,
 };
-
 
 #[pymodule]
 fn drift_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {

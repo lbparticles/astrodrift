@@ -1,9 +1,8 @@
-use pyo3::prelude::*;
+use crate::dispatch::gpu_dispatch;
+use crate::python::{PyConfig, PyEngine, PyPotentialRecipe, py_runtime_err, translate_recipe};
 use numpy::PyReadonlyArray2;
+use pyo3::prelude::*;
 use shared::Config;
-use crate::python::{PyPotentialRecipe,PyConfig,PyEngine,translate_recipe,py_runtime_err};
-use crate::dispatch::{gpu_dispatch};
-
 
 #[pyfunction]
 pub fn simulation_ctx<'py>(
@@ -21,7 +20,6 @@ pub fn simulation_ctx<'py>(
 {
     let _ctx = py_runtime_err(cust::quick_init())?;
 
-
     let states = initial_conditions
         .into_iter()
         .map(|arr| {
@@ -32,11 +30,9 @@ pub fn simulation_ctx<'py>(
         })
         .collect();
 
-
-
     let stages = py_recipes
         .iter()
-        .map(|stage|{ 
+        .map(|stage| {
             let mut goffset: usize = 0;
             stage
                 .iter()
@@ -45,16 +41,11 @@ pub fn simulation_ctx<'py>(
         })
         .collect();
 
-    let config:Config = py_config.clone().into();
+    let config: Config = py_config.clone().into();
 
     let (_results, _debug) = match py_config.engine {
         PyEngine::CPU => (0.0f64, 0.0f64),
-        PyEngine::GPU => py_runtime_err(gpu_dispatch(
-            states,
-            stages,
-            config,
-            py_config,
-        ))?,
+        PyEngine::GPU => py_runtime_err(gpu_dispatch(states, stages, config, py_config))?,
     };
 
     // let app_ts = PyArray2::from_vec2(py, &debug.app_ts0)?;

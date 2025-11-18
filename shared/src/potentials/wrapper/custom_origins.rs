@@ -28,7 +28,7 @@ fn quintic_interp(t: f64, coeff: QuinticCoeff) -> f64 {
     coeff.a * t5 + coeff.b * t4 + coeff.c * t3 + coeff.d * t2 + coeff.e * t + coeff.f
 }
 impl<P: Potential + Copy> CustomOrigin<P> {
-    fn origins(&self, t: f64, i:usize) -> [f64; 3] {
+    fn origins(&self, t: f64, i: usize) -> [f64; 3] {
         let dt = self.final_time / (self.division as f64);
         let n = (self.length / self.division) as usize;
         let t0 = floor(t / dt) as usize;
@@ -84,13 +84,12 @@ impl<P: Potential + Copy> Potential for CustomOrigin<P> {
     fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         let mut total_force = (0.0_f64, 0.0_f64, 0.0_f64);
         let n = (self.length / self.division) as usize;
-        for i in 0..n{
-            let p = self.origins(t,i);
-            let (f1,f2,f3) = self.potential.force(t,x-p[0],y-p[1],z-p[2]);
+        for i in 0..n {
+            let p = self.origins(t, i);
+            let (f1, f2, f3) = self.potential.force(t, x - p[0], y - p[1], z - p[2]);
             total_force.0 += f1;
             total_force.1 += f2;
             total_force.2 += f3;
-
         }
         total_force
     }

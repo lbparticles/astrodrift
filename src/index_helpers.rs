@@ -16,7 +16,7 @@ pub fn find_preceding_step(
     while lo < hi {
         let mid = (lo + hi) / 2;
         let val = time_out[mid * n_particles + p];
-        if val <= t_end + 1e-12 {
+        if val <= t_end {
             lo = mid + 1;
         } else {
             hi = mid;
@@ -33,7 +33,7 @@ pub fn find_last_times_and_indices(
     n_particles: usize,
     steps_cap: usize,
     filled_lens: &[usize],
-) -> (Vec<Vec<f64>>, Vec<Vec<isize>>,Vec<Vec<isize>>) {
+) -> (Vec<Vec<f64>>, Vec<Vec<isize>>, Vec<Vec<isize>>) {
     assert_eq!(time_out.len(), n_particles * steps_cap);
     assert_eq!(filled_lens.len(), n_particles);
 
@@ -74,5 +74,5 @@ pub fn find_last_times_and_indices(
         all_indices.push(idx_row);
     }
 
-    (all_times,all_steps, all_indices)
+    (all_times, all_steps, all_indices)
 }

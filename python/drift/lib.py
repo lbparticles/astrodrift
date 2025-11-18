@@ -185,7 +185,7 @@ class SimulationFrame:
         o = Orbit([1.0, 0.0, 1.0, 0.0, 0.0, 0.0])
 
         n_periods = 10
-        n_times = 11
+        n_times = 401
         T_orb = 2.0 * np.pi
         t_max = n_periods * T_orb
         ts = np.linspace(0.0, t_max, n_times)
@@ -200,7 +200,7 @@ class SimulationFrame:
         )
 
         # Drift
-        N = 15000
+        N = 1
         state0 = np.zeros((N, 6), dtype=np.float64)
         state0[:, 0] = 1.0
         state0[:, 1] = 0.0

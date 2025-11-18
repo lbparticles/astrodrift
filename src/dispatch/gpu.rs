@@ -1,9 +1,9 @@
-use crate::python::PyConfig;
 use crate::index_helpers::find_last_times_and_indices;
+use crate::python::PyConfig;
 // use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
-use shared::{PotentialRecipe, Config};
+use shared::{Config, PotentialRecipe};
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 
@@ -18,8 +18,6 @@ fn grid_size(n: usize, block: u32) -> (u32, u32) {
     let blocks = ((n as u32) + block - 1) / block;
     (blocks, block)
 }
-
-
 
 pub fn gather_states(
     src: &[f64],
@@ -80,7 +78,6 @@ pub fn gpu_dispatch(
     config: Config,
     py_config: PyConfig,
 ) -> PyResult<(f64, f64)> {
-
     let ts: Vec<f64> = (0..config.poll_number)
         .map(|i| config.t_end * (i as f64) / (config.poll_number as f64 - 1.))
         .collect();
@@ -115,11 +112,11 @@ pub fn gpu_dispatch(
         let dev_done = py_runtime_err(DeviceBuffer::<u8>::from_slice(&done_host))?;
         let dev_err = py_runtime_err(DeviceBuffer::<f64>::from_slice(&err_host))?;
         let dev_time_out = py_runtime_err(DeviceBuffer::<f64>::zeroed(py_config.steps_cap * n))?;
-    
+
         if n == 0 {
             return Err(pyo3::exceptions::PyValueError::new_err("N must be > 0"));
         }
-        let mut clamp_recipes: [PotentialRecipe; 10] = [PotentialRecipe::default();10];
+        let mut clamp_recipes: [PotentialRecipe; 10] = [PotentialRecipe::default(); 10];
         let supertable: Vec<f64> = Vec::new();
         let count = stage.len().min(10);
         let dev_supertable = py_runtime_err(DeviceBuffer::from_slice(&supertable))?;
@@ -143,7 +140,7 @@ pub fn gpu_dispatch(
         }
 
         py_runtime_err(stream.synchronize())?;
-        
+
         let _gate_out = vec![0_usize; n];
         let _dev_dt_out = vec![0_f64; n];
         // construct_coeff_table(indices,state_out);
@@ -161,10 +158,20 @@ pub fn gpu_dispatch(
             .collect();
         let (ts0, step, indices) =
             find_last_times_and_indices(&time_out, &ts, n, py_config.steps_cap, &filled_lens);
-        let flat_indices: Vec<usize> =
-    indices.iter().flat_map(|x| x.iter().map(|&x| x as usize)).collect();
+        // eprintln!("{:?}",time_out);
+        eprintln!("{:?}",ts);
+        // eprintln!("{:?}",ts0);
+        // eprintln!("{:?}",step);
+        let flat_indices: Vec<usize> = indices
+            .iter()
+            .flat_map(|x| x.iter().map(|&x| x as usize))
+            .collect();
         // let eq_state = gather_states(&state_out,&flat_indices,n,config.poll_number);
-        let post_state : Vec<f64> = gather_states_nested_extended(&state_out,&indices,n,config.poll_number).iter().flat_map(|x| x.iter().map(|&x| x as f64)).collect();
+        let post_state: Vec<f64> =
+            gather_states_nested_extended(&state_out, &indices, n, config.poll_number)
+                .iter()
+                .flat_map(|x| x.iter().map(|&x| x as f64))
+                .collect();
         let dev_post_state = py_runtime_err(DeviceBuffer::<f64>::from_slice(&post_state))?;
         unsafe {
             py_runtime_err(launch!(
@@ -177,10 +184,10 @@ pub fn gpu_dispatch(
             ))?;
         }
         py_runtime_err(stream.synchronize())?;
-        let mut post_state_out= vec![0.0f64; config.poll_number * n * 9 ];
+        let mut post_state_out = vec![0.0f64; config.poll_number * n * 9];
         py_runtime_err(dev_post_state.copy_to(&mut post_state_out))?;
 
-        let mut coeff_out = vec![0.0f64; (config.poll_number-1) * n * 18 ];
+        let mut coeff_out = vec![0.0f64; (config.poll_number - 1) * n * 18];
         let dev_coeff = py_runtime_err(DeviceBuffer::<f64>::from_slice(&coeff_out))?;
 
         unsafe {
@@ -202,7 +209,6 @@ pub fn gpu_dispatch(
             );
         }
     }
-
 
     Ok((0.0, 0.0))
 }

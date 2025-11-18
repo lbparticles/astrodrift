@@ -34,7 +34,7 @@ pub struct PotentialRecipe {
 
 impl Default for PotentialRecipe {
     fn default() -> PotentialRecipe {
-        PotentialRecipe{
+        PotentialRecipe {
             fparams: [0.0_f64; 6],
             uparams: [0_usize; 6],
             potential_id: PotentialNames::Kepler,

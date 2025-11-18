@@ -1,8 +1,8 @@
-use std::os::raw::{c_double, c_int};
 use libc;
-use libm::{log, fabs, exp, fmax, sqrt, pow, ceil};
+use libm::{ceil, exp, fabs, fmax, log, pow, sqrt};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
+use std::os::raw::{c_double, c_int};
 use std::path::Path;
 
 const MAX_STEPCHANGE_POWERTWO: c_double = 3.0;
@@ -190,18 +190,7 @@ unsafe fn rk4_estimate_step(
         // //do one step with step dt, and one with step dt/2.
         // //dt
         // rk4_onestep(func,dim,yn,y1,to,dt,nargs,potentialArgs,ynk,a);
-        rk4_onestep(
-            func,
-            dim,
-            yn,
-            y1,
-            to,
-            dt,
-            nargs,
-            potentialArgs,
-            ynk,
-            a,
-        );
+        rk4_onestep(func, dim, yn, y1, to, dt, nargs, potentialArgs, ynk, a);
 
         // //dt/2
         // rk4_onestep(func,dim,yn,y21,to,dt/2.,nargs,potentialArgs,ynk,a);
@@ -460,8 +449,7 @@ unsafe fn dopr54_actualstep(
     for i in 0..dim {
         let idx = i as usize;
         *k2.add(idx) = dt * *a.add(idx);
-        *ynk.add(idx) =
-            *yo.add(idx) + A31 * *k1.add(idx) + A32 * *k2.add(idx);
+        *ynk.add(idx) = *yo.add(idx) + A31 * *k1.add(idx) + A32 * *k2.add(idx);
     }
 
     // calculate k3
@@ -471,8 +459,7 @@ unsafe fn dopr54_actualstep(
         *k3.add(idx) = dt * *a.add(idx);
         *yn1.add(idx) += B3 * *k3.add(idx);
         *yerr.add(idx) += BE3 * *k3.add(idx);
-        *ynk.add(idx) =
-            *yo.add(idx) + A41 * *k1.add(idx) + A42 * *k2.add(idx) + A43 * *k3.add(idx);
+        *ynk.add(idx) = *yo.add(idx) + A41 * *k1.add(idx) + A42 * *k2.add(idx) + A43 * *k3.add(idx);
     }
 
     // calculate k4
@@ -482,12 +469,11 @@ unsafe fn dopr54_actualstep(
         *k4.add(idx) = dt * *a.add(idx);
         *yn1.add(idx) += B4 * *k4.add(idx);
         *yerr.add(idx) += BE4 * *k4.add(idx);
-        *ynk.add(idx) =
-            *yo.add(idx)
-                + A51 * *k1.add(idx)
-                + A52 * *k2.add(idx)
-                + A53 * *k3.add(idx)
-                + A54 * *k4.add(idx);
+        *ynk.add(idx) = *yo.add(idx)
+            + A51 * *k1.add(idx)
+            + A52 * *k2.add(idx)
+            + A53 * *k3.add(idx)
+            + A54 * *k4.add(idx);
     }
 
     // calculate k5
@@ -497,13 +483,12 @@ unsafe fn dopr54_actualstep(
         *k5.add(idx) = dt * *a.add(idx);
         *yn1.add(idx) += B5 * *k5.add(idx);
         *yerr.add(idx) += BE5 * *k5.add(idx);
-        *ynk.add(idx) =
-            *yo.add(idx)
-                + A61 * *k1.add(idx)
-                + A62 * *k2.add(idx)
-                + A63 * *k3.add(idx)
-                + A64 * *k4.add(idx)
-                + A65 * *k5.add(idx);
+        *ynk.add(idx) = *yo.add(idx)
+            + A61 * *k1.add(idx)
+            + A62 * *k2.add(idx)
+            + A63 * *k3.add(idx)
+            + A64 * *k4.add(idx)
+            + A65 * *k5.add(idx);
     }
 
     // calculate k6
@@ -513,8 +498,7 @@ unsafe fn dopr54_actualstep(
         *k6.add(idx) = dt * *a.add(idx);
         *yn1.add(idx) += B6 * *k6.add(idx);
         *yerr.add(idx) += BE6 * *k6.add(idx);
-        *ynk.add(idx) =
-            *yo.add(idx)
+        *ynk.add(idx) = *yo.add(idx)
                 + A71 * *k1.add(idx)
                 + A73 * *k3.add(idx) // a72 = 0
                 + A74 * *k4.add(idx)
@@ -578,8 +562,6 @@ unsafe fn dopr54_actualstep(
     dt_one
 }
 
-
-
 // #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dopr54(
     func: FuncPtr,
@@ -599,21 +581,21 @@ pub unsafe extern "C" fn dopr54(
     let dim_usize = dim as usize;
     let sz = dim_usize * std::mem::size_of::<c_double>();
 
-    let a   = libc::malloc(sz) as *mut c_double;
-    let a1  = libc::malloc(sz) as *mut c_double;
-    let k1  = libc::malloc(sz) as *mut c_double;
-    let k2  = libc::malloc(sz) as *mut c_double;
-    let k3  = libc::malloc(sz) as *mut c_double;
-    let k4  = libc::malloc(sz) as *mut c_double;
-    let k5  = libc::malloc(sz) as *mut c_double;
-    let k6  = libc::malloc(sz) as *mut c_double;
-    let yn  = libc::malloc(sz) as *mut c_double;
+    let a = libc::malloc(sz) as *mut c_double;
+    let a1 = libc::malloc(sz) as *mut c_double;
+    let k1 = libc::malloc(sz) as *mut c_double;
+    let k2 = libc::malloc(sz) as *mut c_double;
+    let k3 = libc::malloc(sz) as *mut c_double;
+    let k4 = libc::malloc(sz) as *mut c_double;
+    let k5 = libc::malloc(sz) as *mut c_double;
+    let k6 = libc::malloc(sz) as *mut c_double;
+    let yn = libc::malloc(sz) as *mut c_double;
     let yn1 = libc::malloc(sz) as *mut c_double;
     let yerr = libc::malloc(sz) as *mut c_double;
-    let ynk  = libc::malloc(sz) as *mut c_double;
+    let ynk = libc::malloc(sz) as *mut c_double;
 
     let mut ii: c_int;
-    
+
     save_rk(dim, yo, result);
 
     let mut result = result.add(dim_usize);
@@ -627,24 +609,14 @@ pub unsafe extern "C" fn dopr54(
     let mut dt: c_double = *t.add(1) - *t;
     let mut dt_one = dt_one;
     if dt_one == -9999.99 {
-        dt_one = rk4_estimate_step(
-            func,
-            dim,
-            yo,
-            dt,
-            t,
-            nargs,
-            potentialArgs,
-            rtol,
-            atol,
-        );
+        dt_one = rk4_estimate_step(func, dim, yo, dt, t, nargs, potentialArgs, rtol, atol);
     }
 
     // //Integrate the system
     // double to= *t;
     let mut to: c_double = *t;
 
-        // //set up a1
+    // //set up a1
     // func(to,yn,a1,nargs,potentialArgs);
     let f = func.expect("dopr54: func pointer was null");
     f(to, yn, a1, nargs, potentialArgs);
@@ -699,12 +671,7 @@ pub unsafe extern "C" fn dopr54(
     libc::free(yn1 as *mut libc::c_void);
     libc::free(yerr as *mut libc::c_void);
     libc::free(ynk as *mut libc::c_void);
-
 }
-
-
-
-
 
 // ********** Harness **********
 
@@ -847,7 +814,6 @@ pub unsafe fn run_dopr54_harness_from_dump(
         &mut err,
     );
 
-
     let mut f = File::create(out_path)?;
     writeln!(f, "err {}", err)?;
     writeln!(f, "dim {}", dim)?;
@@ -882,9 +848,9 @@ mod tests {
         _pot_args: *mut potentialArg,
     ) {
         unsafe {
-            let x  = *q.add(0);
-            let y  = *q.add(1);
-            let z  = *q.add(2);
+            let x = *q.add(0);
+            let y = *q.add(1);
+            let z = *q.add(2);
             let vx = *q.add(3);
             let vy = *q.add(4);
             let vz = *q.add(5);
@@ -920,4 +886,3 @@ mod tests {
         }
     }
 }
-
