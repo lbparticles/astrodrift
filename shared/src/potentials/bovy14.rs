@@ -1,6 +1,6 @@
 use crate::combine_potentials;
 use crate::potentials::Potential;
-use crate::potentials::{SphericalcutoffPotential,MNPotential,NFWPotential};
+use crate::potentials::{MNPotential, NFWPotential, SphericalcutoffPotential};
 
 #[derive(Clone, Copy)]
 pub struct MW2014Potential {
@@ -44,4 +44,3 @@ impl Potential for MW2014Potential {
         combine_potentials!(&self.bulge, &self.disk, &self.halo).force(_t, x, y, z)
     }
 }
-

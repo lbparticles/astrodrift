@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from enum import Enum
 from typing import Sequence, Tuple
 import numpy as np
 from numpy.typing import NDArray
-
 
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
-class Potential(Enum):
+class Potential(int):
     """
     Gravitational potential type.
 
@@ -18,26 +16,26 @@ class Potential(Enum):
     integrator. They select which analytic potential is used for the force
     calculation.
     """
-    Bovy14: int
-    Plummer: int
-    MN: int
-    NFW: int
-    SphCutoff: int
-    Kepler: int
 
+    Bovy14: "Potential"
+    Plummer: "Potential"
+    MN: "Potential"
+    NFW: "Potential"
+    SphCutoff: "Potential"
+    Kepler: "Potential"
 
-class Engine(Enum):
+class Engine(int):
     """
     Execution backend for the integrator.
 
     - GPU: run on CUDA GPU (if available)
     - CPU: run on CPU (TODO: when implemented)
     """
-    GPU: int
-    CPU: int
 
+    GPU: "Engine"
+    CPU: "Engine"
 
-class Method(Enum):
+class Method(int):
     """
     Integration method / scheme.
 
@@ -46,13 +44,13 @@ class Method(Enum):
     - DOP853: Higher-order Dormand–Prince method (not yet wired in)
     - Leapfrog: Symplectic leapfrog (not yet wired in)
     """
-    Newton: int
-    RK54: int
-    DOP853: int
-    Leapfrog: int
 
+    Newton: "Method"
+    RK54: "Method"
+    DOP853: "Method"
+    Leapfrog: "Method"
 
-class Optimisation(Enum):
+class Optimisation(int):
     """
     Optimisation flags for the integrator.
 
@@ -60,12 +58,12 @@ class Optimisation(Enum):
     - Spline: enable spline-based interpolation (TODO)
     - PredictiveLUT: enable predictive lookup-table use (TODO)
     """
-    Recommended: int
-    Spline: int
-    PredictiveLUT: int
 
+    Recommended: "Optimisation"
+    Spline: "Optimisation"
+    PredictiveLUT: "Optimisation"
 
-class Debug(Enum):
+class Debug(int):
     """
     Debug / logging level for the integrator.
 
@@ -74,13 +72,13 @@ class Debug(Enum):
     - WARN: warnings only
     - ERROR: only error messages
     """
-    ALL: int
-    INFO: int
-    WARN: int
-    ERROR: int
 
+    ALL: "Debug"
+    INFO: "Debug"
+    WARN: "Debug"
+    ERROR: "Debug"
 
-class Interpolation(Enum):
+class Interpolation(int):
     """
     Interpolation order used for post-processing / dense output.
 
@@ -88,10 +86,10 @@ class Interpolation(Enum):
     - Cubic
     - Quintic
     """
-    Linear: int
-    Cubic: int
-    Quintic: int
 
+    Linear: "Interpolation"
+    Cubic: "Interpolation"
+    Quintic: "Interpolation"
 
 # ---------------------------------------------------------------------------
 # Data containers
@@ -122,7 +120,6 @@ class Recipe:
         uparams: Sequence[int],
     ) -> None: ...
     def __repr__(self) -> str: ...
-
 
 class Interface:
     """
@@ -172,16 +169,16 @@ class Interface:
         interpolation: Interpolation,
         debug: Debug,
     ) -> None: ...
+
     # internal fields are not exposed as Python properties in the Rust code,
     # so we do not declare attributes here to avoid misleading type checkers.
-
 
 # ---------------------------------------------------------------------------
 # Top-level functions
 # ---------------------------------------------------------------------------
 
 def simulation_ctx(
-    py_recipes: Sequence[Recipe],
+    py_recipes: Sequence[Sequence[Recipe]],
     states: Sequence[NDArray[np.float64]],
     config: Interface,
 ) -> Tuple[

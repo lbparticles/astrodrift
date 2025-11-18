@@ -11,14 +11,20 @@ from .drift_rs import (
     Interface,
 )
 import numpy as np
-import enum
-import pandas as pd
+
+# import enum
+# import pandas as pd
 from typing import List, Set
 from abc import abstractmethod
 from galpy.orbit import Orbit
-from galpy.potential import MWPotential2014, PlummerPotential, KeplerPotential
-import astropy.units as u
-import matplotlib.pyplot as plt
+from galpy.potential import (
+    # MWPotential2014,
+    # PlummerPotential,
+    KeplerPotential,
+)
+
+# import astropy.units as u
+# import matplotlib.pyplot as plt
 
 
 class IntegratorContainer:
@@ -128,7 +134,7 @@ class SimulationFrame:
         optimisation: Set[Optimisation] | bool = {Optimisation.Recommended},
         engine: Engine = Engine.GPU,
         method: Method = Method.RK54,
-        debug: bool = Debug.WARN,
+        debug: Debug = Debug.WARN,
     ):
         """
         SimulationFrame is the main class within the library, setting up the
@@ -178,8 +184,8 @@ class SimulationFrame:
         pot = KeplerPotential(normalize=1.0)
         o = Orbit([1.0, 0.0, 1.0, 0.0, 0.0, 0.0])
 
-        n_periods = 5
-        n_times = 2001
+        n_periods = 10
+        n_times = 11
         T_orb = 2.0 * np.pi
         t_max = n_periods * T_orb
         ts = np.linspace(0.0, t_max, n_times)
@@ -194,7 +200,7 @@ class SimulationFrame:
         )
 
         # Drift
-        N = 1
+        N = 15000
         state0 = np.zeros((N, 6), dtype=np.float64)
         state0[:, 0] = 1.0
         state0[:, 1] = 0.0
@@ -218,53 +224,62 @@ class SimulationFrame:
             Debug.ALL,
         )
 
-        state, time, app_ts, indices = simulation_ctx(
+        # state, time, app_ts, indices =
+        simulation_ctx(
             [
-                Recipe(
-                    fparams=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    potential_id=Potential.Kepler,
-                    uparams=[0, 0, 0, 0, 0, 0],
-                )
+                [
+                    Recipe(
+                        fparams=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        potential_id=Potential.Kepler,
+                        uparams=[0, 0, 0, 0, 0, 0],
+                    )
+                    # Recipe(
+                    #     fparams=[3.0, 32.0, 0.0, 0.0, 0.0, 0.0],
+                    #     potential_id=Potential.Bovy14,
+                    #     uparams=[10000, 0, 0, 0, 0, 0],
+                    # )
+                ]
             ],
             [state0],
             config,
         )
-
-        print("max stored time:", time[:, 0].max())
-        print("number of steps with t > 0:", np.count_nonzero(time[:, 0] > 0))
-        print("t_end requested:", t_max)
-        print("steps_cap:", 8000)
-
-        print(state.T.shape)
-        # TO FIX:
-        # x_gpu = state.T[0, 0, indices[0, :]]
-        # y_gpu = state.T[0, 1, indices[0, :]]
-
-        # x_gal = o.x(ts)
-        # y_gal = o.y(ts)
-
-        # # pos error in plane
-        # pos_err = np.sqrt((x_gal - x_gpu) ** 2 + (y_gal - y_gpu) ** 2)
-
-        # # log10 of position error vs time
-        # fig, ax = plt.subplots()
-        # ax.plot(ts, np.log10(pos_err))
-        # ax.set_xlabel("t (code units)")
-        # ax.set_ylabel(r"$\log_{10} |\Delta \mathbf{r}|$")
-        # fig.savefig("kepler_err.png", dpi=600)
-        # plt.close(fig)
-
-        # # radius evolution
-        # R_gpu = np.sqrt(x_gpu**2 + y_gpu**2)
-        # R_gal = np.sqrt(x_gal**2 + y_gal**2)
-
-        # fig, ax = plt.subplots()
-        # ax.plot(ts, R_gal, label="galpy")
-        # ax.plot(ts, R_gpu, ls="--", label="GPU")
-        # ax.set_xlabel("t (code units)")
-        # ax.set_ylabel("R")
-        # ax.legend()
-        # fig.savefig("kepler_R.png", dpi=600)
-        # plt.close(fig)
-
         return True
+
+        # print("max stored time:", time[:, 0].max())
+        # print("number of steps with t > 0:", np.count_nonzero(time[:, 0] > 0))
+        # print("t_end requested:", t_max)
+        # print("steps_cap:", 8000)
+
+        # print(state.T.shape)
+        # # TO FIX:
+        # # x_gpu = state.T[0, 0, indices[0, :]]
+        # # y_gpu = state.T[0, 1, indices[0, :]]
+
+        # # x_gal = o.x(ts)
+        # # y_gal = o.y(ts)
+
+        # # # pos error in plane
+        # # pos_err = np.sqrt((x_gal - x_gpu) ** 2 + (y_gal - y_gpu) ** 2)
+
+        # # # log10 of position error vs time
+        # # fig, ax = plt.subplots()
+        # # ax.plot(ts, np.log10(pos_err))
+        # # ax.set_xlabel("t (code units)")
+        # # ax.set_ylabel(r"$\log_{10} |\Delta \mathbf{r}|$")
+        # # fig.savefig("kepler_err.png", dpi=600)
+        # # plt.close(fig)
+
+        # # # radius evolution
+        # # R_gpu = np.sqrt(x_gpu**2 + y_gpu**2)
+        # # R_gal = np.sqrt(x_gal**2 + y_gal**2)
+
+        # # fig, ax = plt.subplots()
+        # # ax.plot(ts, R_gal, label="galpy")
+        # # ax.plot(ts, R_gpu, ls="--", label="GPU")
+        # # ax.set_xlabel("t (code units)")
+        # # ax.set_ylabel("R")
+        # # ax.legend()
+        # # fig.savefig("kepler_R.png", dpi=600)
+        # # plt.close(fig)
+
+        # return True

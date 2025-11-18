@@ -1,11 +1,15 @@
-use cust_core::{DeviceCopy};
+use cust_core::DeviceCopy;
 pub mod potentials;
-pub use crate::potentials::{Potential};
-pub use crate::potentials::{MW2014Potential,MNPotential,NFWPotential,PlummerPotential,SphericalcutoffPotential,KeplerPotential};
+pub use crate::potentials::Potential;
+pub use crate::potentials::wrapper::CustomOrigin;
+pub use crate::potentials::{
+    KeplerPotential, MNPotential, MW2014Potential, NFWPotential, PlummerPotential,
+    SphericalcutoffPotential,
+};
+// mod macros;
 
-
-#[derive(Clone,Copy,DeviceCopy)]
-pub struct StaticInterface {
+#[derive(Clone, Copy, DeviceCopy)]
+pub struct Config {
     pub n: usize,
     pub steps_cap: usize,
     pub t_end: f64,
@@ -19,33 +23,26 @@ pub struct StaticInterface {
     pub poll_number: usize,
     pub time_direction: f64,
 }
-// #[derive(Clone,Copy,DeviceCopy)]
-// pub struct Bookkeeping {
-//     pub error_out: *mut f64, // last
-//     pub dt: *mut f64,
-//     pub w: *mut u32,
-//     pub done: *mut u8,
-//     // pub error_out: DevicePointer<f64>, // last
-//     // pub dt: DevicePointer<f64>,
-//     // pub w: DevicePointer<u32>,
-//     // pub done: DevicePointer<u8>,
-// }
 
-#[derive(Clone,Copy,DeviceCopy)]
+#[repr(C)]
+#[derive(Clone, Copy, DeviceCopy)]
 pub struct PotentialRecipe {
-    pub fparams: [f64;6],
+    pub fparams: [f64; 6],
+    pub uparams: [usize; 6],
     pub potential_id: PotentialNames,
-    pub uparams: [usize;6],
-    pub lut_info: Option<LookUpTable>,
 }
 
-#[derive(Clone,Copy,DeviceCopy)]
-pub struct LookUpTable {
-    pub offset: f64,
-    pub length: usize,
+impl Default for PotentialRecipe {
+    fn default() -> PotentialRecipe {
+        PotentialRecipe{
+            fparams: [0.0_f64; 6],
+            uparams: [0_usize; 6],
+            potential_id: PotentialNames::Kepler,
+        }
+    }
 }
 
-#[derive(Clone,Copy)]
+#[derive(Clone, Copy)]
 pub enum PotentialEnum {
     MW2014Potential(MW2014Potential),
     MNPotential(MNPotential),
@@ -53,7 +50,10 @@ pub enum PotentialEnum {
     PlummerPotential(PlummerPotential),
     SphericalcutoffPotential(SphericalcutoffPotential),
     KeplerPotential(KeplerPotential),
+    CustomKepler(CustomOrigin<KeplerPotential>),
+    CustomPlummer(CustomOrigin<PlummerPotential>),
 }
+
 impl Potential for PotentialEnum {
     fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         match self {
@@ -63,6 +63,8 @@ impl Potential for PotentialEnum {
             PotentialEnum::PlummerPotential(p) => p.force(t, x, y, z),
             PotentialEnum::SphericalcutoffPotential(p) => p.force(t, x, y, z),
             PotentialEnum::KeplerPotential(p) => p.force(t, x, y, z),
+            PotentialEnum::CustomKepler(p) => p.force(t, x, y, z),
+            PotentialEnum::CustomPlummer(p) => p.force(t, x, y, z),
         }
     }
 
@@ -78,12 +80,15 @@ impl Potential for PotentialEnum {
     // }
 }
 
-#[derive(Clone,Copy,DeviceCopy)]
+#[repr(C)]
+#[derive(Clone, Copy, DeviceCopy)]
 pub enum PotentialNames {
-    Bovy14,
-    Plummer,
-    MN,
-    NFW,
-    SphCutoff,
-    Kepler,
+    Kepler = 0,
+    Plummer = 1,
+    MN = 2,
+    NFW = 3,
+    SphCutoff = 4,
+    Bovy14 = 5,
+    CustomKepler = 6,
+    CustomPlummer = 7,
 }

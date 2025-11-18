@@ -1,5 +1,5 @@
-use libm::{floor,pow, sqrt};
 use crate::potentials::Potential;
+use libm::{floor, pow, sqrt};
 
 #[derive(Clone, Copy)]
 pub struct SphericalcutoffPotential {
@@ -7,6 +7,19 @@ pub struct SphericalcutoffPotential {
     pub r_min: f64,
     pub dr: f64,
     pub n_ar: usize,
+}
+impl SphericalcutoffPotential {
+    #[inline(always)]
+    fn radial_force_table(&self, r: f64) -> f64 {
+        let t = (r - self.r_min) / self.dr;
+        let i = floor(t) as usize;
+        let f = t - i as f64;
+
+        // linear interpolation
+        let i0 = i.min((self.n_ar - 2) as usize);
+        let (ar0, ar1) = unsafe { (*self.ar_table.add(i0), *self.ar_table.add(i0 + 1)) };
+        (1.0 - f) * ar0 + f * ar1
+    }
 }
 impl Potential for SphericalcutoffPotential {
     // #[inline(always)]
@@ -19,15 +32,7 @@ impl Potential for SphericalcutoffPotential {
             return (0.0, 0.0, 0.0);
         }
         let r = sqrt(r2);
-        let t = (r - self.r_min) / self.dr;
-        let i = floor(t) as usize;
-        let f = t - i as f64;
-
-        // linear interpolation
-        let i0 = i.min((self.n_ar - 2) as usize);
-        let (ar0, ar1) = unsafe { (*self.ar_table.add(i0), *self.ar_table.add(i0 + 1)) };
-        let ar = (1.0 - f) * ar0 + f * ar1;
-
+        let ar = self.radial_force_table(r);
         let ax = ar * x / r;
         let ay = ar * y / r;
         let az = ar * z / r;

@@ -1,18 +1,19 @@
 pub mod bovy14;
+pub mod kepler;
 pub mod mn;
 pub mod nfw;
 pub mod plummer;
 pub mod sphwcutoff; // your MW2014Potential implementation
-pub mod kepler;
-
+pub mod wrapper;
 
 pub use mn::MNPotential;
 pub use nfw::NFWPotential;
 pub use plummer::PlummerPotential;
 // pub use point::PointPotential; // if you have one
 pub use bovy14::MW2014Potential;
-pub use sphwcutoff::SphericalcutoffPotential;
 pub use kepler::KeplerPotential;
+pub use sphwcutoff::SphericalcutoffPotential;
+pub use wrapper::CustomOrigin;
 
 pub trait Potential {
     // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64;
@@ -25,7 +26,8 @@ impl<T: Potential + ?Sized> Potential for &T {
     // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
     // }
     #[inline(always)]
-    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {        (*self).force(t, x, y, z)
+    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+        (*self).force(t, x, y, z)
     }
 }
 

@@ -1,5 +1,5 @@
-use libm::{log,pow, sqrt};
 use crate::potentials::Potential;
+use libm::{log, pow, sqrt};
 
 #[derive(Clone, Copy)]
 pub struct NFWPotential {

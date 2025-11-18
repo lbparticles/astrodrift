@@ -5,43 +5,7 @@ use crate::handshake::{load_state,store_state};
 use cuda_std::{kernel, thread};
 use libm::{floor, pow, sqrt};
 use crate::recipes::consume_recipe;
-use shared::{PotentialRecipe,PotentialNames,LookUpTable,StaticInterface};
-
-const M_S: f64 = 1.0;
-const G: f64 = 39.5;
-
-#[inline(always)]
-unsafe fn sphericalcutoff_force_tabled(
-    x: f64,
-    y: f64,
-    z: f64,
-    ar_table: *const f64,
-    r_min: f64,
-    dr: f64,
-    n_ar: u32,
-) -> (f64, f64, f64) {
-    let r2 = pow(x, 2.0) + pow(y, 2.0) + pow(z, 2.0);
-    if r2 == 0.0 {
-        return (0.0, 0.0, 0.0);
-    }
-    let r = sqrt(r2);
-    let t = (r - r_min) / dr;
-    let i = floor(t) as usize;
-    let f = t - i as f64;
-
-    // linear interpolation
-    let i0 = i.min((n_ar - 2) as usize);
-    let ar0 = *ar_table.add(i0);
-    let ar1 = *ar_table.add(i0 + 1);
-    let ar = (1.0 - f) * ar0 + f * ar1;
-
-    let ax = ar * x / r;
-    let ay = ar * y / r;
-    let az = ar * z / r;
-    (ax, ay, az)
-}
-
-
+use shared::{PotentialRecipe,PotentialEnum,PotentialNames,Config,KeplerPotential};
 
 #[inline(always)]
 unsafe fn compute_effective_dt(
@@ -72,7 +36,7 @@ unsafe fn compute_effective_dt(
     (save_dt, sign * dt_mag)
 }
 #[inline(always)]
-fn thread_id_limit_check(n: usize) -> Option<usize> {
+pub fn thread_id_limit_check(n: usize) -> Option<usize> {
     let tid = (thread::block_idx_x() * thread::block_dim_x() 
         + thread::thread_idx_x()) as usize;
     if tid >= n {
@@ -146,7 +110,7 @@ unsafe fn finalize_step(
     *done.add(tid) = (done_blend_u & 1) as u8;
 }
 
-fn expand_statics(statics: StaticInterface)-> (usize, usize, f64, f64, f64, f64, f64, f64, f64, f64, usize, f64){
+pub fn expand_statics(statics: Config)-> (usize, usize, f64, f64, f64, f64, f64, f64, f64, f64, usize, f64){
     (statics.n,statics.steps_cap,statics.t_end,statics.atol,statics.rtol,statics.fac_min,statics.fac_max,statics.safety,statics.dt_min,statics.dt_max,statics.poll_number,statics.time_direction)
 }
 
@@ -164,9 +128,9 @@ pub unsafe fn dopr54_adaptive(
     w: *mut u32,
     done: *mut u8,
     gate: *mut usize,
-    statics : StaticInterface,
+    statics : Config,
     // book: Bookkeeping,
-    recipe: PotentialRecipe,
+    recipe: [PotentialRecipe;10],
     supertable: *mut f64,
     // recipes: [PotentialRecipe;6],
 ) {
@@ -177,48 +141,52 @@ pub unsafe fn dopr54_adaptive(
         Some(tid) => tid,
         None => return,
     };
+    while *done.add(tid) == 0 {
+        // 1. load current state
+        let done_i_u = *done.add(tid) as u32;
+        let not_done = 1.0 - (done_i_u as f64);
+        let mut ti = *t.add(tid);
+        let mut dti = *dt.add(tid);
+        let mut wi = *w.add(tid) as usize;
+        let sign = time_direction;
 
+        // 2. compute effective dt
+        let (save_dt, dt_eff) = compute_effective_dt(tid,ti, dti, t_end, sign, dt_min, dt_max,poll_number,gate);
 
+        // 3. load state
+        let prev_offset = ((wi * n) + tid) * 6;
+        let x0 = load_state(state_out, prev_offset);
 
-    // 1. load current state
-    let done_i_u = *done.add(tid) as u32;
-    let not_done = 1.0 - (done_i_u as f64);
-    let mut ti = *t.add(tid);
-    let mut dti = *dt.add(tid);
-    let mut wi = *w.add(tid) as usize;
-    let sign = time_direction;
+        // 4. compute RK stages
+        let mut potential:[PotentialEnum;10] = [PotentialEnum::KeplerPotential(KeplerPotential{amp:0.0});10];
 
-    // 2. compute effective dt
-    let (save_dt, dt_eff) = compute_effective_dt(tid,ti, dti, t_end, sign, dt_min, dt_max,poll_number,gate);
+        for (i,r) in recipe.into_iter().enumerate(){
+            potential[i] = consume_recipe(r,supertable);
+        }
+        let pot = potential[0];
+        // let potential = MW2014Potential::new(ar_table, r_min, dr, n_ar);
+        let rk = compute_rk_stages(ti, dt_eff, x0, &pot);
 
-    // 3. load state
-    let prev_offset = ((wi * n) + tid) * 6;
-    let x0 = load_state(state_out, prev_offset);
+        // // 5. combine 4th/5th order solutions
+        let x5 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B);
+        let x4 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B_HAT);
 
-    // 4. compute RK stages
-    let potential = consume_recipe(recipe,supertable);
-    // let potential = MW2014Potential::new(ar_table, r_min, dr, n_ar);
-    let rk = compute_rk_stages(ti, dt_eff, x0, &potential);
+        // // 6. adapt step
+        let (dt_new_mag, rk_err, accept) = adaptive_step_control(
+            x5, x4, x0,
+            atol, rtol, safety, fac_min,
+            fac_max, dt_min, dt_max, dti.abs()
+        );
 
-    // 5. combine 4th/5th order solutions
-    let x5 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B);
-    let x4 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B_HAT);
+        let dt_new = sign * dt_new_mag;
 
-    // 6. adapt step
-    let (dt_new_mag, rk_err, accept) = adaptive_step_control(
-        x5, x4, x0,
-        atol, rtol, safety, fac_min,
-        fac_max, dt_min, dt_max, dti.abs()
-    );
-
-    let dt_new = sign * dt_new_mag;
-
-    // 7. finalize + write back
-    finalize_step(
-        tid, n, steps_cap, state_out, time_out,
-        t, dt, w, done,
-        ti, dt_eff, dt_new, accept,
-        x5, x0, wi, t_end, sign,
-        done_i_u, not_done, save_dt
-    );
+        // 7. finalize + write back
+        finalize_step(
+            tid, n, steps_cap, state_out, time_out,
+            t, dt, w, done,
+            ti, dt_eff, dt_new, accept,
+            x5, x0, wi, t_end, sign,
+            done_i_u, not_done, save_dt
+        );
+    }
 }

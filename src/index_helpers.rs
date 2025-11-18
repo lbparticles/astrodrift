@@ -10,13 +10,13 @@ pub fn find_preceding_step(
     p: usize,
     filled_len: usize, // NOTE: per-particle valid length (>=1, <= steps_cap)
     t_end: f64,
-) -> (f64, isize) {
+) -> (f64, isize, isize) {
     let mut lo = 0usize;
     let mut hi = filled_len; // exclusive
     while lo < hi {
         let mid = (lo + hi) / 2;
         let val = time_out[mid * n_particles + p];
-        if val <= t_end {
+        if val <= t_end + 1e-12 {
             lo = mid + 1;
         } else {
             hi = mid;
@@ -24,7 +24,7 @@ pub fn find_preceding_step(
     }
     let step = lo.saturating_sub(1);
     let idx = (step * n_particles + p) as isize;
-    (time_out[idx as usize], step as isize)
+    (time_out[idx as usize], step as isize, idx)
 }
 
 pub fn find_last_times_and_indices(
@@ -33,19 +33,21 @@ pub fn find_last_times_and_indices(
     n_particles: usize,
     steps_cap: usize,
     filled_lens: &[usize],
-) -> (Vec<Vec<f64>>, Vec<Vec<isize>>) {
+) -> (Vec<Vec<f64>>, Vec<Vec<isize>>,Vec<Vec<isize>>) {
     assert_eq!(time_out.len(), n_particles * steps_cap);
     assert_eq!(filled_lens.len(), n_particles);
 
     let mut all_times = Vec::with_capacity(n_particles);
+    let mut all_steps = Vec::with_capacity(n_particles);
     let mut all_indices = Vec::with_capacity(n_particles);
 
     for p in 0..n_particles {
         let filled_len = filled_lens[p].min(steps_cap).max(1);
         let first = time_out[p];
-        let last  = time_out[(filled_len - 1) * n_particles + p];
+        let last = time_out[(filled_len - 1) * n_particles + p];
 
         let mut times_row = Vec::with_capacity(ts.len());
+        let mut step_row = Vec::with_capacity(ts.len());
         let mut idx_row = Vec::with_capacity(ts.len());
 
         for &t_end in ts {
@@ -61,14 +63,16 @@ pub fn find_last_times_and_indices(
                 t_end
             };
 
-            let (val, idx) = find_preceding_step(time_out, n_particles, p, filled_len, t);
+            let (val, step, idx) = find_preceding_step(time_out, n_particles, p, filled_len, t);
             times_row.push(val);
+            step_row.push(step);
             idx_row.push(idx);
         }
 
         all_times.push(times_row);
+        all_steps.push(step_row);
         all_indices.push(idx_row);
     }
 
-    (all_times, all_indices)
+    (all_times,all_steps, all_indices)
 }
