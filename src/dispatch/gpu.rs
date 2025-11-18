@@ -159,7 +159,7 @@ pub fn gpu_dispatch(
         let (ts0, step, indices) =
             find_last_times_and_indices(&time_out, &ts, n, py_config.steps_cap, &filled_lens);
         // eprintln!("{:?}",time_out);
-        eprintln!("{:?}",ts);
+        // eprintln!("{:?}",ts);
         // eprintln!("{:?}",ts0);
         // eprintln!("{:?}",step);
         let flat_indices: Vec<usize> = indices
