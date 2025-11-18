@@ -5,6 +5,7 @@ mod index_helpers;
 mod tables;
 mod python;
 mod bootstrap;
+mod dopr54_cpu;
 
 
 use crate::bootstrap::simulation_ctx;
