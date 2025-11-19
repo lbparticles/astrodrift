@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 mod bootstrap;
 mod dispatch;
 mod dopr54_cpu;
+mod dopr54_cpu_no_libc;
 pub mod index_helpers;
 mod python;
 mod tables;

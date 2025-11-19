@@ -1,4 +1,4 @@
-use crate::dispatch::gpu_dispatch;
+use crate::dispatch::gpu_dispatch2;
 use crate::python::{PyConfig, PyEngine, PyPotentialRecipe, py_runtime_err, translate_recipe};
 use numpy::PyReadonlyArray2;
 use pyo3::prelude::*;
@@ -45,7 +45,7 @@ pub fn simulation_ctx<'py>(
 
     let (_results, _debug) = match py_config.engine {
         PyEngine::CPU => (0.0f64, 0.0f64),
-        PyEngine::GPU => py_runtime_err(gpu_dispatch(states, stages, config, py_config))?,
+        PyEngine::GPU => py_runtime_err(gpu_dispatch2(states, stages, config))?,
     };
 
     // let app_ts = PyArray2::from_vec2(py, &debug.app_ts0)?;

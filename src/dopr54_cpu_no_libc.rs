@@ -1,4 +1,3 @@
-use libc;
 use libm::{ceil, exp, fabs, fmax, log, pow, sqrt};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
@@ -26,7 +25,7 @@ pub type FuncPtr = Option<
     ),
 >;
 
-#[inline]
+#[inline(always)]
 unsafe fn save_rk(dim: c_int, mut yo: *mut c_double, mut result: *mut c_double) {
     for _ in 0..dim {
         *result = *yo;
@@ -35,218 +34,164 @@ unsafe fn save_rk(dim: c_int, mut yo: *mut c_double, mut result: *mut c_double) 
     }
 }
 
+#[inline(always)]
 unsafe fn rk4_onestep(
     func: FuncPtr,
     dim: c_int,
-    yn: *mut c_double,
-    yn1: *mut c_double,
+    yn: &mut [c_double],
+    yn1: &mut [c_double],
     tn: c_double,
     dt: c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
-    ynk: *mut c_double,
-    a: *mut c_double,
+    potential_args: *mut potentialArg,
+    ynk: &mut [c_double],
+    a: &mut [c_double],
 ) {
     let f = func.expect("rk4_onestep: func pointer was null");
+    let dim_usize = dim as usize;
 
-    // int ii;
-    // //calculate k1
-    // func(tn,yn,a,nargs,potentialArgs);
-    f(tn, yn, a, nargs, potentialArgs);
+    debug_assert!(yn.len() >= dim_usize);
+    debug_assert!(yn1.len() >= dim_usize);
+    debug_assert!(ynk.len() >= dim_usize);
+    debug_assert!(a.len() >= dim_usize);
 
-    // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 6.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *yn1.add(idx) += dt * *a.add(idx) / 6.0;
+    // k1
+    f(tn, yn.as_mut_ptr(), a.as_mut_ptr(), nargs, potential_args);
+    for i in 0..dim_usize {
+        yn1[i] += dt * a[i] / 6.0;
+        ynk[i] = yn[i] + dt * a[i] / 2.0;
     }
 
-    // for (ii=0; ii < dim; ii++) *(ynk+ii)= *(yn+ii) + dt * *(a+ii) / 2.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *ynk.add(idx) = *yn.add(idx) + dt * *a.add(idx) / 2.0;
+    // k2
+    f(tn + dt / 2.0, ynk.as_mut_ptr(), a.as_mut_ptr(), nargs, potential_args);
+    for i in 0..dim_usize {
+        yn1[i] += dt * a[i] / 3.0;
+        ynk[i] = yn[i] + dt * a[i] / 2.0;
     }
 
-    // //calculate k2
-    // func(tn+dt/2.,ynk,a,nargs,potentialArgs);
-    f(tn + dt / 2.0, ynk, a, nargs, potentialArgs);
-
-    // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 3.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *yn1.add(idx) += dt * *a.add(idx) / 3.0;
+    // k3
+    f(tn + dt / 2.0, ynk.as_mut_ptr(), a.as_mut_ptr(), nargs, potential_args);
+    for i in 0..dim_usize {
+        yn1[i] += dt * a[i] / 3.0;
+        ynk[i] = yn[i] + dt * a[i];
     }
 
-    // for (ii=0; ii < dim; ii++) *(ynk+ii)= *(yn+ii) + dt * *(a+ii) / 2.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *ynk.add(idx) = *yn.add(idx) + dt * *a.add(idx) / 2.0;
+    // k4
+    f(tn + dt, ynk.as_mut_ptr(), a.as_mut_ptr(), nargs, potential_args);
+    for i in 0..dim_usize {
+        yn1[i] += dt * a[i] / 6.0;
     }
-
-    // //calculate k3
-    // func(tn+dt/2.,ynk,a,nargs,potentialArgs);
-    f(tn + dt / 2.0, ynk, a, nargs, potentialArgs);
-
-    // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 3.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *yn1.add(idx) += dt * *a.add(idx) / 3.0;
-    }
-
-    // for (ii=0; ii < dim; ii++) *(ynk+ii)= *(yn+ii) + dt * *(a+ii);
-    for i in 0..dim {
-        let idx = i as usize;
-        *ynk.add(idx) = *yn.add(idx) + dt * *a.add(idx);
-    }
-
-    // //calculate k4
-    // func(tn+dt,ynk,a,nargs,potentialArgs);
-    f(tn + dt, ynk, a, nargs, potentialArgs);
-
-    // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 6.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *yn1.add(idx) += dt * *a.add(idx) / 6.0;
-    }
-    // yn1 is new value
 }
 
+#[inline(always)]
 unsafe fn rk4_estimate_step(
     func: FuncPtr,
     dim: c_int,
-    yo: *mut c_double,
+    yo: &[c_double],
     mut dt: c_double,
-    t: *mut c_double,
+    t: &[c_double],
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    potential_args: *mut potentialArg,
     rtol: c_double,
     atol: c_double,
 ) -> c_double {
-    // //return dt;
-
-    // //scalars
     let mut err: c_double = 2.0;
-    let mut max_val: c_double;
-    let to: c_double = *t;
+    let dim_usize = dim as usize;
+
+    debug_assert_eq!(yo.len(), dim_usize);
+    debug_assert!(!t.is_empty());
+
+    let to: c_double = t[0];
     let init_dt: c_double = dt;
 
-    let dim_usize = dim as usize;
-    let sz = dim_usize * std::mem::size_of::<c_double>();
+    let mut yn    = vec![0.0 as c_double; dim_usize];
+    let mut y1    = vec![0.0 as c_double; dim_usize];
+    let mut y21   = vec![0.0 as c_double; dim_usize];
+    let mut y2    = vec![0.0 as c_double; dim_usize];
+    let mut ynk   = vec![0.0 as c_double; dim_usize];
+    let mut a     = vec![0.0 as c_double; dim_usize];
+    let mut scale = vec![0.0 as c_double; dim_usize];
 
-    // double *yn= (double *) malloc ( dim * sizeof(double) );
-    let yn = libc::malloc(sz) as *mut c_double;
-    let y1 = libc::malloc(sz) as *mut c_double;
-    let y21 = libc::malloc(sz) as *mut c_double;
-    let y2 = libc::malloc(sz) as *mut c_double;
-    let ynk = libc::malloc(sz) as *mut c_double;
-    let a = libc::malloc(sz) as *mut c_double;
-    let scale = libc::malloc(sz) as *mut c_double;
-
-    let mut ii: c_int;
-
-    // //find maximum values
-    // max_val= log(fabs(*yo));
-    max_val = log(fabs(*yo));
-
-    // for (ii=1; ii < dim; ii++)
-    //   if ( log(fabs(*(yo+ii))) > max_val )
-    //     max_val= log(fabs(*(yo+ii)));
-    for i in 1..dim {
-        let v = log(fabs(*yo.add(i as usize)));
+    // find maximum values
+    let mut max_val = log(fabs(yo[0]));
+    for i in 1..dim_usize {
+        let v = log(fabs(yo[i]));
         if v > max_val {
             max_val = v;
         }
     }
 
-    // //set up scale
-    // double c= fmax(atol, rtol + max_val);
+    // set up scale
     let c = fmax(atol, rtol + max_val);
-
-    // double s= log(exp(atol-c)+exp(rtol + max_val-c))+c;
     let s = log(exp(atol - c) + exp(rtol + max_val - c)) + c;
-
-    // for (ii=0; ii < dim; ii++) *(scale+ii)= s;
-    for i in 0..dim {
-        *scale.add(i as usize) = s;
+    for i in 0..dim_usize {
+        scale[i] = s;
     }
 
-    // //find good dt
-    // //dt*= 2.;
+    // find good dt
     while err > 1.0 {
-        // //dt/= 2.;
-        // //copy initial condition
-        // for (ii=0; ii < dim; ii++) *(yn+ii)= *(yo+ii);
-        for i in 0..dim {
-            *yn.add(i as usize) = *yo.add(i as usize);
-        }
-        // for (ii=0; ii < dim; ii++) *(y1+ii)= *(yo+ii);
-        for i in 0..dim {
-            *y1.add(i as usize) = *yo.add(i as usize);
-        }
-        // for (ii=0; ii < dim; ii++) *(y21+ii)= *(yo+ii);
-        for i in 0..dim {
-            *y21.add(i as usize) = *yo.add(i as usize);
+        // copy initial condition
+        for i in 0..dim_usize {
+            yn[i]  = yo[i];
+            y1[i]  = yo[i];
+            y21[i] = yo[i];
         }
 
-        // //do one step with step dt, and one with step dt/2.
-        // //dt
-        // rk4_onestep(func,dim,yn,y1,to,dt,nargs,potentialArgs,ynk,a);
-        rk4_onestep(func, dim, yn, y1, to, dt, nargs, potentialArgs, ynk, a);
-
-        // //dt/2
-        // rk4_onestep(func,dim,yn,y21,to,dt/2.,nargs,potentialArgs,ynk,a);
+        // dt
         rk4_onestep(
             func,
             dim,
-            yn,
-            y21,
+            &mut yn,
+            &mut y1,
+            to,
+            dt,
+            nargs,
+            potential_args,
+            &mut ynk,
+            &mut a,
+        );
+
+        // dt/2
+        rk4_onestep(
+            func,
+            dim,
+            &mut yn,
+            &mut y21,
             to,
             dt / 2.0,
             nargs,
-            potentialArgs,
-            ynk,
-            a,
+            potential_args,
+            &mut ynk,
+            &mut a,
         );
 
-        // for (ii=0; ii < dim; ii++) *(y2+ii)= *(y21+ii);
-        for i in 0..dim {
-            *y2.add(i as usize) = *y21.add(i as usize);
+        // copy y21 -> y2
+        for i in 0..dim_usize {
+            y2[i] = y21[i];
         }
 
-        // rk4_onestep(func,dim,y21,y2,to+dt/2.,dt/2.,nargs,potentialArgs,ynk,a);
         rk4_onestep(
             func,
             dim,
-            y21,
-            y2,
+            &mut y21,
+            &mut y2,
             to + dt / 2.0,
             dt / 2.0,
             nargs,
-            potentialArgs,
-            ynk,
-            a,
+            potential_args,
+            &mut ynk,
+            &mut a,
         );
 
-        // //Norm
-        // err= 0.;
+        // Norm
         err = 0.0;
-
-        // for (ii=0; ii < dim; ii++) {
-        //   err+= exp(2.*log(fabs(*(y1+ii)-*(y2+ii)))-2.* *(scale+ii));
-        // }
-        for i in 0..dim {
-            let diff = *y1.add(i as usize) - *y2.add(i as usize);
-            let term = exp(2.0 * log(fabs(diff)) - 2.0 * *scale.add(i as usize));
+        for i in 0..dim_usize {
+            let diff = y1[i] - y2[i];
+            let term = exp(2.0 * log(fabs(diff)) - 2.0 * scale[i]);
             err += term;
         }
-
-        // err= sqrt(err/dim);
         err = sqrt(err / (dim as c_double));
 
-        // if ( ceil(pow(err,1./5.)) > 1.
-        //      && init_dt / dt * ceil(pow(err,1./5.)) < _MAX_DT_REDUCE)
-        //   dt/= ceil(pow(err,1./5.));
-        // else
-        //   break;
         let factor = ceil(pow(err, 1.0 / 5.0));
         if factor > 1.0 && init_dt / dt * factor < MAX_DT_REDUCE {
             dt /= factor;
@@ -255,21 +200,10 @@ unsafe fn rk4_estimate_step(
         }
     }
 
-    // //free what we allocated
-    libc::free(yn as *mut libc::c_void);
-    libc::free(y1 as *mut libc::c_void);
-    libc::free(y2 as *mut libc::c_void);
-    libc::free(y21 as *mut libc::c_void);
-    libc::free(ynk as *mut libc::c_void);
-    libc::free(a as *mut libc::c_void);
-    libc::free(scale as *mut libc::c_void);
-
-    // //return
-    // //printf("%f\n",dt);
-    // //fflush(stdout);
     dt
 }
 
+#[inline(always)]
 unsafe fn dopr54_onestep(
     func: FuncPtr,
     dim: c_int,
@@ -362,6 +296,7 @@ unsafe fn dopr54_onestep(
     }
 }
 
+#[inline(always)]
 unsafe fn dopr54_actualstep(
     func: FuncPtr,
     dim: c_int,
@@ -562,13 +497,12 @@ unsafe fn dopr54_actualstep(
     dt_one
 }
 
-// #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dopr54(
     func: FuncPtr,
     dim: c_int,
     yo: *mut c_double,
     nt: c_int,
-    dt_one: c_double,
+    mut dt_one: c_double,
     t: *mut c_double,
     nargs: c_int,
     potentialArgs: *mut potentialArg,
@@ -577,60 +511,69 @@ pub unsafe extern "C" fn dopr54(
     result: *mut c_double,
     err: *mut c_int,
 ) {
-    // //Declare and initialize
     let dim_usize = dim as usize;
-    let sz = dim_usize * std::mem::size_of::<c_double>();
 
-    let a = libc::malloc(sz) as *mut c_double;
-    let a1 = libc::malloc(sz) as *mut c_double;
-    let k1 = libc::malloc(sz) as *mut c_double;
-    let k2 = libc::malloc(sz) as *mut c_double;
-    let k3 = libc::malloc(sz) as *mut c_double;
-    let k4 = libc::malloc(sz) as *mut c_double;
-    let k5 = libc::malloc(sz) as *mut c_double;
-    let k6 = libc::malloc(sz) as *mut c_double;
-    let yn = libc::malloc(sz) as *mut c_double;
-    let yn1 = libc::malloc(sz) as *mut c_double;
-    let yerr = libc::malloc(sz) as *mut c_double;
-    let ynk = libc::malloc(sz) as *mut c_double;
+    let mut a   = vec![0.0 as c_double; dim_usize];
+    let mut a1  = vec![0.0 as c_double; dim_usize];
+    let mut k1  = vec![0.0 as c_double; dim_usize];
+    let mut k2  = vec![0.0 as c_double; dim_usize];
+    let mut k3  = vec![0.0 as c_double; dim_usize];
+    let mut k4  = vec![0.0 as c_double; dim_usize];
+    let mut k5  = vec![0.0 as c_double; dim_usize];
+    let mut k6  = vec![0.0 as c_double; dim_usize];
+    let mut yn  = vec![0.0 as c_double; dim_usize];
+    let mut yn1 = vec![0.0 as c_double; dim_usize];
+    let mut yerr= vec![0.0 as c_double; dim_usize];
+    let mut ynk = vec![0.0 as c_double; dim_usize];
 
-    let mut ii: c_int;
+    // Copy initial condition into yn
+    let yo_slice = std::slice::from_raw_parts(yo as *const c_double, dim_usize);
+    yn.copy_from_slice(yo_slice);
 
+    // Save initial state
     save_rk(dim, yo, result);
-
     let mut result = result.add(dim_usize);
 
     *err = 0;
 
-    for i in 0..dim {
-        *yn.add(i as usize) = *yo.add(i as usize);
-    }
-
+    // Initial dt from t-grid
     let mut dt: c_double = *t.add(1) - *t;
-    let mut dt_one = dt_one;
+
+    // If dt_one is the sentinel, estimate it using pure RK4 step estimator
     if dt_one == -9999.99 {
-        dt_one = rk4_estimate_step(func, dim, yo, dt, t, nargs, potentialArgs, rtol, atol);
+        let t_slice = std::slice::from_raw_parts(t as *const c_double, nt as usize);
+        dt_one = rk4_estimate_step(
+            func,
+            dim,
+            yo_slice,
+            dt,
+            t_slice,
+            nargs,
+            potentialArgs,
+            rtol,
+            atol,
+        );
     }
 
-    // //Integrate the system
-    // double to= *t;
+    // Integrate the system
     let mut to: c_double = *t;
 
-    // //set up a1
-    // func(to,yn,a1,nargs,potentialArgs);
+    // set up a1: a1 = f(to, yn)
     let f = func.expect("dopr54: func pointer was null");
-    f(to, yn, a1, nargs, potentialArgs);
+    f(
+        to,
+        yn.as_mut_ptr(),
+        a1.as_mut_ptr(),
+        nargs,
+        potentialArgs,
+    );
 
-    for _ii in 0..(nt - 1) {
-        // if ( interrupted ) { ... }  // not yet ported; see note above
-
-        // dopr54_onestep(func,dim,yn,dt,&to,&dt_one,
-        //                     nargs,potentialArgs,rtol,atol,
-        //                     a1,a,k1,k2,k3,k4,k5,k6,yn1,yerr,ynk,err);
+    for _step in 0..(nt - 1) {
+        // One Dormand–Prince 5(4) macro-step (possibly multiple substeps)
         dopr54_onestep(
             func,
             dim,
-            yn,
+            yn.as_mut_ptr(),
             dt,
             &mut to,
             &mut dt_one,
@@ -638,40 +581,27 @@ pub unsafe extern "C" fn dopr54(
             potentialArgs,
             rtol,
             atol,
-            a1,
-            a,
-            k1,
-            k2,
-            k3,
-            k4,
-            k5,
-            k6,
-            yn1,
-            yerr,
-            ynk,
+            a1.as_mut_ptr(),
+            a.as_mut_ptr(),
+            k1.as_mut_ptr(),
+            k2.as_mut_ptr(),
+            k3.as_mut_ptr(),
+            k4.as_mut_ptr(),
+            k5.as_mut_ptr(),
+            k6.as_mut_ptr(),
+            yn1.as_mut_ptr(),
+            yerr.as_mut_ptr(),
+            ynk.as_mut_ptr(),
             err,
         );
 
-        // //save
-        // save_rk(dim,yn,result);
-        save_rk(dim, yn, result);
-        // result+= dim;
+        // Save current yn into result
+        save_rk(dim, yn.as_mut_ptr(), result);
         result = result.add(dim_usize);
     }
 
-    libc::free(a as *mut libc::c_void);
-    libc::free(a1 as *mut libc::c_void);
-    libc::free(k1 as *mut libc::c_void);
-    libc::free(k2 as *mut libc::c_void);
-    libc::free(k3 as *mut libc::c_void);
-    libc::free(k4 as *mut libc::c_void);
-    libc::free(k5 as *mut libc::c_void);
-    libc::free(k6 as *mut libc::c_void);
-    libc::free(yn as *mut libc::c_void);
-    libc::free(yn1 as *mut libc::c_void);
-    libc::free(yerr as *mut libc::c_void);
-    libc::free(ynk as *mut libc::c_void);
 }
+
 
 // ********** Harness **********
 
@@ -835,54 +765,54 @@ pub unsafe fn run_dopr54_harness_from_dump(
     Ok(())
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use std::ptr;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ptr;
 
-//     extern "C" fn kepler_rhs(
-//         _t: c_double,
-//         q: *mut c_double,
-//         a: *mut c_double,
-//         _nargs: c_int,
-//         _pot_args: *mut potentialArg,
-//     ) {
-//         unsafe {
-//             let x = *q.add(0);
-//             let y = *q.add(1);
-//             let z = *q.add(2);
-//             let vx = *q.add(3);
-//             let vy = *q.add(4);
-//             let vz = *q.add(5);
+    extern "C" fn kepler_rhs(
+        _t: c_double,
+        q: *mut c_double,
+        a: *mut c_double,
+        _nargs: c_int,
+        _pot_args: *mut potentialArg,
+    ) {
+        unsafe {
+            let x = *q.add(0);
+            let y = *q.add(1);
+            let z = *q.add(2);
+            let vx = *q.add(3);
+            let vy = *q.add(4);
+            let vz = *q.add(5);
 
-//             let r2 = x * x + y * y + z * z;
-//             // guard against r=0 just in case
-//             let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
-//             let r = libm::sqrt(r2_safe);
-//             let inv_r3 = 1.0 / (r2_safe * r); // 1 / r^3
+            let r2 = x * x + y * y + z * z;
+            // guard against r=0 just in case
+            let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
+            let r = libm::sqrt(r2_safe);
+            let inv_r3 = 1.0 / (r2_safe * r); // 1 / r^3
 
-//             *a.add(0) = vx;
-//             *a.add(1) = vy;
-//             *a.add(2) = vz;
+            *a.add(0) = vx;
+            *a.add(1) = vy;
+            *a.add(2) = vz;
 
-//             *a.add(3) = -x * inv_r3;
-//             *a.add(4) = -y * inv_r3;
-//             *a.add(5) = -z * inv_r3;
-//         }
-//     }
+            *a.add(3) = -x * inv_r3;
+            *a.add(4) = -y * inv_r3;
+            *a.add(5) = -z * inv_r3;
+        }
+    }
 
-//     #[test]
-//     fn kepler_harness_from_dump_runs() {
-//         unsafe {
-//             let pot_ptr: *mut potentialArg = ptr::null_mut();
+    #[test]
+    fn kepler_harness_from_dump_runs() {
+        unsafe {
+            let pot_ptr: *mut potentialArg = ptr::null_mut();
 
-//             run_dopr54_harness_from_dump(
-//                 Some(kepler_rhs),
-//                 pot_ptr,
-//                 "dopr54_init_dump.txt",
-//                 "dopr54_rust_out.txt",
-//             )
-//             .expect("harness run failed");
-//         }
-//     }
-// }
+            run_dopr54_harness_from_dump(
+                Some(kepler_rhs),
+                pot_ptr,
+                "dopr54_init_dump.txt",
+                "dopr54_rust_out.txt",
+            )
+            .expect("harness run failed");
+        }
+    }
+}

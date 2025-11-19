@@ -30,6 +30,7 @@ unsafe fn compute_effective_dt(
     if check*sign > 0. { 
         *gate.add(tid) = curr_gate as usize + sign as usize; 
         dt_mag = (curr_gate as f64 +sign)*div_siz - ti;
+        // dt_mag + ti > FIXME: hmmmm
         save_dt = false;
     }
     dt_mag = f64::min(f64::max(dt_mag, dt_min), f64::min(dt_max, rempos));
