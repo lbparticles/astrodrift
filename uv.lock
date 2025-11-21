@@ -13,6 +13,12 @@ dependencies = [
     { name = "patchelf" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "astropy", specifier = ">=7.1.1" },

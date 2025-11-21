@@ -32,6 +32,10 @@ name = "drift"
 [workspace]
 members = ["shared", "."]
 
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]
+
 # [profile.release]
 # opt-level = 2
 # codegen-units = 1
@@ -41,3 +45,4 @@ members = ["shared", "."]
 # opt-level = 2
 # codegen-units = 1
 # debug = false
+

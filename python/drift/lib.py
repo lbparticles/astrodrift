@@ -96,7 +96,7 @@ def test_group(
 
 
 def simulation(
-    state,
+    *containers: IntegratorContainer,
     label: str = "",
     engine: Engine = Engine.GPU,
     method: Method = Method.RK54,
@@ -112,10 +112,13 @@ def simulation(
         potential: This is the first param.
         state: This is a second param.
         config:
-        label: auto-generates a name if none is provided, included in the ctx and debug info
-        engine: defines which version and implemntation to use, should be enum
+        label: auto-generates a name if none is provided, included in
+        the ctx and debug info
+        engine: defines which version and implemntation to use, should
+        be enum
         method: what integration method will the engine use?
-        optimisation: a list of optimisation features, or boolean that determines whether all or none of the optimisations are included
+        optimisation: a list of optimisation features, or boolean that
+        determines whether all or none of the optimisations are included
         debug: Sets debug flag
 
     Returns:
@@ -124,7 +127,7 @@ def simulation(
     Raises:
         KeyError: Raises an exception.
     """
-    return SimulationFrame([])
+    return SimulationFrame(*containers)
 
 
 class SimulationFrame:
@@ -137,9 +140,9 @@ class SimulationFrame:
         debug: Debug = Debug.WARN,
     ):
         """
-        SimulationFrame is the main class within the library, setting up the
-        framework work with all the datastructures and functions needed to
-        interact with the cffi
+        SimulationFrame is the main class within the library, setting up
+        the framework work with all the datastructures and functions
+        needed to interact with the cffi
 
         Args:
             potential: This is the first param.
@@ -162,22 +165,21 @@ class SimulationFrame:
         print("DATAFRAME")
         return ""
 
-    def potential(self):
+    def add(self, *containers: IntegratorContainer):
         """
         test drive
         """
+        self.containers.extend(containers)
         return
 
-    def initial(self):
+    def integrate(self, time):
         """
         test drive
         """
-        return
-
-    def integrate(self):
-        """
-        test drive
-        """
+        self._warn_if_missing(
+            BackgroundFeature, "No background feature! Is this correct?"
+        )
+        self._warn_if_missing(TestGroup, "No test particles! Is this correct?")
         return
 
     def run(self):
