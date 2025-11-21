@@ -1,14 +1,28 @@
 use libc;
-use libm::{ceil, exp, fabs, fmax, log, pow, sqrt};
+// use libm::{ceil, exp, fabs, fmax, log, pow, sqrt};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
-use std::os::raw::{c_double, c_int};
+// use std::os::raw::{c_double, c_int};
 use std::path::Path;
 
 const MAX_STEPCHANGE_POWERTWO: c_double = 3.0;
 const MIN_STEPCHANGE_POWERTWO: c_double = -3.0;
 const MAX_STEPREDUCE: c_double = 10000.0;
 const MAX_DT_REDUCE: c_double = 10000.0;
+
+use libc::{c_double, c_int};
+
+#[link(name = "m")]   // link explicitly with libm instead of using rust port
+unsafe extern "C" {
+    pub fn sqrt(x: c_double) -> c_double;
+    pub fn log(x: c_double) -> c_double;
+    pub fn exp(x: c_double) -> c_double;
+    pub fn pow(x: c_double, y: c_double) -> c_double;
+    pub fn fabs(x: c_double) -> c_double;
+    pub fn fmax(x: c_double, y: c_double) -> c_double;
+    pub fn ceil(x: c_double) -> c_double;
+    pub fn round(x: c_double) -> c_double;
+}
 
 // opaque stand-in for the C struct potentialArg
 #[repr(C)]
@@ -538,7 +552,6 @@ unsafe fn dopr54_actualstep(
     let corr: c_double = 0.85 * pow(err, -0.2);
 
     // Round to the nearest power of two
-    use libm::round;
     let mut powertwo: c_double = round(log(corr) / log(2.0));
     if powertwo > MAX_STEPCHANGE_POWERTWO {
         powertwo = MAX_STEPCHANGE_POWERTWO;
@@ -673,6 +686,39 @@ pub unsafe extern "C" fn dopr54(
     libc::free(ynk as *mut libc::c_void);
 }
 
+pub type CFuncPtr =
+    Option<extern "C" fn(
+        t: c_double,
+        q: *mut c_double,
+        a: *mut c_double,
+        nargs: c_int,
+        potentialArgs: *mut potentialArg,
+    )>;
+
+unsafe extern "C" {
+    // fn evalRectDeriv(
+    //     t: c_double,
+    //     q: *mut c_double,
+    //     a: *mut c_double,
+    //     nargs: c_int,
+    //     potentialArgs: *mut potentialArg,
+    // );
+    pub fn bovy_dopr54(
+        func: CFuncPtr,
+        dim: c_int,
+        yo: *mut c_double,
+        nt: c_int,
+        dt_one: c_double,
+        t: *mut c_double,
+        nargs: c_int,
+        potentialArgs: *mut potentialArg,
+        rtol: c_double,
+        atol: c_double,
+        result: *mut c_double,
+        err: *mut c_int,
+    );
+}
+
 // ********** Harness **********
 
 struct DumpData {
@@ -734,16 +780,31 @@ fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
                     atol = Some(v.parse().unwrap());
                 }
             }
-            "t" => {
+
+            // // Old decimal format:
+            // "t" => {
+            //     for v in parts {
+            //         t.push(v.parse().unwrap());
+            //     }
+            // }
+
+            // New raw-bits format for t:
+            // e.g. line like:
+            //   t_hex 0000000000000000 3f847ae147ae147b ...
+            "t_hex" => {
+                t.clear(); // in case something was parsed earlier
                 for v in parts {
-                    t.push(v.parse().unwrap());
+                    t.push(parse_hex_f64(v));
                 }
             }
+
+            // Old decimal yo (what you currently dump)
             "yo" => {
                 for v in parts {
                     yo.push(v.parse().unwrap());
                 }
             }
+
             "nargs" => {
                 if let Some(v) = parts.next() {
                     nargs = v.parse().unwrap();
@@ -771,6 +832,15 @@ fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
         nargs,
         args,
     })
+}
+
+
+fn parse_hex_f64(s: &str) -> f64 {
+    // Accept plain 16-digit hex like "3f847ae147ae147b"
+    // (optionally you could trim a "0x" prefix if you ever add it)
+    let bits = u64::from_str_radix(s, 16)
+        .unwrap_or_else(|e| panic!("failed to parse hex f64 '{}': {}", s, e));
+    f64::from_bits(bits)
 }
 
 pub unsafe fn run_dopr54_harness_from_dump(
@@ -827,7 +897,98 @@ pub unsafe fn run_dopr54_harness_from_dump(
         write!(f, "step {}", step)?;
         for j in 0..(dim as usize) {
             let v = result[step * (dim as usize) + j];
-            write!(f, " {:.16e}", v)?;
+            let bits = v.to_bits(); // u64 raw IEEE-754
+
+            let s = format_c_style_e(v);
+
+            // Existing decimal output
+            if j == 0 {
+                write!(f, " {}",s)?;
+            } else {
+                write!(f, "{}",s)?;
+            }
+
+            // NEW: hex raw bits immediately after
+            write!(f, " (0x{:016x})", bits)?;
+            writeln!(f)?;
+        }
+        writeln!(f)?;
+    }
+
+    
+
+    Ok(())
+}
+
+pub unsafe fn run_bovy_dopr54_harness_from_dump(
+    func: CFuncPtr,
+    potential_args: *mut potentialArg,
+    dump_path: &str,
+    out_path: &str,
+) -> io::Result<()> {
+    let dump = parse_dopr54_dump(dump_path)?;
+
+    let dim = dump.dim;
+    let nt = dump.nt;
+
+    // sanity checks
+    assert_eq!(dump.t.len(), nt as usize, "t length != nt");
+    assert_eq!(dump.yo.len(), dim as usize, "yo length != dim");
+
+    // Make owned copies to hand pointers into the integrator
+    let mut t = dump.t.clone();
+    let mut yo = dump.yo.clone();
+
+    let mut result = vec![0.0 as c_double; (nt as usize) * (dim as usize)];
+    let mut err: c_int = 0;
+
+    // Note: nargs is only passed through to `func`; the integrator itself
+    // doesn't look at it. If we didn't dump nargs, this will be 0.
+    let nargs = dump.nargs;
+
+    // Call the C implementation from libgalpy
+    bovy_dopr54(
+        func,
+        dim,
+        yo.as_mut_ptr(),
+        nt,
+        dump.dt_one,
+        t.as_mut_ptr(),
+        nargs,
+        potential_args,
+        dump.rtol,
+        dump.atol,
+        result.as_mut_ptr(),
+        &mut err,
+    );
+
+    let mut f = File::create(out_path)?;
+    writeln!(f, "err {}", err)?;
+    writeln!(f, "dim {}", dim)?;
+    writeln!(f, "nt {}", nt)?;
+    writeln!(f, "t")?;
+    for ti in &t {
+        writeln!(f, "{:.16e}", ti)?;
+    }
+    writeln!(f, "states")?;
+    for step in 0..(nt as usize) {
+        write!(f, "step {}", step)?;
+        for j in 0..(dim as usize) {
+            let v = result[step * (dim as usize) + j];
+            let bits = v.to_bits(); // u64 raw IEEE-754
+            let s = format_c_style_e(v);
+
+            // Existing decimal output
+            if j == 0 {
+                write!(f, " {}",s)?;
+            } else {
+                write!(f, "{}",s)?;
+            }
+            
+
+            // NEW: hex raw bits immediately after
+            write!(f, " (0x{:016x})", bits)?;
+            writeln!(f)?;
         }
         writeln!(f)?;
     }
@@ -835,54 +996,100 @@ pub unsafe fn run_dopr54_harness_from_dump(
     Ok(())
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use std::ptr;
+fn format_c_style_e(v: c_double) -> String {
+    // Start with Rust's default scientific format
+    let mut s = format!("{:.16e}", v); // e.g. "9.9955003374898443e-1"
 
-//     extern "C" fn kepler_rhs(
-//         _t: c_double,
-//         q: *mut c_double,
-//         a: *mut c_double,
-//         _nargs: c_int,
-//         _pot_args: *mut potentialArg,
-//     ) {
-//         unsafe {
-//             let x = *q.add(0);
-//             let y = *q.add(1);
-//             let z = *q.add(2);
-//             let vx = *q.add(3);
-//             let vy = *q.add(4);
-//             let vz = *q.add(5);
+    if let Some(pos) = s.find('e') {
+        let (mant, exp_part) = s.split_at(pos + 1); // exp_part starts with whatever after 'e'
+        // exp_part is like "-1", "0", "+1", "12", etc.
+        let mut exp = exp_part.to_string();
 
-//             let r2 = x * x + y * y + z * z;
-//             // guard against r=0 just in case
-//             let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
-//             let r = libm::sqrt(r2_safe);
-//             let inv_r3 = 1.0 / (r2_safe * r); // 1 / r^3
+        // Ensure there is an explicit sign
+        if !exp.starts_with('+') && !exp.starts_with('-') {
+            exp = format!("+{}", exp);
+        }
 
-//             *a.add(0) = vx;
-//             *a.add(1) = vy;
-//             *a.add(2) = vz;
+        // Now exp is like "+0", "-1", "+12", etc.
+        let sign = &exp[0..1];
+        let digits = &exp[1..];
 
-//             *a.add(3) = -x * inv_r3;
-//             *a.add(4) = -y * inv_r3;
-//             *a.add(5) = -z * inv_r3;
-//         }
-//     }
+        // Pad digits to at least 2 characters → "0" -> "00", "1" -> "01"
+        let digits_padded = if digits.len() == 1 {
+            format!("0{}", digits)
+        } else {
+            digits.to_string()
+        };
 
-//     #[test]
-//     fn kepler_harness_from_dump_runs() {
-//         unsafe {
-//             let pot_ptr: *mut potentialArg = ptr::null_mut();
+        s = format!("{}{}{}", mant, sign, digits_padded);
+    }
 
-//             run_dopr54_harness_from_dump(
-//                 Some(kepler_rhs),
-//                 pot_ptr,
-//                 "dopr54_init_dump.txt",
-//                 "dopr54_rust_out.txt",
-//             )
-//             .expect("harness run failed");
-//         }
-//     }
-// }
+    s
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ptr;
+
+    extern "C" fn kepler_rhs(
+        _t: c_double,
+        q: *mut c_double,
+        a: *mut c_double,
+        _nargs: c_int,
+        _pot_args: *mut potentialArg,
+    ) {
+        unsafe {
+            let x = *q.add(0);
+            let y = *q.add(1);
+            let z = *q.add(2);
+            let vx = *q.add(3);
+            let vy = *q.add(4);
+            let vz = *q.add(5);
+
+            let r2 = x * x + y * y + z * z;
+            // guard against r=0 just in case
+            let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
+            let r = sqrt(r2_safe);
+            let inv_r3 = 1.0 / (r2_safe * r); // 1 / r^3
+
+            *a.add(0) = vx;
+            *a.add(1) = vy;
+            *a.add(2) = vz;
+
+            *a.add(3) = -x * inv_r3;
+            *a.add(4) = -y * inv_r3;
+            *a.add(5) = -z * inv_r3;
+        }
+    }
+
+    #[test]
+    fn kepler_harness_from_dump_runs() {
+        unsafe {
+            let pot_ptr: *mut potentialArg = ptr::null_mut();
+
+            run_dopr54_harness_from_dump(
+                Some(kepler_rhs),
+                pot_ptr,
+                "dopr54_init_dump.txt",
+                "dopr54_rust_out_new.txt",
+            )
+            .expect("harness run failed");
+        }
+
+        unsafe {
+            let pot_ptr: *mut potentialArg = ptr::null_mut();
+
+            run_bovy_dopr54_harness_from_dump(
+                Some(kepler_rhs),
+                pot_ptr,
+                "dopr54_init_dump.txt",
+                "dopr54_rust_out_bovy.txt",
+            )
+            .expect("harness run failed");
+        }
+    }
+
+    
+}

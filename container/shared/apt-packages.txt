@@ -28,3 +28,8 @@ ninja-build
 # NSYS
 wget 
 libglib2.0-0
+
+# GSL
+libgsl27
+libgslcblas0
+libgsl-dev

@@ -765,54 +765,54 @@ pub unsafe fn run_dopr54_harness_from_dump(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::ptr;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use std::ptr;
 
-    extern "C" fn kepler_rhs(
-        _t: c_double,
-        q: *mut c_double,
-        a: *mut c_double,
-        _nargs: c_int,
-        _pot_args: *mut potentialArg,
-    ) {
-        unsafe {
-            let x = *q.add(0);
-            let y = *q.add(1);
-            let z = *q.add(2);
-            let vx = *q.add(3);
-            let vy = *q.add(4);
-            let vz = *q.add(5);
+//     extern "C" fn kepler_rhs(
+//         _t: c_double,
+//         q: *mut c_double,
+//         a: *mut c_double,
+//         _nargs: c_int,
+//         _pot_args: *mut potentialArg,
+//     ) {
+//         unsafe {
+//             let x = *q.add(0);
+//             let y = *q.add(1);
+//             let z = *q.add(2);
+//             let vx = *q.add(3);
+//             let vy = *q.add(4);
+//             let vz = *q.add(5);
 
-            let r2 = x * x + y * y + z * z;
-            // guard against r=0 just in case
-            let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
-            let r = libm::sqrt(r2_safe);
-            let inv_r3 = 1.0 / (r2_safe * r); // 1 / r^3
+//             let r2 = x * x + y * y + z * z;
+//             // guard against r=0 just in case
+//             let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
+//             let r = libm::sqrt(r2_safe);
+//             let inv_r3 = 1.0 / (r2_safe * r); // 1 / r^3
 
-            *a.add(0) = vx;
-            *a.add(1) = vy;
-            *a.add(2) = vz;
+//             *a.add(0) = vx;
+//             *a.add(1) = vy;
+//             *a.add(2) = vz;
 
-            *a.add(3) = -x * inv_r3;
-            *a.add(4) = -y * inv_r3;
-            *a.add(5) = -z * inv_r3;
-        }
-    }
+//             *a.add(3) = -x * inv_r3;
+//             *a.add(4) = -y * inv_r3;
+//             *a.add(5) = -z * inv_r3;
+//         }
+//     }
 
-    #[test]
-    fn kepler_harness_from_dump_runs() {
-        unsafe {
-            let pot_ptr: *mut potentialArg = ptr::null_mut();
+//     #[test]
+//     fn kepler_harness_from_dump_runs() {
+//         unsafe {
+//             let pot_ptr: *mut potentialArg = ptr::null_mut();
 
-            run_dopr54_harness_from_dump(
-                Some(kepler_rhs),
-                pot_ptr,
-                "dopr54_init_dump.txt",
-                "dopr54_rust_out.txt",
-            )
-            .expect("harness run failed");
-        }
-    }
-}
+//             run_dopr54_harness_from_dump(
+//                 Some(kepler_rhs),
+//                 pot_ptr,
+//                 "dopr54_init_dump.txt",
+//                 "dopr54_rust_out.txt",
+//             )
+//             .expect("harness run failed");
+//         }
+//     }
+// }

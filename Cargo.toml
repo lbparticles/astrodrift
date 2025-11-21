@@ -32,3 +32,12 @@ name = "drift"
 [workspace]
 members = ["shared", "."]
 
+# [profile.release]
+# opt-level = 2
+# codegen-units = 1
+# debug = false
+
+# [profile.test]
+# opt-level = 2
+# codegen-units = 1
+# debug = false
