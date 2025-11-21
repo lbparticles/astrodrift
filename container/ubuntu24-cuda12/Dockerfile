@@ -77,3 +77,19 @@ RUN --mount=type=bind,source=uv.lock,target=uv.lock \
 ENV LD_LIBRARY_PATH="/usr/local/cuda/nvvm/lib64:${LD_LIBRARY_PATH}"
 ENV LLVM_LINK_STATIC=1
 # ENV RUST_LOG=info
+
+# Create a non-root user for devcontainers
+ARG USERNAME=dev
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+RUN groupadd --gid ${USER_GID} ${USERNAME} \
+    && useradd \
+        --uid ${USER_UID} \
+        --gid ${USER_GID} \
+        --home-dir /data/home/leo \
+        --create-home \
+        --shell /bin/bash \
+        ${USERNAME} \
+    && mkdir -p /data/home/leo \
+    && chown -R ${USER_UID}:${USER_GID} /data/home/leo

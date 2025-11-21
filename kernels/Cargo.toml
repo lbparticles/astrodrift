@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 cuda_std = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_std", branch = "main" }
-glam = { version = "0.30.1", default-features = false, features = ["cuda", "nostd-libm"] }
+glam = { version = "0.30.9", default-features = false, features = ["cuda", "nostd-libm"] }
 libm = "0.2.11"
 shared = { path="../shared"}
 

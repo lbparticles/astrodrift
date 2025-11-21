@@ -1,220 +1,43 @@
 use crate::butcher::{ButcherTableau,  DormandPrince54 as Coeffs};
-use crate::combine_potentials;
-use crate::potential::{MW2014Potential, Potential};
+// use crate::potential::{MW2014Potential, Potential};
+use crate::rk_methods::{adaptive_step_control,combine_rk_solution,compute_rk_stages};
+use crate::handshake::{load_state,store_state};
 use cuda_std::{kernel, thread};
-use libm::{atan2, cos, floor, log, pow, sin, sqrt};
-
-const M_S: f64 = 1.0;
-const G: f64 = 39.5;
-
-#[inline(always)]
-unsafe fn sphericalcutoff_force_tabled(
-    x: f64,
-    y: f64,
-    z: f64,
-    ar_table: *const f64,
-    r_min: f64,
-    dr: f64,
-    n_ar: u32,
-) -> (f64, f64, f64) {
-    let r2 = pow(x, 2.0) + pow(y, 2.0) + pow(z, 2.0);
-    if r2 == 0.0 {
-        return (0.0, 0.0, 0.0);
-    }
-    let r = sqrt(r2);
-    let t = (r - r_min) / dr;
-    let i = floor(t) as usize;
-    let f = t - i as f64;
-
-    // linear interpolation
-    let i0 = i.min((n_ar - 2) as usize);
-    let ar0 = *ar_table.add(i0);
-    let ar1 = *ar_table.add(i0 + 1);
-    let ar = (1.0 - f) * ar0 + f * ar1;
-
-    let ax = ar * x / r;
-    let ay = ar * y / r;
-    let az = ar * z / r;
-    (ax, ay, az)
-}
+use libm::{floor, pow, sqrt};
+use crate::recipes::consume_recipe;
+use shared::{PotentialRecipe,PotentialEnum,PotentialNames,Config,KeplerPotential};
 
 #[inline(always)]
-pub fn rk_norm(
-    x: f64,
-    x_new: f64,
-    err_x: f64,
-    y: f64,
-    y_new: f64,
-    err_y: f64,
-    z: f64,
-    z_new: f64,
-    err_z: f64,
-    vx: f64,
-    vx_new: f64,
-    err_vx: f64,
-    vy: f64,
-    vy_new: f64,
-    err_vy: f64,
-    vz: f64,
-    vz_new: f64,
-    err_vz: f64,
-    atol: f64,
-    rtol: f64,
-) -> f64 {
-    let sc_x = atol + rtol * f64::max(x.abs(), x_new.abs());
-    let sc_y = atol + rtol * f64::max(y.abs(), y_new.abs());
-    let sc_z = atol + rtol * f64::max(z.abs(), z_new.abs());
-    let sc_vx = atol + rtol * f64::max(vx.abs(), vx_new.abs());
-    let sc_vy = atol + rtol * f64::max(vy.abs(), vy_new.abs());
-    let sc_vz = atol + rtol * f64::max(vz.abs(), vz_new.abs());
-
-    // might need to guard against div by 0
-    let sum = pow(err_x / sc_x, 2.0)
-        + pow(err_y / sc_y, 2.0)
-        + pow(err_z / sc_z, 2.0)
-        + pow(err_vx / sc_vx, 2.0)
-        + pow(err_vy / sc_vy, 2.0)
-        + pow(err_vz / sc_vz, 2.0);
-
-    sqrt(sum / 6.0)
-}
-
-#[inline(always)]
-unsafe fn load_state(ptr: *const f64, base_offset: usize) -> [f64; 6] {
-    [
-        *ptr.add(base_offset + 0),
-        *ptr.add(base_offset + 1),
-        *ptr.add(base_offset + 2),
-        *ptr.add(base_offset + 3),
-        *ptr.add(base_offset + 4),
-        *ptr.add(base_offset + 5),
-    ]
-}
-
-#[inline(always)]
-unsafe fn store_state(ptr: *mut f64, base_offset: usize, s: [f64; 6]) {
-    *ptr.add(base_offset + 0) = s[0];
-    *ptr.add(base_offset + 1) = s[1];
-    *ptr.add(base_offset + 2) = s[2];
-    *ptr.add(base_offset + 3) = s[3];
-    *ptr.add(base_offset + 4) = s[4];
-    *ptr.add(base_offset + 5) = s[5];
-}
-#[inline(always)]
-fn adaptive_step_control(
-    x5: [f64; 6],
-    x4: [f64; 6],
-    x0: [f64; 6],
-    atol: f64,
-    rtol: f64,
-    safety: f64,
-    fac_min: f64,
-    fac_max: f64,
-    dt_min: f64,
-    dt_max: f64,
-    dt_mag: f64,
-) -> (f64, f64, bool) {
-    // local errors per component
-    let mut errs = [0.0; 6];
-    for i in 0..6 {
-        errs[i] = x5[i] - x4[i];
-    }
-
-    // combined normed error — user-defined in your codebase
-    // assumes signature: rk_norm(old, new, err, atol, rtol)
-    let rk_err = rk_norm(
-        x0[0], x5[0], errs[0],
-        x0[1], x5[1], errs[1],
-        x0[2], x5[2], errs[2],
-        x0[3], x5[3], errs[3],
-        x0[4], x5[4], errs[4],
-        x0[5], x5[5], errs[5],
-        atol,
-        rtol,
-    );
-
-    // standard adaptive step heuristics
-    let eps = 1.0e-18;
-    let exp = -0.2;
-    let mut fac = safety * pow(rk_err + eps,exp);
-    fac = fac.clamp(fac_min, fac_max);
-
-    // predict next Δt magnitude
-    let dt_new_mag = (dt_mag * fac).clamp(dt_min, dt_max);
-    let accept = rk_err <= 1.0;
-
-    (dt_new_mag, rk_err, accept)
-}
-#[inline(always)]
-fn combine_rk_solution(x0: [f64; 6], dt: f64, rk: &[[f64; Coeffs::STAGES]; 6], b: &[f64]) -> [f64; 6] {
-    let mut out = x0;
-    for i in 0..Coeffs::STAGES {
-        let s = dt * b[i];
-        for k in 0..6 {
-            out[k] += s * rk[k][i];
-        }
-    }
-    out
-}
-#[inline(always)]
-#[inline(always)]
-fn compute_rk_stages(
-    ti: f64,
-    dt_eff: f64,
-    x0: [f64; 6],
-    mw: &MW2014Potential,
-) -> [[f64; Coeffs::STAGES]; 6] {
-    // Each rk[k][i] holds derivative for component k at stage i
-    let mut rk = [[0.0f64; Coeffs::STAGES]; 6];
-
-    // Loop over each Runge–Kutta stage
-    for i in 0..Coeffs::STAGES {
-        // Start from current state baseline
-        let mut s = x0;
-
-        // Accumulate linear combination of prior stages
-        for j in 0..i {
-            let aij = Coeffs::A[i][j];
-            let s_ = dt_eff * aij;
-            for k in 0..6 {
-                s[k] += s_ * rk[k][j];
-            }
-        }
-
-        // Evaluate at stage time
-        let t_stage = ti + dt_eff * Coeffs::C[i];
-
-        // Compute derived accelerations from potential model
-        let (ax, ay, az) = mw.force(t_stage, s[0], s[1], s[2]);
-
-        // Differential equations mapping
-        rk[0][i] = s[3]; // x' = vx
-        rk[1][i] = s[4]; // y' = vy
-        rk[2][i] = s[5]; // z' = vz
-        rk[3][i] = ax;   // vx' = ax
-        rk[4][i] = ay;   // vy' = ay
-        rk[5][i] = az;   // vz' = az
-    }
-
-    rk
-}
-#[inline(always)]
-fn compute_effective_dt(
+unsafe fn compute_effective_dt(
+    tid:usize,
     ti: f64,
     dti: f64,
     t_end: f64,
     sign: f64,
     dt_min: f64,
     dt_max: f64,
-) -> f64 {
-    let rem_dir = sign * (t_end - ti);
-    let rempos = if rem_dir > 0.0 { rem_dir } else { 0.0 };
-    let dt_mag = dti.abs();
-    let dt_eff_mag = f64::min(f64::max(dt_mag, dt_min), f64::min(dt_max, rempos));
-    sign * dt_eff_mag
+    poll_number: usize,
+    gate: *mut usize,
+) -> (bool, f64) {
+    let mut save_dt = true;
+    let mut dt_mag = dti.abs();
+    let rem_dur = sign * (t_end - ti);
+    let rempos = if rem_dur > 0.0 { rem_dur } else { 0.0 };
+    let div_siz = t_end/((poll_number-1) as f64);
+    let curr_gate = floor(ti/div_siz);
+    // let curr_gate = *gate.add(tid);
+    let check = ti+dt_mag-(curr_gate as f64 +sign)*div_siz;
+    if check*sign > 0. { 
+        *gate.add(tid) = curr_gate as usize + sign as usize; 
+        dt_mag = (curr_gate as f64 +sign)*div_siz - ti;
+        // dt_mag + ti > FIXME: hmmmm
+        save_dt = false;
+    }
+    dt_mag = f64::min(f64::max(dt_mag, dt_min), f64::min(dt_max, rempos));
+    (save_dt, sign * dt_mag)
 }
 #[inline(always)]
-fn thread_id_limit_check(n: usize) -> Option<usize> {
+pub fn thread_id_limit_check(n: usize) -> Option<usize> {
     let tid = (thread::block_idx_x() * thread::block_dim_x() 
         + thread::thread_idx_x()) as usize;
     if tid >= n {
@@ -223,243 +46,6 @@ fn thread_id_limit_check(n: usize) -> Option<usize> {
         Some(tid)
     }
 }
-
-
-/// Adaptive, branchless Dormand–Prince 5(4) stepper.
-/// Each launch attempts exactly one step per particle using its per-thread dt,
-/// computes the error, and then blends accept/reject outcomes
-/// without control-flow branches.
-///
-/// Buffers:
-/// - state_out: [steps_cap * n * 6] (step-major), with step 0 holding initial states.
-/// - time_out:  [steps_cap * n] physical time stored per step/particle
-/// - t: current time per particle
-/// - dt: current step size per particle (candidate for next attempt)
-/// - w: write index per particle (0..steps_cap-1)
-/// - done: 0/1 flag. threads marked done perform masked no-ops
-// #[kernel]
-// #[allow(improper_ctypes_definitions)]
-// pub unsafe fn dopr54_adaptive(
-//     state_out: *mut f64,
-//     time_out: *mut f64,
-//     n: usize,
-//     steps_cap: usize, // max number of steps in state_out
-//     t: *mut f64,
-//     dt: *mut f64,
-//     w: *mut u32,
-//     done: *mut u8,
-//     t_end: f64,
-//     atol: f64,
-//     rtol: f64,
-//     fac_min: f64,
-//     fac_max: f64,
-//     safety: f64,
-//     dt_min: f64,
-//     dt_max: f64,
-//     error_out: *mut f64, // last
-//     ar_table: *const f64,
-//     r_min: f64,
-//     dr: f64,
-//     n_ar: u32,
-//     time_direction: f64,
-// ) {
-//     let tid = (thread::block_idx_x() * thread::block_dim_x() + thread::thread_idx_x()) as usize;
-//     if tid >= n {
-//         return;
-//     }
-
-//     // per-particle
-//     let done_i_u = *done.add(tid) as u32; // 0/1
-//     let done_i = done_i_u as f64; // 0.0/1.0
-//     let not_done = 1.0_f64 - done_i;
-
-//     let mut ti = *t.add(tid);
-//     let mut dti = *dt.add(tid);
-//     let mut wi = *w.add(tid) as usize;
-
-//     let sign = time_direction;
-
-//     // clamp dt and prevent overshoot
-//     let rem_dir = sign * (t_end - ti);
-//     let rempos = if rem_dir > 0.0 { rem_dir } else { 0.0 };
-
-//     let dt_mag = dti.abs();
-//     let dt_eff_mag = f64::min(f64::max(dt_mag, dt_min), f64::min(dt_max, rempos));
-
-//     // only apply sign here
-//     let dt_eff = sign * dt_eff_mag;
-
-//     // load the "previous/current" state from step 'wi'
-//     let prev_offset = ((wi * n) + tid) * 6;
-//     let x = *state_out.add(prev_offset + 0);
-//     let y = *state_out.add(prev_offset + 1);
-//     let z = *state_out.add(prev_offset + 2);
-//     let vx = *state_out.add(prev_offset + 3);
-//     let vy = *state_out.add(prev_offset + 4);
-//     let vz = *state_out.add(prev_offset + 5);
-
-//     // intermediate rk stage values
-//     let mut rk_x = [0.0f64; Coeffs::STAGES];
-//     let mut rk_y = [0.0f64; Coeffs::STAGES];
-//     let mut rk_z = [0.0f64; Coeffs::STAGES];
-//     let mut rk_vx = [0.0f64; Coeffs::STAGES];
-//     let mut rk_vy = [0.0f64; Coeffs::STAGES];
-//     let mut rk_vz = [0.0f64; Coeffs::STAGES];
-
-//     // hopefully these will be unrolled...
-//     for i in 0..Coeffs::STAGES {
-//         let mut xi = x;
-//         let mut yi = y;
-//         let mut zi = z;
-//         let mut vxi = vx;
-//         let mut vyi = vy;
-//         let mut vzi = vz;
-
-//         // contributions from prev stages using tableau A
-//         let mut j = 0usize;
-//         while j < i {
-//             let aij = Coeffs::A[i][j] as f64;
-//             let s = dt_eff * aij;
-//             xi += s * rk_x[j];
-//             yi += s * rk_y[j];
-//             zi += s * rk_z[j];
-//             vxi += s * rk_vx[j];
-//             vyi += s * rk_vy[j];
-//             vzi += s * rk_vz[j];
-//             j += 1;
-//         }
-
-//         let t_stage = ti + dt_eff * (Coeffs::C[i] as f64);
-//         // let (axi, ayi, azi) = compute_acceleration(t_stage, xi, yi, zi);
-//         let mw = MW2014Potential::new(ar_table, r_min, dr, n_ar);
-//         let (axi, ayi, azi) = mw.force(t_stage, xi, yi, zi);
-
-//         rk_x[i] = vxi;
-//         rk_y[i] = vyi;
-//         rk_z[i] = vzi;
-//         rk_vx[i] = axi;
-//         rk_vy[i] = ayi;
-//         rk_vz[i] = azi;
-//     }
-
-//     // 5th-order combination
-//     let mut x_new = x;
-//     let mut y_new = y;
-//     let mut z_new = z;
-//     let mut vx_new = vx;
-//     let mut vy_new = vy;
-//     let mut vz_new = vz;
-
-//     for i in 0..Coeffs::STAGES {
-//         let b = Coeffs::B[i] as f64;
-//         let s = dt_eff * b;
-//         x_new += s * rk_x[i];
-//         y_new += s * rk_y[i];
-//         z_new += s * rk_z[i];
-//         vx_new += s * rk_vx[i];
-//         vy_new += s * rk_vy[i];
-//         vz_new += s * rk_vz[i];
-//     }
-
-//     // 4th-order combination
-//     let mut x_hat = x;
-//     let mut y_hat = y;
-//     let mut z_hat = z;
-//     let mut vx_hat = vx;
-//     let mut vy_hat = vy;
-//     let mut vz_hat = vz;
-
-//     for i in 0..Coeffs::STAGES {
-//         let b_hat = Coeffs::B_HAT[i] as f64;
-//         let s = dt_eff * b_hat;
-//         x_hat += s * rk_x[i];
-//         y_hat += s * rk_y[i];
-//         z_hat += s * rk_z[i];
-//         vx_hat += s * rk_vx[i];
-//         vy_hat += s * rk_vy[i];
-//         vz_hat += s * rk_vz[i];
-//     }
-
-//     // and compute truncation error est per component
-//     let err_x = x_new - x_hat;
-//     let err_y = y_new - y_hat;
-//     let err_z = z_new - z_hat;
-//     let err_vx = vx_new - vx_hat;
-//     let err_vy = vy_new - vy_hat;
-//     let err_vz = vz_new - vz_hat;
-
-//     let rk_err = rk_norm(
-//         x, x_new, err_x, y, y_new, err_y, z, z_new, err_z, vx, vx_new, err_vx, vy, vy_new, err_vy,
-//         vz, vz_new, err_vz, atol, rtol,
-//     );
-
-//     if !error_out.is_null() {
-//         *error_out.add(tid) = rk_err;
-//     }
-
-//     let eps = 1.0e-18_f64; // to avoid err=0 blow-up
-//     let exp = -0.2_f64;
-//     let mut fac = safety * pow(rk_err + eps, exp);
-//     fac = f64::max(fac, fac_min);
-//     fac = f64::min(fac, fac_max);
-
-//     let mut dt_new_mag = dt_mag * fac;
-//     dt_new_mag = f64::max(dt_new_mag, dt_min);
-//     dt_new_mag = f64::min(dt_new_mag, dt_max);
-//     let dt_new = sign * dt_new_mag;
-
-//     // accept = 1 if rk_err <= 1, else 0 (as float)
-//     let accept_f = (rk_err <= 1.0) as u32 as f64;
-//     let reject_f = 1.0_f64 - accept_f;
-
-//     // for already-done threads, mask all updates with 'not_done'
-//     // Blend states: on reject, write back old state; on accept, write new state
-//     let x_out = not_done * (accept_f * x_new + reject_f * x) + done_i * x;
-//     let y_out = not_done * (accept_f * y_new + reject_f * y) + done_i * y;
-//     let z_out = not_done * (accept_f * z_new + reject_f * z) + done_i * z;
-//     let vx_out = not_done * (accept_f * vx_new + reject_f * vx) + done_i * vx;
-//     let vy_out = not_done * (accept_f * vy_new + reject_f * vy) + done_i * vy;
-//     let vz_out = not_done * (accept_f * vz_new + reject_f * vz) + done_i * vz;
-
-//     // Increment write-step only if accepted & not done
-//     let inc_u = (accept_f * not_done) as u32;
-//     let wi_next = wi + inc_u as usize;
-//     let wi_capped = if wi_next < steps_cap {
-//         wi_next
-//     } else {
-//         steps_cap - 1
-//     };
-
-//     // compute next time
-//     let ti_new = ti + (accept_f * not_done) * dt_eff;
-//     if !time_out.is_null() {
-//         *time_out.add(wi_capped * n + tid) = ti_new;
-//     }
-
-//     // always write; on reject, this duplicates the prior state
-//     let out_offset = ((wi_capped * n) + tid) * 6;
-//     *state_out.add(out_offset + 0) = x_out;
-//     *state_out.add(out_offset + 1) = y_out;
-//     *state_out.add(out_offset + 2) = z_out;
-//     *state_out.add(out_offset + 3) = vx_out;
-//     *state_out.add(out_offset + 4) = vy_out;
-//     *state_out.add(out_offset + 5) = vz_out;
-
-//     // update time (only when accepted & not done); dt always updates for next attempt
-//     ti = ti_new;
-//     dti = dt_new;
-//     wi = wi_capped;
-
-//     // once done, stay done
-//     let done_new_u = (sign * (ti - t_end) >= 0.0) as u32;
-//     let done_blend_u = done_i_u | done_new_u;
-//     let done_blend = (done_blend_u & 1) as u8;
-
-//     *t.add(tid) = ti;
-//     *dt.add(tid) = dti;
-//     *w.add(tid) = wi as u32;
-//     *done.add(tid) = done_blend;
-// }
 
 #[inline(always)]
 unsafe fn finalize_step(
@@ -483,6 +69,7 @@ unsafe fn finalize_step(
     sign: f64,
     done_i_u: u32,
     not_done: f64,
+    save_dt: bool,
 ) {
     // branchless masks
     let accept_f = if accept { 1.0 } else { 0.0 };
@@ -513,7 +100,9 @@ unsafe fn finalize_step(
 
     // update control parameters
     *t.add(tid) = ti_new;
-    *dt.add(tid) = dt_new;
+    if (save_dt) {
+        *dt.add(tid) = dt_new;
+    }
     *w.add(tid) = wi_capped as u32;
 
     // logical "done" blend — once done, stay done
@@ -522,75 +111,83 @@ unsafe fn finalize_step(
     *done.add(tid) = (done_blend_u & 1) as u8;
 }
 
+pub fn expand_statics(statics: Config)-> (usize, usize, f64, f64, f64, f64, f64, f64, f64, f64, usize, f64){
+    (statics.n,statics.steps_cap,statics.t_end,statics.atol,statics.rtol,statics.fac_min,statics.fac_max,statics.safety,statics.dt_min,statics.dt_max,statics.poll_number,statics.time_direction)
+}
+
+// fn expand_book(book: Bookkeeping)-> (*mut f64, *mut f64, *mut u32, *mut u8){
+//     (book.error_out,book.dt,book.w,book.done)
+// }
+
 #[kernel]
 pub unsafe fn dopr54_adaptive(
-    state_out: *mut f64,
-    time_out: *mut f64,
-    n: usize,
-    steps_cap: usize, // max number of steps in state_out
+    state_out: *mut f64, //pointer
+    time_out: *mut f64, //pointer
     t: *mut f64,
+    error_out: *mut f64,
     dt: *mut f64,
     w: *mut u32,
     done: *mut u8,
-    t_end: f64,
-    atol: f64,
-    rtol: f64,
-    fac_min: f64,
-    fac_max: f64,
-    safety: f64,
-    dt_min: f64,
-    dt_max: f64,
-    error_out: *mut f64, // last
-    ar_table: *const f64,
-    r_min: f64,
-    dr: f64,
-    n_ar: u32,
-    time_direction: f64,
+    gate: *mut usize,
+    statics : Config,
+    // book: Bookkeeping,
+    recipe: [PotentialRecipe;10],
+    supertable: *mut f64,
+    // recipes: [PotentialRecipe;6],
 ) {
+    let (n,steps_cap,t_end,atol,rtol,fac_min,fac_max,safety,dt_min,dt_max,poll_number,time_direction) = expand_statics(statics);
+    // let (error_out,dt,w,done) = expand_book(book);
+    
     let tid = match thread_id_limit_check(n) {
         Some(tid) => tid,
         None => return,
     };
+    while *done.add(tid) == 0 {
+        // 1. load current state
+        let done_i_u = *done.add(tid) as u32;
+        let not_done = 1.0 - (done_i_u as f64);
+        let mut ti = *t.add(tid);
+        let mut dti = *dt.add(tid);
+        let mut wi = *w.add(tid) as usize;
+        let sign = time_direction;
 
-    // 1. load current state
-    let done_i_u = *done.add(tid) as u32;
-    let not_done = 1.0 - (done_i_u as f64);
-    let mut ti = *t.add(tid);
-    let mut dti = *dt.add(tid);
-    let mut wi = *w.add(tid) as usize;
-    let sign = time_direction;
-    let potential = MW2014Potential::new(ar_table, r_min, dr, n_ar);
+        // 2. compute effective dt
+        let (save_dt, dt_eff) = compute_effective_dt(tid,ti, dti, t_end, sign, dt_min, dt_max,poll_number,gate);
 
-    // 2. compute effective dt
-    let dt_eff = compute_effective_dt(ti, dti, t_end, sign, dt_min, dt_max);
+        // 3. load state
+        let prev_offset = ((wi * n) + tid) * 6;
+        let x0 = load_state(state_out, prev_offset);
 
-    // 3. load state
-    let prev_offset = ((wi * n) + tid) * 6;
-    let x0 = load_state(state_out, prev_offset);
+        // 4. compute RK stages
+        let mut potential:[PotentialEnum;10] = [PotentialEnum::KeplerPotential(KeplerPotential{amp:0.0});10];
 
-    // 4. compute RK stages
-    let mw = MW2014Potential::new(ar_table, r_min, dr, n_ar);
-    let rk = compute_rk_stages(ti, dt_eff, x0, &mw);
+        for (i,r) in recipe.into_iter().enumerate(){
+            potential[i] = consume_recipe(r,supertable);
+        }
+        let pot = potential[0];
+        // let potential = MW2014Potential::new(ar_table, r_min, dr, n_ar);
+        let rk = compute_rk_stages(ti, dt_eff, x0, &pot);
 
-    // 5. combine 4th/5th order solutions
-    let x5 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B);
-    let x4 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B_HAT);
+        // // 5. combine 4th/5th order solutions
+        let x5 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B);
+        let x4 = combine_rk_solution(x0, dt_eff, &rk, &Coeffs::B_HAT);
 
-    // 6. adapt step
-    let (dt_new_mag, rk_err, accept) = adaptive_step_control(
-        x5, x4, x0,
-        atol, rtol, safety, fac_min,
-        fac_max, dt_min, dt_max, dti.abs()
-    );
+        // // 6. adapt step
+        let (dt_new_mag, rk_err, accept) = adaptive_step_control(
+            x5, x4, x0,
+            atol, rtol, safety, fac_min,
+            fac_max, dt_min, dt_max, dti.abs()
+        );
 
-    let dt_new = sign * dt_new_mag;
+        let dt_new = sign * dt_new_mag;
 
-    // 7. finalize + write back
-    finalize_step(
-        tid, n, steps_cap, state_out, time_out,
-        t, dt, w, done,
-        ti, dt_eff, dt_new, accept,
-        x5, x0, wi, t_end, sign,
-        done_i_u, not_done,
-    );
+        // 7. finalize + write back
+        finalize_step(
+            tid, n, steps_cap, state_out, time_out,
+            t, dt, w, done,
+            ti, dt_eff, dt_new, accept,
+            x5, x0, wi, t_end, sign,
+            done_i_u, not_done, save_dt
+        );
+    }
 }

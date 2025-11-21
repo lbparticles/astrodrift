@@ -4,3 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+cust_core = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust_core", branch = "main" }
+libm = "0.2.11"
+
+[dev-dependencies]
+rstest = "0.26.1"
+approx = "0.5.1"
+rand = "0.9.2"

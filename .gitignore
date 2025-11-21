@@ -75,3 +75,6 @@ docs/_build/
 
 # Apptainer
 *.sif
+*.png
+
+*.txt

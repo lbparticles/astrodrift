@@ -19,5 +19,10 @@ python3-dev
 ninja-build
 
 # NSYS
-wget
+wget 
 libglib2.0-0
+
+# GSL
+libgsl27
+libgslcblas0
+libgsl-dev
