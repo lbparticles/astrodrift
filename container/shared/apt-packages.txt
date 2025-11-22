@@ -8,6 +8,12 @@ pkg-config
 xz-utils
 zlib1g-dev
 cmake
+libfontconfig-dev
+libx11-xcb-dev
+libxcursor-dev
+libxi-dev
+libxinerama-dev
+libxrandr-dev
 
 # Dependencies for building LLVM
 libffi-dev
