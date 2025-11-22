@@ -1,94 +1,98 @@
 use cust_core::DeviceCopy;
-pub mod potentials;
-pub use crate::potentials::Potential;
-pub use crate::potentials::wrapper::CustomOrigin;
-pub use crate::potentials::{
-    KeplerPotential, MNPotential, MW2014Potential, NFWPotential, PlummerPotential,
-    SphericalcutoffPotential,
-};
-// mod macros;
+// shared/src/lib.rs
 
-#[derive(Clone, Copy, DeviceCopy)]
+//
+// Type Aliases
+//
+pub type Index = u64;
+pub type Real = f64;
+pub type Linspace = (Real, Real, Index);
+pub type Tolerance = (Real, Real);
+
+//
+// Constants
+//
+pub const MAX_ITERATIONS: Index = 10000;
+pub const MAX_RECIPE: Index = 10;
+pub const MIN_ATOL: Real = 1e-12;
+pub const MIN_RTOL: Real = 1e-12;
+pub const FUZZ_FACTOR: Real = 1e3;
+pub const MAX_PARTICLES: Index = 10000;
+pub const MAX_ORDER: Index = 5000;
+
+//
+// Enums
+//
+#[derive(Debug, Clone)]
+pub enum Engine {
+    GPU,
+    CPU,
+}
+
+#[derive(Debug, Clone)]
+pub enum Method {
+    DOPR54,
+    DOP853,
+}
+
+#[derive(Debug, Clone)]
+pub enum Variant {
+    Compatible,
+    Modern,
+}
+
+//
+// Structs
+//
+#[derive(Debug, Clone)]
 pub struct Config {
-    pub n: usize,
-    pub steps_cap: usize,
-    pub t_end: f64,
-    pub atol: f64,
-    pub rtol: f64,
-    pub safety: f64,
-    pub fac_min: f64,
-    pub fac_max: f64,
-    pub dt_min: f64,
-    pub dt_max: f64,
-    pub poll_number: usize,
-    pub time_direction: f64,
+    pub engine: Engine,
+    pub method: Method,
+    pub variant: Variant,
+    pub settings: Settings,
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, DeviceCopy)]
-pub struct PotentialRecipe {
-    pub fparams: [f64; 6],
-    pub uparams: [usize; 6],
-    pub potential_id: PotentialNames,
+#[derive(Debug, Clone, Copy)]
+pub struct Settings {
+    pub ts: Linspace,
+    pub tolerance: Tolerance,
+    pub part_num: Index,
 }
 
-impl Default for PotentialRecipe {
-    fn default() -> PotentialRecipe {
-        PotentialRecipe {
-            fparams: [0.0_f64; 6],
-            uparams: [0_usize; 6],
-            potential_id: PotentialNames::Kepler,
-        }
-    }
-}
+unsafe impl DeviceCopy for Settings {}
 
-#[derive(Clone, Copy)]
-pub enum PotentialEnum {
-    MW2014Potential(MW2014Potential),
-    MNPotential(MNPotential),
-    NFWPotential(NFWPotential),
-    PlummerPotential(PlummerPotential),
-    SphericalcutoffPotential(SphericalcutoffPotential),
-    KeplerPotential(KeplerPotential),
-    CustomKepler(CustomOrigin<KeplerPotential>),
-    CustomPlummer(CustomOrigin<PlummerPotential>),
-}
-
-impl Potential for PotentialEnum {
-    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-        match self {
-            PotentialEnum::MW2014Potential(p) => p.force(t, x, y, z),
-            PotentialEnum::MNPotential(p) => p.force(t, x, y, z),
-            PotentialEnum::NFWPotential(p) => p.force(t, x, y, z),
-            PotentialEnum::PlummerPotential(p) => p.force(t, x, y, z),
-            PotentialEnum::SphericalcutoffPotential(p) => p.force(t, x, y, z),
-            PotentialEnum::KeplerPotential(p) => p.force(t, x, y, z),
-            PotentialEnum::CustomKepler(p) => p.force(t, x, y, z),
-            PotentialEnum::CustomPlummer(p) => p.force(t, x, y, z),
+impl Config {
+    pub fn new(
+        engine: Engine,
+        method: Method,
+        variant: Variant,
+        ts: Linspace,
+        tolerance: Tolerance,
+        part_num: Index,
+    ) -> Self {
+        Self {
+            engine,
+            method,
+            variant,
+            settings: Settings {
+                ts,
+                tolerance,
+                part_num,
+            },
         }
     }
 
-    // Optional if you uncomment in the trait:
-    // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
-    //     match self {
-    //         PotentialEnum::MW2014Potential(p) => p.evaluate(t, x, y, z),
-    //         PotentialEnum::MNPotential(p) => p.evaluate(t, x, y, z),
-    //         PotentialEnum::NFWPotential(p) => p.evaluate(t, x, y, z),
-    //         PotentialEnum::PlummerPotential(p) => p.evaluate(t, x, y, z),
-    //         PotentialEnum::SphericalcutoffPotential(p) => p.evaluate(t, x, y, z),
-    //     }
-    // }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, DeviceCopy)]
-pub enum PotentialNames {
-    Kepler = 0,
-    Plummer = 1,
-    MN = 2,
-    NFW = 3,
-    SphCutoff = 4,
-    Bovy14 = 5,
-    CustomKepler = 6,
-    CustomPlummer = 7,
+    pub fn run(&self) {
+        match (&self.engine, &self.method, &self.variant) {
+            (Engine::GPU, Method::DOPR54, Variant::Modern) => {}
+            (Engine::CPU, Method::DOPR54, Variant::Modern) => {}
+            (Engine::GPU, Method::DOPR54, Variant::Compatible) => {}
+            (Engine::CPU, Method::DOPR54, Variant::Compatible) => {}
+            _ => {}
+        }
+    }
+    pub fn settings_mut(&mut self) -> &mut Settings {
+        &mut self.settings
+    }
 }

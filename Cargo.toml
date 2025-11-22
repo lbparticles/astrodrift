@@ -36,6 +36,13 @@ members = ["shared", "."]
 default = []
 extension-module = ["pyo3/extension-module"]
 
+
+[target.'cfg(unix)'.dependencies]
+pyo3 = { version = "0.27", features = ["extension-module"] }
+
+[target.'cfg(windows)'.dependencies]
+# Nothing here — we explicitly do NOT support Windows
+
 # [profile.release]
 # opt-level = 2
 # codegen-units = 1
