@@ -1,5 +1,5 @@
-use cust_core::DeviceCopy;
 use core::f64::consts::PI;
+use cust_core::DeviceCopy;
 mod modern;
 
 pub use modern::ModernFlags;
@@ -13,7 +13,8 @@ pub type Real = f64;
 //
 pub const MAX_ITERATIONS: Index = 10000;
 pub const MAX_COURSES: Index = 5;
-pub const MAX_RECIPES: Index = 10;
+pub const MAX_RECIPES: Index = 11;
+pub const MAX_CONTAINERS: Index = MAX_RECIPES;
 pub const MAX_STATES: Index = 3;
 pub const MIN_RTOL: Real = 1e-12;
 pub const MIN_ATOL: Real = 1e-12;
@@ -29,35 +30,35 @@ pub const OSTATE_DIM: Index = 11; // 3 pos ; 3 vel ; 3 acc; 1 pot Energy; 1 time
 #[derive(Clone, Copy, Debug)]
 pub struct Linspace(pub Real, pub Real, pub Index);
 impl Default for Linspace {
-    fn default()->Self{
-        Self(0.0,2.*PI,100)
+    fn default() -> Self {
+        Self(0.0, 2. * PI, 100)
     }
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Tolerance(pub Real, pub Real);
 impl Default for Tolerance {
-    fn default()->Self{
-        Self(MIN_RTOL,MIN_ATOL)
+    fn default() -> Self {
+        Self(MIN_RTOL, MIN_ATOL)
     }
 }
 pub type IndexParams = (Index, Index, Index, Index, Index, Index);
 pub type RealParams = (Real, Real, Real, Real, Real, Real);
 
-pub type Course = [Recipe;MAX_RECIPES];
-pub type Meal=[Course;MAX_COURSES];
+pub type Course = [Recipe; MAX_RECIPES];
+pub type Meal = [Course; MAX_COURSES];
 
-pub const ILENGTH:Index=OSTATE_DIM*MAX_PARTICLES;
-pub type IState=[Real;ILENGTH];
-pub type IStates=[IState;MAX_STATES];
+pub const ILENGTH: Index = OSTATE_DIM * MAX_PARTICLES;
+pub type IState = [Real; ILENGTH];
+pub type IStates = [IState; MAX_STATES];
 
-pub const OLENGTH:Index = OSTATE_DIM*MAX_PARTICLES;
-pub type OState=[Real;OLENGTH];
-pub type OStates=[OState;MAX_STATES];
+pub const OLENGTH: Index = OSTATE_DIM * MAX_PARTICLES;
+pub type OState = [Real; OLENGTH];
+pub type OStates = [OState; MAX_STATES];
 
 //
 // Enums
 //
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum PotentialEnum {
     Kepler(KeplerPotential),
     Plummer(PlummerPotential),
@@ -72,52 +73,62 @@ impl Default for PotentialEnum {
     }
 }
 
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum PotentialName {
     Kepler,
     Plummer,
     Bovy,
 }
-#[derive(Clone,Copy,Debug)]
-pub struct KeplerPotential{
-     pub name: PotentialName,
-     pub amp: Real,
+#[derive(Clone, Copy, Debug)]
+pub struct KeplerPotential {
+    pub name: PotentialName,
+    pub amp: Real,
 }
-impl Default for KeplerPotential{
-    fn default()->Self{Self{name:PotentialName::Kepler,amp:1.0}}
-}
-
-#[derive(Clone,Copy,Debug)]
-pub struct PlummerPotential{
-     pub name: PotentialName,
-     pub amp: Real,
-     pub radius: Real,
-}
-impl Default for PlummerPotential{
-    fn default()->Self{Self{name:PotentialName::Plummer,amp:1.0,radius:1.0}}
+impl Default for KeplerPotential {
+    fn default() -> Self {
+        Self {
+            name: PotentialName::Kepler,
+            amp: 1.0,
+        }
+    }
 }
 
-#[derive(Clone,Copy,Debug)]
-pub struct BovyPotential{
+#[derive(Clone, Copy, Debug)]
+pub struct PlummerPotential {
+    pub name: PotentialName,
+    pub amp: Real,
+    pub radius: Real,
+}
+impl Default for PlummerPotential {
+    fn default() -> Self {
+        Self {
+            name: PotentialName::Plummer,
+            amp: 1.0,
+            radius: 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct BovyPotential {
     pub name: PotentialName,
 }
 
-#[derive(Default,Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub enum Engine {
     #[default]
     GPU,
     CPU,
 }
 
-
-#[derive(Default,Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub enum Method {
     #[default]
     DOPR54,
     DOP853,
 }
 
-#[derive(Default,Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub enum Variant {
     Compatible,
     #[default]
@@ -135,7 +146,6 @@ pub struct Recipe {
     pub index_params: IndexParams,
     pub potential: PotentialName,
 }
-
 
 impl Default for Recipe {
     fn default() -> Self {
@@ -200,10 +210,7 @@ impl Config {
             method,
             variant,
             flags,
-            settings: Settings {
-                ts,
-                tolerance,
-            },
+            settings: Settings { ts, tolerance },
         }
     }
     pub fn run(&self, _recipes: Meal, _arrays: IStates) -> OStates {
@@ -214,7 +221,7 @@ impl Config {
             (Engine::CPU, Method::DOPR54, Variant::Compatible) => {}
             _ => {}
         }
-        [[1.0;OLENGTH];MAX_STATES]
+        [[1.0; OLENGTH]; MAX_STATES]
     }
     pub fn settings_mut(&mut self) -> &mut Settings {
         &mut self.settings

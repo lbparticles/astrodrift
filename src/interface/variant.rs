@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 #[pyclass(name = "Variant")]
-#[derive(Default,Clone)]
+#[derive(Default, Clone)]
 pub struct PyVariant {
     pub inner: shared::Variant,
 }
@@ -16,4 +16,3 @@ impl PyVariant {
         Ok(Self { inner })
     }
 }
-

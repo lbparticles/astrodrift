@@ -1,13 +1,15 @@
-use pyo3::prelude::*;
 use crate::interface::potential::PyPotential;
+use pyo3::prelude::*;
 #[pyclass(name = "Recipe")]
-#[derive(Default,Clone)]
+#[derive(Default, Debug,Clone)]
 pub struct PyRecipe {
     pub inner: shared::Recipe,
 }
 
 impl From<PyPotential> for PyRecipe {
     fn from(potential: PyPotential) -> Self {
-        Self { inner: potential.inner.into() }
+        Self {
+            inner: potential.inner.into(),
+        }
     }
 }

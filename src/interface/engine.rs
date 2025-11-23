@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 #[pyclass(name = "Engine")]
-#[derive(Default,Clone)]
+#[derive(Default, Clone)]
 pub struct PyEngine {
     pub inner: shared::Engine,
 }

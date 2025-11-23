@@ -1,37 +1,36 @@
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
 use numpy::PyArray1;
-use pyo3::types::{PyAny,PyList,PyDict, PyModule,PyTuple};
-use pyo3::ffi::c_str;
 use numpy::PyArrayMethods;
+use pyo3::exceptions::PyValueError;
+use pyo3::ffi::c_str;
+use pyo3::prelude::*;
+use pyo3::types::{PyAny, PyDict, PyList, PyModule, PyTuple};
 
-mod flag;
-mod recipe;
-mod potential;
 mod container;
 mod engine;
-mod variant;
+mod flag;
 mod method;
+mod potential;
+mod recipe;
+mod variant;
 
 use container::Container;
 use engine::PyEngine;
-use variant::PyVariant;
-use method::PyMethod;
 use flag::Modern;
+use method::PyMethod;
 use potential::PyPotential;
 use recipe::PyRecipe;
+use variant::PyVariant;
 
-
-#[derive(Default,Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct BoundLinspace(pub shared::Linspace);
-impl<'a,'py> FromPyObject<'a,'py> for BoundLinspace {
+impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
     type Error = PyErr;
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         // --- Case 1: (start, end, num) tuple ---
         if let Ok(tup) = obj.cast::<PyTuple>() {
             if tup.len() != 3 {
                 return Err(PyValueError::new_err(
-                    "Linspace tuple must have 3 elements: (start, end, num)"
+                    "Linspace tuple must have 3 elements: (start, end, num)",
                 ));
             }
             let start: f64 = tup.get_item(0)?.extract()?;
@@ -47,7 +46,7 @@ impl<'a,'py> FromPyObject<'a,'py> for BoundLinspace {
 
             if n < 2 {
                 return Err(PyValueError::new_err(
-                    "NumPy linspace must contain at least two points"
+                    "NumPy linspace must contain at least two points",
                 ));
             }
 
@@ -59,7 +58,7 @@ impl<'a,'py> FromPyObject<'a,'py> for BoundLinspace {
         if let Ok(seq) = obj.extract::<Vec<f64>>() {
             if seq.len() < 2 {
                 return Err(PyValueError::new_err(
-                    "List must have at least two elements to form Linspace"
+                    "List must have at least two elements to form Linspace",
                 ));
             }
             let start = seq[0];
@@ -74,12 +73,14 @@ impl<'a,'py> FromPyObject<'a,'py> for BoundLinspace {
     }
 }
 
-#[derive(Default,Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct BoundTolerance(pub shared::Tolerance);
-impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance{
+impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance {
     type Error = PyErr;
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
-        if let Ok(tup) = obj.cast::<PyTuple>() && tup.len() == 2 {
+        if let Ok(tup) = obj.cast::<PyTuple>()
+            && tup.len() == 2
+        {
             let rtol: f64 = tup.get_item(0)?.extract()?;
             let atol: f64 = tup.get_item(1)?.extract()?;
             return Ok(BoundTolerance(shared::Tolerance(rtol, atol)));
@@ -96,15 +97,18 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance{
     }
 }
 
-
 #[pyclass(name = "Config")]
 pub struct PyConfig {
     inner: shared::Config,
+    adjacency_matrix: crate::tree::AdjacencyMatrix,
 }
 
 impl PyConfig {
-    fn build_tree(_containers:Vec<Container>)->(shared::Meal,shared::IStates){
-       ([[shared::Recipe::default();shared::MAX_RECIPES];shared::MAX_COURSES],[[0.0; shared::ILENGTH]; shared::MAX_STATES]) 
+    fn build_tree(_containers: Vec<Container>) -> (shared::Meal, shared::IStates) {
+        (
+            [[shared::Recipe::default(); shared::MAX_RECIPES]; shared::MAX_COURSES],
+            [[0.0; shared::ILENGTH]; shared::MAX_STATES],
+        )
     }
 }
 
@@ -129,12 +133,16 @@ impl PyConfig {
                 ts.unwrap_or_default().0,
                 tolerance.unwrap_or_default().0,
             ),
+            adjacency_matrix: crate::tree::AdjacencyMatrix(0)
         }
     }
 
-
     #[pyo3(signature = (*args))]
-    fn run<'py>(&self,py:Python<'py>,args: &Bound<'py,PyTuple>)->PyResult<Bound<'py, PyList>>{
+    fn run<'py>(
+        &self,
+        py: Python<'py>,
+        args: &Bound<'py, PyTuple>,
+    ) -> PyResult<Bound<'py, PyList>> {
         let mut containers: Vec<Container> = Vec::new();
 
         for i in 0..args.len() {
@@ -142,15 +150,32 @@ impl PyConfig {
             let container: PyRef<Container> = obj.extract()?;
             containers.push(container.clone());
         }
-        let (meal,istates) = Self::build_tree(containers);
+        let (meal, istates) = Self::build_tree(containers);
 
         let results = self.inner.run(meal, istates);
-        
-    	PyList::new(py, results.iter().map(|a| a.to_vec()))
-    }
-    
-}
 
+        PyList::new(py, results.iter().map(|a| a.to_vec()))
+    }
+
+    #[pyo3(signature = (node,*args))]
+    fn dependency<'py>(
+        &self,
+        py: Python<'py>,
+        node: Container,
+        args: &Bound<'py, PyTuple>,
+    ) ->PyResult<()> {
+        let mut dep: Vec<Container> = Vec::new();
+
+        for i in 0..args.len() {
+            let obj = args.get_item(i)?;
+            let container: PyRef<Container> = obj.extract()?;
+            dep.push(container.clone());
+        }
+        println!("{:?}",node);
+        println!("{:?}",dep);
+        Ok(())
+    }
+}
 
 //
 // Python Module Declaration
@@ -171,8 +196,9 @@ fn drift_rs(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
 
     // Define enum.Flag in Python
     let locals = PyDict::new(py);
-    py.run(c_str!(
-        r#"
+    py.run(
+        c_str!(
+            r#"
 import enum
 
 class ModernFlag(enum.Flag):
@@ -183,7 +209,8 @@ class ModernFlag(enum.Flag):
     DELETE      = 1 << 3
     READ_WRITE  = READ | WRITE
     FULL_ACCESS = READ | WRITE | EXECUTE | DELETE
-"#),
+"#
+        ),
         None,
         Some(&locals),
     )?;

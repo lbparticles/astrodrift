@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 #[pyclass]
-#[derive(Default,Clone)]
+#[derive(Default, Clone)]
 pub struct Modern {
     pub inner: shared::ModernFlags,
 }
@@ -34,4 +34,3 @@ impl Modern {
         format!("Modern(bits={:#06b})", self.inner.bits())
     }
 }
-

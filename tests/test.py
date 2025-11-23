@@ -13,6 +13,8 @@ def main():
     print("hello")
     gmc = dft.part_group(kp)
     sim = dft.Config()
+    sim.dependency(gmc, gal)
+    sim.dependency(iso, gmc, gal)
     sim.run(gal, gmc, iso)
     print("finished")
 
