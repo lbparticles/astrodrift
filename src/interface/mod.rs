@@ -133,7 +133,7 @@ impl PyConfig {
     }
 
 
-    // #[pyo3(signature = (*args))]
+    #[pyo3(signature = (*args))]
     fn run<'py>(&self,py:Python<'py>,args: &Bound<'py,PyTuple>)->PyResult<Bound<'py, PyList>>{
         let mut containers: Vec<Container> = Vec::new();
 

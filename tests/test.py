@@ -14,6 +14,7 @@ def main():
     gmc = dft.part_group(kp)
     sim = dft.Config()
     sim.run(gal, gmc, iso)
+    print("finished")
 
 
 #     N = 2000
