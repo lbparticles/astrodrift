@@ -3,7 +3,17 @@ import numpy as np
 
 
 def main():
-    gal = dft.bg_feature()
+    kp = dft.Potential.kepler(1.0)
+    print("hello")
+    iso = dft.test_group()
+    print("test")
+    print(kp)
+    gal = dft.bg_feature(kp)
+    print(gal)
+    print("hello")
+    gmc = dft.part_group(kp)
+    sim = dft.Config()
+    sim.run(gal, gmc, iso)
 
 
 #     N = 2000

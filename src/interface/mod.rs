@@ -13,7 +13,7 @@ mod engine;
 mod variant;
 mod method;
 
-use container::IntegratorContainer;
+use container::Container;
 use engine::PyEngine;
 use variant::PyVariant;
 use method::PyMethod;
@@ -103,7 +103,7 @@ pub struct PyConfig {
 }
 
 impl PyConfig {
-    fn build_tree(_containers:Vec<IntegratorContainer>)->(shared::Meal,shared::IStates){
+    fn build_tree(_containers:Vec<Container>)->(shared::Meal,shared::IStates){
        ([[shared::Recipe::default();shared::MAX_RECIPES];shared::MAX_COURSES],[[0.0; shared::ILENGTH]; shared::MAX_STATES]) 
     }
 }
@@ -133,12 +133,13 @@ impl PyConfig {
     }
 
 
+    // #[pyo3(signature = (*args))]
     fn run<'py>(&self,py:Python<'py>,args: &Bound<'py,PyTuple>)->PyResult<Bound<'py, PyList>>{
-        let mut containers: Vec<IntegratorContainer> = Vec::new();
+        let mut containers: Vec<Container> = Vec::new();
 
         for i in 0..args.len() {
             let obj = args.get_item(i)?;
-            let container: PyRef<IntegratorContainer> = obj.extract()?;
+            let container: PyRef<Container> = obj.extract()?;
             containers.push(container.clone());
         }
         let (meal,istates) = Self::build_tree(containers);
@@ -163,6 +164,10 @@ fn drift_rs(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PyPotential>()?;
     m.add_class::<PyRecipe>()?;
     m.add_class::<Modern>()?;
+    m.add_class::<Container>()?;
+    m.add_function(wrap_pyfunction!(container::test_group, m)?)?;
+    m.add_function(wrap_pyfunction!(container::part_group, m)?)?;
+    m.add_function(wrap_pyfunction!(container::bg_feature, m)?)?;
 
     // Define enum.Flag in Python
     let locals = PyDict::new(py);

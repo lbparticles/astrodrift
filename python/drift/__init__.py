@@ -1,3 +1,19 @@
-from .lib import simulation, bg_feature, part_group, test_group
+from .drift_rs import (
+    Potential,
+    Container,
+    Config,
+    test_group,
+    part_group,
+    bg_feature,
+)
 
-__all__ = ["simulation", "part_group", "bg_feature", "test_group"]
+# from .lib import Potential, bg_feature, part_group, test_group
+
+__all__ = [
+    "Potential",
+    "Container",
+    "Config",
+    "test_group",
+    "part_group",
+    "bg_feature",
+]

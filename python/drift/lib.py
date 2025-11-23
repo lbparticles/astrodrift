@@ -3,6 +3,7 @@ from .drift_rs import (
     Engine,
     Method,
     Recipe,
+    Potential,
     #     Debug,
     #     Interpolation,
     #     Interface,
@@ -16,22 +17,6 @@ import numpy as np
 # from galpy.potential import (
 #     KeplerPotential,
 # )
-
-
-def bg_feature() -> (Recipe, None):
-    return (Recipe(), None)
-
-
-def test_group(state) -> (None, np.ndarray):
-    return (None, state)
-
-
-def part_group(state) -> (Recipe, np.ndarray):
-    return (Recipe(), state)
-
-
-def simulation():
-    return Config()
 
 
 # sim.run(gal, gmc, iso)
