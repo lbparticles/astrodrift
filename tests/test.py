@@ -1,9 +1,11 @@
-# import drift as dft
-# import numpy as np
+import drift as dft
+import numpy as np
 
 
-# def main():
-#     gal = dft.bg_feature()
+def main():
+    gal = dft.bg_feature()
+
+
 #     N = 2000
 #     state0 = np.zeros((N, 6), dtype=np.float64)
 #     state0[:, 0] = 1.0 + 0.02 * np.random.rand(N)
@@ -18,5 +20,5 @@
 #     _dfs = sim.run()
 
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()

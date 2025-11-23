@@ -29,7 +29,6 @@ pub type Linspace = (Real, Real, Index);
 pub type Tolerance = (Real, Real);
 pub type IndexParams = (Index, Index, Index, Index, Index, Index);
 pub type RealParams = (Real, Real, Real, Real, Real, Real);
-pub type Potential = Index;
 
 pub type Course = [Recipe;MAX_RECIPES];
 pub type Meal=[Course;MAX_COURSES];
@@ -45,6 +44,51 @@ pub type OStates=[OState;MAX_STATES];
 //
 // Enums
 //
+#[derive(Clone,Copy,Debug)]
+pub enum PotentialEnum {
+    Kepler(KeplerPotential),
+    Plummer(PlummerPotential),
+    Bovy(BovyPotential),
+    // CustomKepler(CustomKeplerPotential),
+    // CustomPlummer(CustomPlummerPotential),
+}
+
+impl Default for PotentialEnum {
+    fn default() -> Self {
+        Self::Kepler(KeplerPotential::default())
+    }
+}
+
+#[derive(Clone,Copy,Debug)]
+pub enum PotentialName {
+    Kepler,
+    Plummer,
+    Bovy,
+}
+#[derive(Clone,Copy,Debug)]
+pub struct KeplerPotential{
+     pub name: PotentialName,
+     pub amp: Real,
+}
+impl Default for KeplerPotential{
+    fn default()->Self{Self{name:PotentialName::Kepler,amp:1.0}}
+}
+
+#[derive(Clone,Copy,Debug)]
+pub struct PlummerPotential{
+     pub name: PotentialName,
+     pub amp: Real,
+     pub radius: Real,
+}
+impl Default for PlummerPotential{
+    fn default()->Self{Self{name:PotentialName::Plummer,amp:1.0,radius:1.0}}
+}
+
+#[derive(Clone,Copy,Debug)]
+pub struct BovyPotential{
+    pub name: PotentialName,
+}
+
 #[derive(Debug, Clone)]
 pub enum Engine {
     GPU,
@@ -72,7 +116,7 @@ pub enum Variant {
 pub struct Recipe {
     pub real_params: RealParams,
     pub index_params: IndexParams,
-    pub potential: Potential,
+    pub potential: PotentialName,
 }
 
 
@@ -81,7 +125,28 @@ impl Default for Recipe {
         Self {
             real_params: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
             index_params: (0, 0, 0, 0, 0, 0),
-            potential: 0,
+            potential: PotentialName::Kepler,
+        }
+    }
+}
+impl From<PotentialEnum> for Recipe {
+    fn from(pot: PotentialEnum) -> Self {
+        match pot {
+            PotentialEnum::Kepler(p) => Self {
+                real_params: (p.amp, 0.0, 0.0, 0.0, 0.0, 0.0),
+                index_params: (0, 0, 0, 0, 0, 0),
+                potential: PotentialName::Kepler,
+            },
+            PotentialEnum::Plummer(p) => Self {
+                real_params: (p.amp, p.radius, 0.0, 0.0, 0.0, 0.0),
+                index_params: (0, 0, 0, 0, 0, 0),
+                potential: PotentialName::Plummer,
+            },
+            PotentialEnum::Bovy(_p) => Self {
+                real_params: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                index_params: (0, 0, 0, 0, 0, 0),
+                potential: PotentialName::Bovy,
+            },
         }
     }
 }
