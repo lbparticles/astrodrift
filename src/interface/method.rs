@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 #[pyclass(name = "Method")]
-#[derive(Clone)]
+#[derive(Default,Clone)]
 pub struct PyMethod {
     pub inner: shared::Method,
 }

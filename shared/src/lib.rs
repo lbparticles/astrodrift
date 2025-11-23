@@ -1,4 +1,5 @@
 use cust_core::DeviceCopy;
+use core::f64::consts::PI;
 mod modern;
 
 pub use modern::ModernFlags;
@@ -14,8 +15,8 @@ pub const MAX_ITERATIONS: Index = 10000;
 pub const MAX_COURSES: Index = 5;
 pub const MAX_RECIPES: Index = 10;
 pub const MAX_STATES: Index = 3;
-pub const MIN_ATOL: Real = 1e-12;
 pub const MIN_RTOL: Real = 1e-12;
+pub const MIN_ATOL: Real = 1e-12;
 pub const FUZZ_FACTOR: Real = 1e3;
 pub const MAX_PARTICLES: Index = 10000;
 pub const MAX_ORDER: Index = 5000;
@@ -25,8 +26,20 @@ pub const OSTATE_DIM: Index = 11; // 3 pos ; 3 vel ; 3 acc; 1 pot Energy; 1 time
 //
 // Type Aliases
 //
-pub type Linspace = (Real, Real, Index);
-pub type Tolerance = (Real, Real);
+#[derive(Clone, Copy, Debug)]
+pub struct Linspace(pub Real, pub Real, pub Index);
+impl Default for Linspace {
+    fn default()->Self{
+        Self(0.0,2.*PI,100)
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub struct Tolerance(pub Real, pub Real);
+impl Default for Tolerance {
+    fn default()->Self{
+        Self(MIN_RTOL,MIN_ATOL)
+    }
+}
 pub type IndexParams = (Index, Index, Index, Index, Index, Index);
 pub type RealParams = (Real, Real, Real, Real, Real, Real);
 
@@ -89,21 +102,25 @@ pub struct BovyPotential{
     pub name: PotentialName,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default,Debug, Clone)]
 pub enum Engine {
+    #[default]
     GPU,
     CPU,
 }
 
-#[derive(Debug, Clone)]
+
+#[derive(Default,Debug, Clone)]
 pub enum Method {
+    #[default]
     DOPR54,
     DOP853,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default,Debug, Clone)]
 pub enum Variant {
     Compatible,
+    #[default]
     Modern,
 }
 
@@ -156,6 +173,7 @@ pub struct Config {
     pub engine: Engine,
     pub method: Method,
     pub variant: Variant,
+    pub flags: ModernFlags,
     pub settings: Settings,
 }
 
@@ -164,7 +182,6 @@ pub struct Config {
 pub struct Settings {
     pub ts: Linspace,
     pub tolerance: Tolerance,
-    pub part_num: Index,
 }
 
 unsafe impl DeviceCopy for Settings {}
@@ -174,18 +191,18 @@ impl Config {
         engine: Engine,
         method: Method,
         variant: Variant,
+        flags: ModernFlags,
         ts: Linspace,
         tolerance: Tolerance,
-        part_num: Index,
     ) -> Self {
         Self {
             engine,
             method,
             variant,
+            flags,
             settings: Settings {
                 ts,
                 tolerance,
-                part_num,
             },
         }
     }

@@ -59,3 +59,8 @@ impl ModernFlags {
         self.0
     }
 }
+impl Default for ModernFlags {
+    fn default()->Self{
+        ModernFlags::RECOMMENDED
+    }
+}

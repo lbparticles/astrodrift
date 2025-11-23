@@ -1,8 +1,8 @@
 use pyo3::prelude::*;
 #[pyclass]
-#[derive(Clone)]
+#[derive(Default,Clone)]
 pub struct Modern {
-    pub flags: shared::ModernFlags,
+    pub inner: shared::ModernFlags,
 }
 
 #[pymethods]
@@ -10,27 +10,28 @@ impl Modern {
     #[new]
     fn new() -> Self {
         Self {
-            flags: shared::ModernFlags::NONE,
+            inner: shared::ModernFlags::NONE,
         }
     }
 
     fn add(&mut self, value: shared::Index) {
         if let Some(flag) = shared::ModernFlags::from_bits(value) {
-            self.flags.set(flag);
+            self.inner.set(flag);
         }
     }
 
     fn has(&self, value: shared::Index) -> bool {
         shared::ModernFlags::from_bits(value)
-            .map(|f| self.flags.contains(f))
+            .map(|f| self.inner.contains(f))
             .unwrap_or(false)
     }
 
     fn bits(&self) -> shared::Index {
-        self.flags.bits()
+        self.inner.bits()
     }
 
     fn __repr__(&self) -> String {
-        format!("Modern(bits={:#06b})", self.flags.bits())
+        format!("Modern(bits={:#06b})", self.inner.bits())
     }
 }
+
