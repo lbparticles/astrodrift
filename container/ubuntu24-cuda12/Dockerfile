@@ -83,13 +83,45 @@ ARG USERNAME=dev
 ARG USER_UID=1000
 ARG USER_GID=1000
 
-RUN groupadd --gid ${USER_GID} ${USERNAME} \
-    && useradd \
-        --uid ${USER_UID} \
-        --gid ${USER_GID} \
-        --home-dir /data/home/leo \
-        --create-home \
-        --shell /bin/bash \
-        ${USERNAME} \
-    && mkdir -p /data/home/leo \
-    && chown -R ${USER_UID}:${USER_GID} /data/home/leo
+RUN set -eux; \
+    existing_group="$(getent group ${USER_GID} | cut -d: -f1 || true)"; \
+    if [ -z "$existing_group" ]; then \
+        echo "Creating group ${USERNAME} with GID ${USER_GID}"; \
+        groupadd --gid "${USER_GID}" "${USERNAME}"; \
+    else \
+        if [ "$existing_group" != "${USERNAME}" ]; then \
+            echo "Renaming group $existing_group to ${USERNAME}"; \
+            groupmod -n "${USERNAME}" "$existing_group"; \
+        else \
+            echo "Group ${USERNAME} already exists"; \
+        fi; \
+    fi; \
+    \
+    existing_user="$(getent passwd ${USER_UID} | cut -d: -f1 || true)"; \
+    if [ -z "$existing_user" ]; then \
+        echo "Creating user ${USERNAME} with UID ${USER_UID}"; \
+        useradd \
+            --uid "${USER_UID}" \
+            --gid "${USER_GID}" \
+            --home-dir /data/home/leo \
+            --create-home \
+            --shell /bin/bash \
+            "${USERNAME}"; \
+    else \
+        if [ "$existing_user" != "${USERNAME}" ]; then \
+            echo "Renaming user $existing_user to ${USERNAME}"; \
+            usermod -l "${USERNAME}" "$existing_user"; \
+        else \
+            echo "User ${USERNAME} already exists"; \
+        fi; \
+        usermod -g "${USER_GID}" "${USERNAME}"; \
+        if [ ! -d /data/home/leo ]; then \
+            usermod -d /data/home/leo -m "${USERNAME}"; \
+        else \
+            usermod -d /data/home/leo "${USERNAME}"; \
+        fi; \
+    fi; \
+    \
+    mkdir -p /data/home/leo; \
+    chown -R "${USER_UID}:${USER_GID}" /data/home/leo
+ENV TERM=xterm
