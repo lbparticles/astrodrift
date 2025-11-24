@@ -1,3 +1,11 @@
+use cust_core::DeviceCopy;
+use core::f64::consts::PI;
+use core::array;
+
+use crate::{ModernFlags,Meal,InputFrame,OutputFrame,OutputState};
+use crate::{MAX_STATES,MIN_RTOL,MIN_ATOL,Real,Index};
+
+
 
 unsafe impl DeviceCopy for Settings {}
 
@@ -34,7 +42,7 @@ impl Config {
             settings: Settings { ts, tolerance },
         }
     }
-    pub fn run(&self, recipes: Meal, arrays: InputStates) -> OutputStates {
+    pub fn run(&self, recipes: Meal, arrays: InputFrame) -> OutputFrame{
         println!("{}",recipes);
         println!("{:?}",arrays);
         match (&self.engine, &self.method, &self.variant) {
@@ -44,7 +52,8 @@ impl Config {
             (Engine::CPU, Method::DOPR54, Variant::Compatible) => {}
             _ => {}
         }
-        Box::new([const {None}; MAX_STATES])
+            let arr: [Option<OutputState>; MAX_STATES] = array::from_fn(|_| None);
+            OutputFrame(Box::new(arr))
     }
     pub fn settings_mut(&mut self) -> &mut Settings {
         &mut self.settings

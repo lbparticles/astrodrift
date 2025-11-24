@@ -22,28 +22,20 @@ pub struct Container {
     pub dependency_label: shared::Index,
 }
 
-impl std::fmt::Debug for Container {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Container")
-            .field("recipe", &self.recipe.as_ref().map(|_| "<PyRecipe>"))
-            .field("state_len", &self.state.as_ref().map(|s| s.len()))
-            .field("dependency_label", &self.dependency_label)
-            .finish()
-    }
-}
-
 
 #[pyfunction]
 #[pyo3(signature = (istate))]
 pub fn test_group<'py>(_py: Python<'py>, istate:PyReadonlyArrayDyn<shared::Real>) -> Container {
-    let mut boxed: shared::InputState = Box::new([0.0; shared::INPUT_LENGTH]);
+    
+	let mut boxed: shared::InputState =
+	    shared::InputState(Box::new([0.0; shared::INPUT_LENGTH]));
 
     let mut i = 0usize;
     for v in istate.as_array().iter().copied() {
         if i >= shared::INPUT_LENGTH {
             break; // truncate
         }
-        boxed[i] = v;
+        boxed.0[i] = v;
         i += 1;
     }
     Container {
@@ -56,14 +48,16 @@ pub fn test_group<'py>(_py: Python<'py>, istate:PyReadonlyArrayDyn<shared::Real>
 #[pyfunction]
 #[pyo3(signature = (potential,istate))]
 pub fn part_group<'py>(_py: Python<'py>, potential: PyPotential,istate:PyReadonlyArrayDyn<shared::Real>) -> Container {
-    let mut boxed: shared::InputState = Box::new([0.0; shared::INPUT_LENGTH]);
+    
+	let mut boxed: shared::InputState =
+	    shared::InputState(Box::new([0.0; shared::INPUT_LENGTH]));
 
     let mut i = 0usize;
     for v in istate.as_array().iter().copied() {
         if i >= shared::INPUT_LENGTH {
             break; // truncate
         }
-        boxed[i] = v;
+        boxed.0[i] = v;
         i += 1;
     }
     Container {

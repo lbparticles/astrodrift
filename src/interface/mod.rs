@@ -15,12 +15,12 @@ mod recipe;
 mod variant;
 
 pub use container::Container;
-use engine::PyEngine;
-use flag::Modern;
-use method::PyMethod;
-use potential::PyPotential;
-use recipe::PyRecipe;
-use variant::PyVariant;
+pub use engine::PyEngine;
+pub use flag::Modern;
+pub use method::PyMethod;
+pub use potential::PyPotential;
+pub use recipe::PyRecipe;
+pub use variant::PyVariant;
 use crate::tree::AdjacencyMatrix;
 
 #[derive(Default, Clone, Debug)]
@@ -108,7 +108,7 @@ pub struct PyConfig {
 
 impl PyConfig {
     fn build_tree(&self,
-         containers: Vec<Container>) -> (shared::Meal, shared::InputStates) {
+         containers: Vec<Container>) -> (shared::Meal, shared::InputFrame) {
         let input = vec_to_option_array_11(containers);
         let (x,y) = self.adjacency_matrix.build(input);
         // println!("{:?}",x);
@@ -176,7 +176,7 @@ impl PyConfig {
         let (meal, istates) = self.build_tree(containers);
 
         let results = self.inner.run(meal, istates);
-        let items: Vec<Py<PyAny>> = results
+        let items: Vec<Py<PyAny>> = results.0
             .iter()
             .filter_map(|opt| opt.as_ref())
             .map(|arr| {
@@ -184,7 +184,7 @@ impl PyConfig {
                 // PyList::new -> PyResult<Bound<PyList>>
                 // .into_any() -> Bound<PyAny>
                 // .unbind() -> Py<PyAny>
-                PyList::new(py, arr.as_slice()).map(|lst| lst.into_any().unbind())
+                PyList::new(py, arr.0.as_slice()).map(|lst| lst.into_any().unbind())
             })
             .collect::<PyResult<Vec<_>>>()?;
 

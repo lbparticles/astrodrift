@@ -1,3 +1,5 @@
+use crate::{Real};
+
 
 #[derive(Clone, Copy, Debug)]
 pub enum PotentialEnum {
