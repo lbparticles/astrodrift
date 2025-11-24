@@ -4,14 +4,9 @@ import numpy as np
 
 def main():
     kp = dft.Potential.kepler(1.0)
-    print("hello")
-    iso = dft.test_group()
-    print("test")
-    print(kp)
     gal = dft.bg_feature(kp)
-    print(gal)
-    print("hello")
     gmc = dft.part_group(kp)
+    iso = dft.test_group()
     sim = dft.Config()
     sim.dependency(gmc, gal)
     sim.dependency(iso, gmc, gal)

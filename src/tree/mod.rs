@@ -1,4 +1,6 @@
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+use core::fmt;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AdjacencyMatrix(pub u128);
 
 impl AdjacencyMatrix {
@@ -99,8 +101,185 @@ impl AdjacencyMatrix {
         }
         cnt
     }
+    pub fn last_true_column_power(&self, cap: usize) 
+    // -> [u8; 11] 
+    -> bool
+    {
+        // assert!(cap > 0 && cap <= 255, "cap must be in 1..=255");
+        // let n = Self::N;
+        // let mut last: [u8; 11] = [0; 11];
+
+        // let mut power = *self; // A^1
+        // for p in 1..=cap {
+        //     // For each column j, check if any entry in column j is true in A^p
+        //     for j in 0..n {
+        //         // build a quick "any bit in column j" test
+        //         // We can scan rows, since n=11 this is cheap.
+        //         let mut any = false;
+        //         let mut r = 0;
+        //         while r < n {
+        //             if power.get(r, j) {
+        //                 any = true;
+        //                 break;
+        //             }
+        //             r += 1;
+        //         }
+        //         if any {
+        //             last[j] = p as u8;
+        //         }
+        //     }
+
+        //     if p == cap {
+        //         break;
+        //     }
+        //     power = power.mul_self(); // A^(p+1)
+        // }
+
+        true
+        // last
+    }
+
+    // Efficient diagonal-nonzero test
+    #[inline]
+    fn has_nonzero_trace(&self) -> bool {
+        // Diagonal bits are at indices i*11 + i, for i=0..10
+        // Just scan them; n=11 so this is cheap.
+        for i in 0..Self::N {
+            if self.get(i, i) {
+                return true;
+            }
+        }
+        false
+    }
+
+    // General boolean matrix multiply: C = A · B over OR/AND
+    pub fn mul_bool(&self, rhs: &AdjacencyMatrix) -> AdjacencyMatrix {
+        let n = Self::N;
+
+        // Row i of A as 11-bit masks
+        let mut a_rows: [u16; 11] = [0; 11];
+        for i in 0..n {
+            a_rows[i] = (self.row_bits(i) as u16) & 0x7FF;
+        }
+
+        // For B, precompute column-as-rows masks: for each column j, bit k is B[k, j]
+        let mut b_col_rows: [u16; 11] = [0; 11];
+        for j in 0..n {
+            b_col_rows[j] = rhs.column_rows_mask(j);
+        }
+
+        let mut out: u128 = 0;
+        for i in 0..n {
+            for j in 0..n {
+                if (a_rows[i] & b_col_rows[j]) != 0 {
+                    out |= 1u128 << Self::idx(i, j);
+                }
+            }
+        }
+        AdjacencyMatrix(out & Self::VALID_MASK)
+    }
+
+    // Final acyclicity method using A, A^2, ..., A^N
+    pub fn is_acyclic_by_traces(&self) -> bool {
+        let n = Self::N;
+
+        // A^1
+        if self.has_nonzero_trace() {
+            return false;
+        }
+
+        // Iteratively multiply by A to get A^p for p = 2..=N
+        let mut power = *self; // A^1
+        for _p in 2..=n {
+            power = power.mul_bool(self); // A^(p) = A^(p-1) · A
+            if power.has_nonzero_trace() {
+                return false;
+            }
+        }
+        true
+    }
+    pub fn build(
+        &self,
+        containers: [Option<crate::interface::Container>; 11],
+    ) -> (
+        shared::Meal,
+        shared::IStates,
+    )
+    {
+        // // 1) Compute last power for ordering (cap = 11)
+        // let last = self.last_true_column_power(11);
+        // println!("{:?}",last);
+        // println!("Hello!");
+        return (
+            [[shared::Recipe::default(); shared::MAX_RECIPES]; shared::MAX_COURSES],
+            [[0.0; shared::ILENGTH]; shared::MAX_STATES],
+        );
+
+        // // 2) Build order of container indices by ascending last power, then by index
+        // let mut order: [usize; 11] = [0; 11];
+        // for i in 0..11 {
+        //     order[i] = i;
+        // }
+        // order.sort_by_key(|&v| (last[v], v));
+
+        // // 3) Rank map: vertex -> stage index 0..10
+        // let mut rank: [usize; 11] = [0; 11];
+        // for (s, &v) in order.iter().enumerate() {
+        //     rank[v] = s;
+        // }
+
+        // // 4) Initialize outputs
+        // let mut deps_by_stage: [[Option<crate::interface::Container>; 11]; 11] =
+        //     std::array::from_fn(|_| std::array::from_fn(|_| None));
+        // let mut istates_by_stage: [Option<shared::IState>; 11] =
+        //     std::array::from_fn(|_| None);
+
+        // // 5) Fill per-vertex stage entries
+        // for v in 0..11 {
+        //     let s = rank[v];
+        //     istates_by_stage[s] = containers[v]
+        //         .as_ref()
+        //         .and_then(|c| c.state); // adjust to your Container API
+
+        //     // 5b) First direct dependency (k -> v) that also exists (Some)
+        //     let mut placed = false;
+        //     for k in 0..11 {
+        //         if self.get(k, v) {
+        //             if let Some(dep) = containers[k].as_ref() {
+        //                 deps_by_stage[s][v] = Some(dep.clone());
+        //                 placed = true;
+        //                 break;
+        //             }
+        //         }
+        //     }
+        //     if !placed {
+        //         // leave as None
+        //     }
+        // }
+
+        // (deps_by_stage, istates_by_stage)
+    }
 }
 
+impl fmt::Debug for AdjacencyMatrix {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Header with the raw value (trim to used 121 bits)
+        let raw = self.0 & ((1u128 << (Self::N * Self::N)) - 1);
+        // Print 11 rows, each with 11 columns as 0/1
+        for r in 0..Self::N {
+            for c in 0..Self::N {
+                let bit = ((raw >> Self::idx(r, c)) & 1) as u8;
+                // '0' + bit
+                let ch = (b'0' + bit) as char;
+                write!(f, "{ch}")?;
+            }
+            if r + 1 < Self::N {
+                writeln!(f)?;
+            }
+        }
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {

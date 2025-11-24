@@ -1,7 +1,7 @@
 use crate::interface::potential::PyPotential;
 use pyo3::prelude::*;
 #[pyclass(name = "Recipe")]
-#[derive(Default, Debug,Clone)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct PyRecipe {
     pub inner: shared::Recipe,
 }
