@@ -48,8 +48,8 @@ RUN curl -sSf -L https://sh.rustup.rs | bash -s -- --default-toolchain none -y
 ENV PATH="/data/home/leo/.cargo/bin:$PATH"
 
 # Get NSight Systems
-ARG NSYS_URL=https://developer.nvidia.com/downloads/assets/tools/secure/nsight-systems/2024_4/
-ARG NSYS_PKG=NsightSystems-linux-cli-public-2024.4.1.61-3431596.deb
+ARG NSYS_URL=https://developer.nvidia.com/downloads/assets/tools/secure/nsight-systems/2025_6/
+ARG NSYS_PKG=NsightSystems-linux-cli-public-2025.6.1.190-3689520.deb
 RUN wget ${NSYS_URL}${NSYS_PKG} && dpkg -i $NSYS_PKG && rm $NSYS_PKG
 
 # Get uv
