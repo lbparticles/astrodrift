@@ -1,5 +1,7 @@
 use core::fmt;
 
+use crate::interface::Container;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AdjacencyMatrix(pub u128);
 
@@ -102,41 +104,39 @@ impl AdjacencyMatrix {
         cnt
     }
     pub fn last_true_column_power(&self, cap: usize) 
-    // -> [u8; 11] 
-    -> bool
+    -> [u8; 11] 
     {
         // assert!(cap > 0 && cap <= 255, "cap must be in 1..=255");
-        // let n = Self::N;
-        // let mut last: [u8; 11] = [0; 11];
+        let n = Self::N;
+        let mut last: [u8; 11] = [0; 11];
 
-        // let mut power = *self; // A^1
-        // for p in 1..=cap {
-        //     // For each column j, check if any entry in column j is true in A^p
-        //     for j in 0..n {
-        //         // build a quick "any bit in column j" test
-        //         // We can scan rows, since n=11 this is cheap.
-        //         let mut any = false;
-        //         let mut r = 0;
-        //         while r < n {
-        //             if power.get(r, j) {
-        //                 any = true;
-        //                 break;
-        //             }
-        //             r += 1;
-        //         }
-        //         if any {
-        //             last[j] = p as u8;
-        //         }
-        //     }
+        let mut power = *self; // A^1
+        for p in 1..=cap {
+            // For each column j, check if any entry in column j is true in A^p
+            for j in 0..n {
+                // build a quick "any bit in column j" test
+                // We can scan rows, since n=11 this is cheap.
+                let mut any = false;
+                let mut r = 0;
+                while r < n {
+                    if power.get(r, j) {
+                        any = true;
+                        break;
+                    }
+                    r += 1;
+                }
+                if any {
+                    last[j] = p as u8;
+                }
+            }
 
-        //     if p == cap {
-        //         break;
-        //     }
-        //     power = power.mul_self(); // A^(p+1)
-        // }
+            if p == cap {
+                break;
+            }
+            power = power.mul_self(); // A^(p+1)
+        }
 
-        true
-        // last
+        last
     }
 
     // Efficient diagonal-nonzero test
@@ -200,65 +200,132 @@ impl AdjacencyMatrix {
     }
     pub fn build(
         &self,
-        containers: [Option<crate::interface::Container>; 11],
-    ) -> (
-        shared::Meal,
-        shared::IStates,
-    )
-    {
-        // // 1) Compute last power for ordering (cap = 11)
-        // let last = self.last_true_column_power(11);
-        // println!("{:?}",last);
-        // println!("Hello!");
-        return (
-            [[shared::Recipe::default(); shared::MAX_RECIPES]; shared::MAX_COURSES],
-            [[0.0; shared::ILENGTH]; shared::MAX_STATES],
-        );
+        containers: Box<[Option<Container>; 11]>,
+    ) -> (shared::Meal, shared::InputStates) {
+        let last = self.last_true_column_power(11);
 
-        // // 2) Build order of container indices by ascending last power, then by index
-        // let mut order: [usize; 11] = [0; 11];
-        // for i in 0..11 {
-        //     order[i] = i;
-        // }
-        // order.sort_by_key(|&v| (last[v], v));
+        let mut with_deps: Vec<usize> = (0..11).filter(|&v| last[v] >= 1).collect();
+        with_deps.sort_by_key(|&v| (last[v], v));
 
-        // // 3) Rank map: vertex -> stage index 0..10
-        // let mut rank: [usize; 11] = [0; 11];
-        // for (s, &v) in order.iter().enumerate() {
-        //     rank[v] = s;
-        // }
+        let mut zeros: Vec<usize> = (0..11).filter(|&v| last[v] == 0).collect();
+        zeros.sort(); // stable deterministic tail
 
-        // // 4) Initialize outputs
-        // let mut deps_by_stage: [[Option<crate::interface::Container>; 11]; 11] =
-        //     std::array::from_fn(|_| std::array::from_fn(|_| None));
-        // let mut istates_by_stage: [Option<shared::IState>; 11] =
-        //     std::array::from_fn(|_| None);
+        let mut order: [usize; 11] = [0; 11];
+        let split = with_deps.len();
+        for (i, v) in with_deps.into_iter().enumerate() {
+            order[i] = v;
+        }
+        for (i, v) in zeros.into_iter().enumerate() {
+            order[split + i] = v;
+        }
 
-        // // 5) Fill per-vertex stage entries
-        // for v in 0..11 {
-        //     let s = rank[v];
-        //     istates_by_stage[s] = containers[v]
-        //         .as_ref()
-        //         .and_then(|c| c.state); // adjust to your Container API
+        let mut meal_by_stage: [Option<[Option<shared::Recipe>; 11]>; 11] =
+            std::array::from_fn(|_| None);
+        let mut istates_by_stage: [Option<shared::InputState>; 11] =
+            std::array::from_fn(|_| None);
+        let mut rank: [usize; 11] = [0; 11];
+        for (s, &v) in order.iter().enumerate() {
+            rank[v] = s;
+        }
 
-        //     // 5b) First direct dependency (k -> v) that also exists (Some)
-        //     let mut placed = false;
-        //     for k in 0..11 {
-        //         if self.get(k, v) {
-        //             if let Some(dep) = containers[k].as_ref() {
-        //                 deps_by_stage[s][v] = Some(dep.clone());
-        //                 placed = true;
-        //                 break;
-        //             }
-        //         }
-        //     }
-        //     if !placed {
-        //         // leave as None
-        //     }
-        // }
+        for v in 0..11 {
+            let has_incoming = (0..11).any(|k| self.get(k, v));
+            if !(last[v] >= 1 && has_incoming) {
+                continue;
+            }
 
-        // (deps_by_stage, istates_by_stage)
+            let s = rank[v];
+
+            // Input state from v
+            if let Some(c) = containers[v].as_ref() {
+                istates_by_stage[s] = c.state.clone();
+            }
+
+            // Build the per-upstream array for this stage
+            let mut arr_k: [Option<shared::Recipe>; 11] = std::array::from_fn(|_| None);
+            for k in 0..11 {
+                if self.get(k, v) {
+                    if let Some(src) = containers[k].as_ref() {
+                        if let Some(py_recipe) = src.recipe.as_ref() {
+                            arr_k[k] = Some(py_recipe.inner.clone());
+                        }
+                    }
+                }
+            }
+            if arr_k.iter().any(|x| x.is_some()) {
+                meal_by_stage[s] = Some(arr_k);
+            }
+        }
+
+
+        // Box to match return types
+        let meal: shared::Meal = Box::new(meal_by_stage).into();
+        let input_states: shared::InputStates = Box::new(istates_by_stage);
+
+        (meal, input_states)
     }
+    // pub fn build(
+    //     &self,
+    //     containers: Box<[Option<Container>; 11]>,
+    // ) -> (
+    //     shared::Meal,
+    //     shared::InputStates,
+    // )
+    // {
+    //     // // 1) Compute last power for ordering (cap = 11)
+    //     let last = self.last_true_column_power(11);
+
+    //     // 2) Build order of container indices by ascending last power, then by index
+    //     let mut order: [usize; 11] = [0; 11];
+    //     for i in 0..11 {
+    //         order[i] = i;
+    //     }
+    //     order.sort_by_key(|&v| (last[v], v));
+
+    //     // 3) Rank map: vertex -> stage index 0..10
+    //     let mut rank: [usize; 11] = [0; 11];
+    //     for (s, &v) in order.iter().enumerate() {
+    //         rank[v] = s;
+    //     }
+
+    //     // // 4) Initialize outputs
+    //     let mut deps_by_stage: [[Option<Container>; 11]; 11] =
+    //         std::array::from_fn(|_| std::array::from_fn(|_| None));
+    //     let mut istates_by_stage: [Option<shared::InputState>; 11] =
+    //         std::array::from_fn(|_| None);
+
+    //     // // 5) Fill per-vertex stage entries
+    //     for v in 0..11 {
+    //         let s = rank[v];
+    //         istates_by_stage[s] = containers[v]
+    //             .as_ref()
+    //             .and_then(|c| c.state); // adjust to your Container API
+    //         // println!("{:?}",istates_by_stage[0]);
+
+    //         // 5b) First direct dependency (k -> v) that also exists (Some)
+    //         let mut placed = false;
+    //         for k in 0..11 {
+    //             if self.get(k, v) {
+    //                 if let Some(dep) = containers[k].as_ref() {
+    //                     deps_by_stage[s][v] = Some(dep.clone());
+    //                     placed = true;
+    //                     break;
+    //                 }
+    //             }
+    //         }
+    //         if !placed {
+    //             // leave as None
+    //         }
+    //     }
+
+    //     // (deps_by_stage, istates_by_stage)
+    //     return (
+    //         Box::new(
+    //         [None; shared::MAX_COURSES]),
+    //         Box::new(
+    //         [None; shared::MAX_STATES],
+    //     ));
+    // }
 }
 
 impl fmt::Debug for AdjacencyMatrix {

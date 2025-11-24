@@ -4,13 +4,16 @@ import numpy as np
 
 def main():
     kp = dft.Potential.kepler(1.0)
+    gmc_istate = np.array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0])
+    iso_istate = np.array([-1.0, 0.0, 0.0, 0.0, -1.0, 0.0])
     gal = dft.bg_feature(kp)
-    gmc = dft.part_group(kp)
-    iso = dft.test_group()
+    gmc = dft.part_group(kp, gmc_istate)
+    iso = dft.test_group(iso_istate)
     sim = dft.Config()
     sim.dependency(gmc, gal)
     sim.dependency(iso, gmc, gal)
-    sim.run(gal, gmc, iso)
+    out = sim.run(gal, gmc, iso)
+    print(out)
     print("finished")
 
 

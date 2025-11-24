@@ -3,6 +3,7 @@ use cust_core::DeviceCopy;
 mod modern;
 
 pub use modern::ModernFlags;
+use core::fmt::{self, Display, Formatter};
 
 // shared/src/lib.rs
 
@@ -11,15 +12,15 @@ pub type Real = f64;
 //
 // Constants
 //
-pub const MAX_ITERATIONS: Index = 10000;
-pub const MAX_COURSES: Index = 5;
+pub const MAX_ITERATIONS: Index = 1000;
+pub const MAX_COURSES: Index = 11;
 pub const MAX_RECIPES: Index = 11;
 pub const MAX_CONTAINERS: Index = MAX_RECIPES;
-pub const MAX_STATES: Index = 3;
+pub const MAX_STATES: Index = 11;
 pub const MIN_RTOL: Real = 1e-12;
 pub const MIN_ATOL: Real = 1e-12;
 pub const FUZZ_FACTOR: Real = 1e3;
-pub const MAX_PARTICLES: Index = 10000;
+pub const MAX_PARTICLES: Index = 10;
 pub const MAX_ORDER: Index = 5000;
 pub const ISTATE_DIM: Index = 6;
 pub const OSTATE_DIM: Index = 11; // 3 pos ; 3 vel ; 3 acc; 1 pot Energy; 1 time
@@ -44,16 +45,68 @@ impl Default for Tolerance {
 pub type IndexParams = (Index, Index, Index, Index, Index, Index);
 pub type RealParams = (Real, Real, Real, Real, Real, Real);
 
-pub type Course = [Recipe; MAX_RECIPES];
-pub type Meal = [Course; MAX_COURSES];
+pub type Course = [Option<Recipe>; MAX_RECIPES];
+pub struct Meal(pub Box<[Option<Course>; MAX_COURSES]>);
 
-pub const ILENGTH: Index = OSTATE_DIM * MAX_PARTICLES;
-pub type IState = [Real; ILENGTH];
-pub type IStates = [IState; MAX_STATES];
+impl From<[Option<[Option<Recipe>; 11]>; 11]> for Meal {
+    fn from(arr: [Option<[Option<Recipe>; 11]>; 11]) -> Self {
+        Meal(Box::new(arr))
+    }
+}
 
-pub const OLENGTH: Index = OSTATE_DIM * MAX_PARTICLES;
-pub type OState = [Real; OLENGTH];
-pub type OStates = [OState; MAX_STATES];
+impl From<Box<[Option<[Option<Recipe>; 11]>; 11]>> for Meal {
+    fn from(b: Box<[Option<[Option<Recipe>; 11]>; 11]>) -> Self {
+        Meal(b)
+    }
+}
+
+impl Display for Meal{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+
+        let mut first_outer = true;
+
+        for outer_opt in self.0.iter() {
+            let Some(inner_arr) = outer_opt else { continue };
+
+            // Filter only present recipes
+            let mut inner_iter = inner_arr.iter().filter_map(|opt| opt.as_ref());
+
+            // Skip this outer slot if it would be empty after filtering
+            if inner_iter.clone().next().is_none() {
+                continue;
+            }
+
+            if !first_outer {
+                write!(f, ", ")?;
+            }
+            first_outer = false;
+
+            write!(f, "[")?;
+            let mut first_inner = true;
+            for recipe in inner_iter {
+                if !first_inner {
+                    write!(f, ", ")?;
+                }
+                first_inner = false;
+                write!(f, "{:?}", recipe)?;
+            }
+            write!(f, "]")?;
+        }
+
+        write!(f, "]")
+    }
+}
+
+
+
+pub const INPUT_LENGTH: Index = ISTATE_DIM * MAX_PARTICLES;
+pub type InputState = Box<[Real; INPUT_LENGTH]>;
+pub type InputStates = Box<[Option<InputState>; MAX_STATES]>;
+
+pub const OUTPUT_LENGTH: Index = OSTATE_DIM * MAX_PARTICLES;
+pub type OutputState = Box<[Real; OUTPUT_LENGTH]>;
+pub type OutputStates = Box<[Option<OutputState>; MAX_STATES]>;
 
 //
 // Enums
@@ -213,7 +266,9 @@ impl Config {
             settings: Settings { ts, tolerance },
         }
     }
-    pub fn run(&self, _recipes: Meal, _arrays: IStates) -> OStates {
+    pub fn run(&self, recipes: Meal, arrays: InputStates) -> OutputStates {
+        println!("{}",recipes);
+        println!("{:?}",arrays);
         match (&self.engine, &self.method, &self.variant) {
             (Engine::GPU, Method::DOPR54, Variant::Modern) => {}
             (Engine::CPU, Method::DOPR54, Variant::Modern) => {}
@@ -221,7 +276,7 @@ impl Config {
             (Engine::CPU, Method::DOPR54, Variant::Compatible) => {}
             _ => {}
         }
-        [[1.0; OLENGTH]; MAX_STATES]
+        Box::new([const {None}; MAX_STATES])
     }
     pub fn settings_mut(&mut self) -> &mut Settings {
         &mut self.settings
