@@ -1,7 +1,7 @@
 {
   "name": "astrodrift-devcontainer",
   "build": {
-    "dockerfile": "../container/ubuntu22-cuda12/Dockerfile",
+    "dockerfile": "../container/ubuntu24-cuda12/Dockerfile",
     "context": ".."
   },
   "runArgs": [
