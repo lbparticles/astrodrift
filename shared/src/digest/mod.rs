@@ -1,5 +1,5 @@
 use crate::{MAX_RECIPES,MAX_COURSES,Index,Real};
-use crate::{PotentialName,PotentialEnum};
+use crate::{PotentialName,RecipeEnum};
 use core::fmt::{self, Display, Formatter};
 use core::slice;
 use core::array;
@@ -39,20 +39,20 @@ impl Default for Recipe {
 
 
 
-impl From<PotentialEnum> for Recipe {
-    fn from(pot: PotentialEnum) -> Self {
+impl From<RecipeEnum> for Recipe {
+    fn from(pot: RecipeEnum) -> Self {
         match pot {
-            PotentialEnum::Kepler(p) => Self {
+            RecipeEnum::Kepler(p) => Self {
                 real_params: (p.amp, 0.0, 0.0, 0.0, 0.0, 0.0),
                 index_params: (0, 0, 0, 0, 0, 0),
                 potential: PotentialName::Kepler,
             },
-            PotentialEnum::Plummer(p) => Self {
+            RecipeEnum::Plummer(p) => Self {
                 real_params: (p.amp, p.radius, 0.0, 0.0, 0.0, 0.0),
                 index_params: (0, 0, 0, 0, 0, 0),
                 potential: PotentialName::Plummer,
             },
-            PotentialEnum::Bovy(_p) => Self {
+            RecipeEnum::Bovy(_p) => Self {
                 real_params: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
                 index_params: (0, 0, 0, 0, 0, 0),
                 potential: PotentialName::Bovy,

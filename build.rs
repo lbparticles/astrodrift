@@ -20,6 +20,7 @@ fn main() {
         .fma_contraction(false)
         .ftz(false)
         .arch(NvvmArch::Compute80)
+        .release(false)
         .use_constant_memory_space(false)
         .copy_to(out_path.join("kernels.ptx"))
         .build()
