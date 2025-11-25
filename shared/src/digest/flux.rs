@@ -38,8 +38,8 @@ pub enum PotentialName {
     Kepler,
     Plummer,
     Bovy,
-    // CustomKepler,
-    // CustomPlummer,
+    CustomKepler,
+    CustomPlummer,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct KeplerRecipe {
@@ -65,15 +65,12 @@ impl Construct for KeplerRecipe {
 pub struct CustomKeplerRecipe {
     pub name: PotentialName,
     pub amp: Real,
+    pub offset: usize,
+    pub length: usize,
+    pub division: usize,
+    pub final_time: f64,
 }
-impl Default for CustomKeplerRecipe {
-    fn default() -> Self {
-        Self {
-            name: PotentialName::Kepler,
-            amp: 1.0,
-        }
-    }
-}
+
 impl Construct for CustomKeplerRecipe {
     fn construct(&self,_ptr:*const f64)->PotentialEnum{
         PotentialEnum::Kepler(
@@ -88,15 +85,6 @@ pub struct PlummerRecipe {
     pub amp: Real,
     pub radius: Real,
 }
-impl Default for PlummerRecipe{
-    fn default() -> Self {
-        Self {
-            name: PotentialName::Plummer,
-            amp: 1.0,
-            radius: 1.0,
-        }
-    }
-}
 impl Construct for PlummerRecipe {
     fn construct(&self,_ptr:*const f64)->PotentialEnum{
         PotentialEnum::Plummer(
@@ -109,15 +97,10 @@ pub struct CustomPlummerRecipe {
     pub name: PotentialName,
     pub amp: Real,
     pub radius: Real,
-}
-impl Default for CustomPlummerRecipe{
-    fn default() -> Self {
-        Self {
-            name: PotentialName::Plummer,
-            amp: 1.0,
-            radius: 1.0,
-        }
-    }
+    pub offset: usize,
+    pub length: usize,
+    pub division: usize,
+    pub final_time: f64,
 }
 impl Construct for CustomPlummerRecipe {
     fn construct(&self,_ptr:*const f64)->PotentialEnum{

@@ -4,7 +4,7 @@ use core::slice;
 use core::array;
 
 mod flux;
-pub use crate::digest::flux::{PotentialName,Recipe,KeplerRecipe,PlummerRecipe,BovyRecipe,Construct};
+pub use crate::digest::flux::{PotentialName,Recipe,KeplerRecipe,PlummerRecipe,BovyRecipe,CustomKeplerRecipe,CustomPlummerRecipe,Construct};
 pub struct Course(pub [Option<Recipe>; MAX_RECIPES]);
 pub struct Meal(pub Box<[Option<Course>; MAX_COURSES]>);
 

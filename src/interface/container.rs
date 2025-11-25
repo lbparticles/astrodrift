@@ -2,6 +2,8 @@ use crate::interface::recipe::PyRecipe;
 use pyo3::prelude::*;
 use numpy::{PyReadonlyArrayDyn};
 use std::sync::atomic::{AtomicU64, Ordering};
+use shared::{CustomKeplerRecipe,CustomPlummerRecipe};
+use shared::{Recipe,PotentialName};
 
 static NEXT_DEP_LABEL: AtomicU64 = AtomicU64::new(0);
 
@@ -47,7 +49,12 @@ pub fn test_group<'py>(_py: Python<'py>, istate:PyReadonlyArrayDyn<shared::Real>
 #[pyfunction]
 #[pyo3(signature = (potential,istate))]
 pub fn part_group<'py>(_py: Python<'py>, potential: PyRecipe,istate:PyReadonlyArrayDyn<shared::Real>) -> Container {
-    
+    let recipe:Option<PyRecipe> = match potential.inner {
+        Recipe::Kepler(p) => Some(PyRecipe{inner:Recipe::CustomKepler(CustomKeplerRecipe{length:0,offset:0,division:0,final_time:0.,amp:p.amp,name:PotentialName::CustomKepler})}),
+        Recipe::Plummer(p) => Some(PyRecipe{inner:Recipe::CustomPlummer(CustomPlummerRecipe{length:0,offset:0,division:0,final_time:0.,amp:p.amp,radius:p.radius,name:PotentialName::CustomPlummer})}),
+        _ => {eprintln!("Bovy isn't implemented, or how have you passed in a custom Potential???"); None},
+    };    
+
 	let mut boxed: shared::InputState =
 	    shared::InputState(Box::new([0.0; shared::INPUT_LENGTH]));
 
@@ -60,7 +67,7 @@ pub fn part_group<'py>(_py: Python<'py>, potential: PyRecipe,istate:PyReadonlyAr
         i += 1;
     }
     Container {
-        recipe: Some(potential),
+        recipe: Some(recipe.unwrap()),
         state: Some(boxed),
         dependency_label: next_dep_label(),
     }

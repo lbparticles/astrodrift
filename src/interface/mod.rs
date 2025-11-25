@@ -9,7 +9,6 @@ mod container;
 mod engine;
 mod flag;
 mod method;
-mod potential;
 mod recipe;
 mod variant;
 

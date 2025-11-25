@@ -7,7 +7,7 @@ mod state;
 
 pub use modern::ModernFlags;
 pub use digest::{Meal,Course};
-pub use digest::{Recipe,PotentialName,KeplerRecipe,PlummerRecipe,BovyRecipe};
+pub use digest::{Recipe,PotentialName,KeplerRecipe,PlummerRecipe,BovyRecipe,CustomPlummerRecipe,CustomKeplerRecipe};
 pub use state::{InputFrame,OutputFrame,InputState,OutputState};
 pub use config::{Config,Engine,Variant,Method,Linspace,Tolerance};
 
