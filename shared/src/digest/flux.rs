@@ -1,5 +1,5 @@
 use crate::{Real};
-use crate::potential::{PotentialEnum,KeplerPotential,PlummerPotential,BovyPotential};
+use crate::potential::{PotentialEnum,KeplerPotential,PlummerPotential,BovyPotential,CustomOrigin};
 
 
 #[derive(Clone, Copy, Debug)]
@@ -7,11 +7,11 @@ pub enum Recipe {
     Kepler(KeplerRecipe),
     Plummer(PlummerRecipe),
     Bovy(BovyRecipe),
-    // CustomKepler(CustomKeplerRecipe),
-    // CustomPlummer(CustomPlummerRecipe),
+    CustomPlummer(CustomPlummerRecipe),
+    CustomKepler(CustomKeplerRecipe),
 }
 
-trait Construct{
+pub trait Construct{
     fn construct(&self,ptr:*const f64)->PotentialEnum;
 }
 
@@ -21,8 +21,8 @@ impl Construct for Recipe {
            Recipe::Kepler(v) =>v.construct(ptr),
            Recipe::Plummer(v) =>v.construct(ptr),
            Recipe::Bovy(v) =>v.construct(ptr),
-           // RecipeEnum::CustomKepler(v) =>v.construct(ptr),
-           // RecipeEnum::CustomPlummer(v) =>v.construct(ptr),
+           Recipe::CustomKepler(v) =>v.construct(ptr),
+           Recipe::CustomPlummer(v) =>v.construct(ptr),
        } 
     }
 }
@@ -74,13 +74,13 @@ impl Default for CustomKeplerRecipe {
         }
     }
 }
-// impl Construct for KeplerRecipe {
-//     fn construct(&self)->PotentialEnum{
-//         PotentialEnum::Kepler(
-//             KeplerPotential{amp:self.amp}
-//         )
-//     }
-// }
+impl Construct for CustomKeplerRecipe {
+    fn construct(&self,_ptr:*const f64)->PotentialEnum{
+        PotentialEnum::Kepler(
+            KeplerPotential{amp:self.amp}
+        )
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlummerRecipe {
@@ -119,13 +119,13 @@ impl Default for CustomPlummerRecipe{
         }
     }
 }
-// impl Construct for PlummerRecipe {
-//     fn construct(&self)->PotentialEnum{
-//         PotentialEnum::Plummer(
-//             PlummerPotential{amp:self.amp,b:self.radius}
-//         )
-//     }
-// }
+impl Construct for CustomPlummerRecipe {
+    fn construct(&self,_ptr:*const f64)->PotentialEnum{
+        PotentialEnum::Plummer(
+            PlummerPotential{amp:self.amp,b:self.radius}
+        )
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct BovyRecipe {

@@ -4,6 +4,8 @@ use core::array;
 
 use crate::{ModernFlags,Meal,InputFrame,OutputFrame,OutputState};
 use crate::{MAX_STATES,MIN_RTOL,MIN_ATOL,Real,Index};
+use crate::digest::Construct;
+use crate::potential::Potential;
 
 
 
@@ -45,6 +47,19 @@ impl Config {
     pub fn run(&self, recipes: Meal, arrays: InputFrame) -> OutputFrame{
         println!("{}",recipes);
         println!("{:?}",arrays);
+        let ptr = core::ptr::null();
+        for course_opt in recipes.0.iter() {
+            if let Some(course) = course_opt {
+                for recipe_opt in course.0.iter() {
+                    if let Some(recipe) = recipe_opt {
+                        let potential = recipe.construct(ptr);
+                        potential.force(0.,0.,0.,0.);
+
+                        // do something with _potential
+                    }
+                }
+            }
+        }
         match (&self.engine, &self.method, &self.variant) {
             (Engine::GPU, Method::DOPR54, Variant::Modern) => {}
             (Engine::CPU, Method::DOPR54, Variant::Modern) => {}

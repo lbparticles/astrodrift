@@ -184,7 +184,7 @@ impl Potential for NFWPotential {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug,Clone, Copy)]
 pub struct SphericalcutoffPotential {
     pub ar_table: *const f64,
     pub r_min: f64,
@@ -223,7 +223,7 @@ impl Potential for SphericalcutoffPotential {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug,Clone, Copy)]
 pub struct KeplerPotential {
     pub amp: f64,
 }
@@ -245,7 +245,7 @@ impl Potential for KeplerPotential {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug,Clone, Copy)]
 pub struct PlummerPotential {
     pub amp: f64,
     pub b: f64,
@@ -268,7 +268,7 @@ impl Potential for PlummerPotential {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug,Clone, Copy)]
 pub struct CustomOrigin<P: Potential + Copy> {
     pub table: *const f64,
     pub potential: P,

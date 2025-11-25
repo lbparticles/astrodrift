@@ -1,10 +1,10 @@
-use crate::{MAX_RECIPES,MAX_COURSES,Index,Real};
+use crate::{MAX_RECIPES,MAX_COURSES};
 use core::fmt::{self, Display, Formatter};
 use core::slice;
 use core::array;
 
 mod flux;
-pub use crate::digest::flux::{PotentialName,Recipe,KeplerRecipe,PlummerRecipe,BovyRecipe};
+pub use crate::digest::flux::{PotentialName,Recipe,KeplerRecipe,PlummerRecipe,BovyRecipe,Construct};
 pub struct Course(pub [Option<Recipe>; MAX_RECIPES]);
 pub struct Meal(pub Box<[Option<Course>; MAX_COURSES]>);
 
@@ -17,8 +17,6 @@ impl<'a> IntoIterator for &'a Course {
     }
 }
 
-pub type IndexParams = (Index, Index, Index, Index, Index, Index);
-pub type RealParams = (Real, Real, Real, Real, Real, Real);
 
 // #[repr(C)]
 // #[derive(Debug, Clone, Copy)]
@@ -84,7 +82,7 @@ impl Display for Meal{
             let Some(inner_arr) = outer_opt else { continue };
 
             // Filter only present recipes
-            let mut inner_iter = inner_arr.into_iter().filter_map(|opt| opt.as_ref());
+            let inner_iter = inner_arr.into_iter().filter_map(|opt| opt.as_ref());
 
             // Skip this outer slot if it would be empty after filtering
             if inner_iter.clone().next().is_none() {

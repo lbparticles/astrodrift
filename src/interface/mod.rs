@@ -4,7 +4,6 @@ use pyo3::exceptions::PyValueError;
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyList, PyModule, PyTuple};
-use core::fmt;
 
 mod container;
 mod engine;
@@ -18,7 +17,6 @@ pub use container::Container;
 pub use engine::PyEngine;
 pub use flag::Modern;
 pub use method::PyMethod;
-pub use potential::PyPotential;
 pub use recipe::PyRecipe;
 pub use variant::PyVariant;
 use crate::tree::AdjacencyMatrix;
@@ -194,7 +192,7 @@ impl PyConfig {
     #[pyo3(signature = (node,*args))]
     fn dependency<'py>(
         &mut self,
-        py: Python<'py>,
+        _py: Python<'py>,
         node: Container,
         args: &Bound<'py, PyTuple>,
     ) -> PyResult<()> {
@@ -227,7 +225,6 @@ fn drift_rs(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PyMethod>()?;
     m.add_class::<PyVariant>()?;
     m.add_class::<PyConfig>()?;
-    m.add_class::<PyPotential>()?;
     m.add_class::<PyRecipe>()?;
     m.add_class::<Modern>()?;
     m.add_class::<Container>()?;

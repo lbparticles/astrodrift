@@ -1,7 +1,6 @@
-use crate::interface::potential::PyPotential;
 use crate::interface::recipe::PyRecipe;
 use pyo3::prelude::*;
-use numpy::{PyArray1, PyReadonlyArrayDyn};
+use numpy::{PyReadonlyArrayDyn};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_DEP_LABEL: AtomicU64 = AtomicU64::new(0);
