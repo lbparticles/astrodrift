@@ -47,7 +47,7 @@ pub fn test_group<'py>(_py: Python<'py>, istate:PyReadonlyArrayDyn<shared::Real>
 
 #[pyfunction]
 #[pyo3(signature = (potential,istate))]
-pub fn part_group<'py>(_py: Python<'py>, potential: PyPotential,istate:PyReadonlyArrayDyn<shared::Real>) -> Container {
+pub fn part_group<'py>(_py: Python<'py>, potential: PyRecipe,istate:PyReadonlyArrayDyn<shared::Real>) -> Container {
     
 	let mut boxed: shared::InputState =
 	    shared::InputState(Box::new([0.0; shared::INPUT_LENGTH]));
@@ -61,7 +61,7 @@ pub fn part_group<'py>(_py: Python<'py>, potential: PyPotential,istate:PyReadonl
         i += 1;
     }
     Container {
-        recipe: Some(potential.into()),
+        recipe: Some(potential),
         state: Some(boxed),
         dependency_label: next_dep_label(),
     }
@@ -69,9 +69,9 @@ pub fn part_group<'py>(_py: Python<'py>, potential: PyPotential,istate:PyReadonl
 
 #[pyfunction]
 #[pyo3(signature = (potential))]
-pub fn bg_feature<'py>(_py: Python<'py>, potential: PyPotential) -> Container {
+pub fn bg_feature<'py>(_py: Python<'py>, potential: PyRecipe) -> Container {
     Container {
-        recipe: Some(potential.into()),
+        recipe: Some(potential),
         state: None,
         dependency_label: next_dep_label(),
     }

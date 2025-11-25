@@ -1,9 +1,10 @@
 use crate::{MAX_RECIPES,MAX_COURSES,Index,Real};
-use crate::{PotentialName,RecipeEnum};
 use core::fmt::{self, Display, Formatter};
 use core::slice;
 use core::array;
 
+mod flux;
+pub use crate::digest::flux::{PotentialName,Recipe,KeplerRecipe,PlummerRecipe,BovyRecipe};
 pub struct Course(pub [Option<Recipe>; MAX_RECIPES]);
 pub struct Meal(pub Box<[Option<Course>; MAX_COURSES]>);
 
@@ -19,47 +20,57 @@ impl<'a> IntoIterator for &'a Course {
 pub type IndexParams = (Index, Index, Index, Index, Index, Index);
 pub type RealParams = (Real, Real, Real, Real, Real, Real);
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct Recipe {
-    pub real_params: RealParams,
-    pub index_params: IndexParams,
-    pub potential: PotentialName,
-}
+// #[repr(C)]
+// #[derive(Debug, Clone, Copy)]
+// pub struct Recipe {
+//     pub real_params: RealParams,
+//     pub index_params: IndexParams,
+//     pub potential: PotentialName,
+// }
 
-impl Default for Recipe {
-    fn default() -> Self {
-        Self {
-            real_params: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-            index_params: (0, 0, 0, 0, 0, 0),
-            potential: PotentialName::Kepler,
-        }
-    }
-}
+// impl Default for Recipe {
+//     fn default() -> Self {
+//         Self {
+//             real_params: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+//             index_params: (0, 0, 0, 0, 0, 0),
+//             potential: PotentialName::Kepler,
+//         }
+//     }
+// }
 
 
 
-impl From<RecipeEnum> for Recipe {
-    fn from(pot: RecipeEnum) -> Self {
-        match pot {
-            RecipeEnum::Kepler(p) => Self {
-                real_params: (p.amp, 0.0, 0.0, 0.0, 0.0, 0.0),
-                index_params: (0, 0, 0, 0, 0, 0),
-                potential: PotentialName::Kepler,
-            },
-            RecipeEnum::Plummer(p) => Self {
-                real_params: (p.amp, p.radius, 0.0, 0.0, 0.0, 0.0),
-                index_params: (0, 0, 0, 0, 0, 0),
-                potential: PotentialName::Plummer,
-            },
-            RecipeEnum::Bovy(_p) => Self {
-                real_params: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-                index_params: (0, 0, 0, 0, 0, 0),
-                potential: PotentialName::Bovy,
-            },
-        }
-    }
-}
+// impl From<RecipeEnum> for Recipe {
+//     fn from(pot: RecipeEnum) -> Self {
+//         match pot {
+//             RecipeEnum::Kepler(p) => Self {
+//                 real_params: (p.amp, 0.0, 0.0, 0.0, 0.0, 0.0),
+//                 index_params: (0, 0, 0, 0, 0, 0),
+//                 potential: PotentialName::Kepler,
+//             },
+//             // RecipeEnum::CustomKepler(p) => Self {
+//             //     real_params: (p.amp, 0.0, 0.0, 0.0, 0.0, 0.0),
+//             //     index_params: (0, 0, 0, 0, 0, 0),
+//             //     potential: PotentialName::Kepler,
+//             // },
+//             RecipeEnum::Plummer(p) => Self {
+//                 real_params: (p.amp, p.radius, 0.0, 0.0, 0.0, 0.0),
+//                 index_params: (0, 0, 0, 0, 0, 0),
+//                 potential: PotentialName::Plummer,
+//             },
+//             // RecipeEnum::CustomPlummer(p) => Self {
+//             //     real_params: (p.amp, p.radius, 0.0, 0.0, 0.0, 0.0),
+//             //     index_params: (0, 0, 0, 0, 0, 0),
+//             //     potential: PotentialName::Plummer,
+//             // },
+//             RecipeEnum::Bovy(_p) => Self {
+//                 real_params: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+//                 index_params: (0, 0, 0, 0, 0, 0),
+//                 potential: PotentialName::Bovy,
+//             },
+//         }
+//     }
+// }
 
 
 
