@@ -1,9 +1,16 @@
-use crate::index_helpers::find_last_times_and_indices;
-use crate::python::PyConfig;
+use cust::error::CudaError;
 // use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
-use shared::{Config, PotentialRecipe};
+use shared::{Config, Course, Linspace, Meal, ModernFlags, Real, Tolerance, MAX_STATES};
+use std::array;
+use std::fs::File;
+use std::io::{self, BufRead, BufReader, Write};
+use std::os::raw::{c_double, c_int};
+use std::path::Path;
+use thiserror::Error;
+
+use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 
@@ -71,144 +78,202 @@ pub fn gather_states_nested_extended(
 
     all
 }
+struct DumpData {
+    dim: c_int,
+    nt: c_int,
+    dt_one: c_double,
+    rtol: c_double,
+    atol: c_double,
+    t: Vec<c_double>,
+    yo: Vec<c_double>,
+    nargs: c_int,
+    args: Vec<c_double>, // may be empty
+}
 
-pub fn gpu_dispatch(
-    states: Vec<Vec<Vec<f64>>>,
-    stages: Vec<Vec<PotentialRecipe>>,
-    config: Config,
-    py_config: PyConfig,
-) -> PyResult<(f64, f64)> {
-    let ts: Vec<f64> = (0..config.poll_number)
-        .map(|i| config.t_end * (i as f64) / (config.poll_number as f64 - 1.))
-        .collect();
-    let module = py_runtime_err(Module::from_ptx(PTX, &[]))?;
-    let stream = py_runtime_err(Stream::new(StreamFlags::DEFAULT, None))?;
-    let kernel = py_runtime_err(module.get_function("dopr54_adaptive"))?;
-    let post_kernel = py_runtime_err(module.get_function("post_kernel"))?;
-    let coeff_kernel = py_runtime_err(module.get_function("coeff_kernel"))?;
+fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
 
-    for (stage, initial_condition) in stages.iter().zip(states.iter()) {
-        let n: usize = initial_condition.len();
-        let mut state_out = vec![0.0f64; py_config.steps_cap * n * NF64];
-        for (i, row) in initial_condition.iter().enumerate() {
-            let off0 = (0 * n + i) * NF64;
-            state_out[off0..off0 + NF64].copy_from_slice(row);
-        }
+    let mut dim: Option<c_int> = None;
+    let mut nt: Option<c_int> = None;
+    let mut dt_one: Option<c_double> = None;
+    let mut rtol: Option<c_double> = None;
+    let mut atol: Option<c_double> = None;
+    let mut t: Vec<c_double> = Vec::new();
+    let mut yo: Vec<c_double> = Vec::new();
+    let mut nargs: c_int = 0;
+    let mut args: Vec<c_double> = Vec::new();
 
-        let (grid, block) = grid_size(n, BLOCK_SIZE);
-        let mut time_out = vec![0.0f64; py_config.steps_cap * n];
-        let mut t_host = vec![0.0f64; n];
-        let mut dt_host = vec![config.time_direction * py_config.dt0; n];
-        let mut w_host = vec![0u32; n];
-        let done_host = vec![0u8; n];
-        let mut err_host = vec![0.0f64; n];
-        let gate_index = vec![0_usize; n];
-        // device buffers
-        let dev_gate = py_runtime_err(DeviceBuffer::<usize>::from_slice(&gate_index))?;
-        let dev_state_out = py_runtime_err(DeviceBuffer::<f64>::from_slice(&state_out))?;
-        let dev_t = py_runtime_err(DeviceBuffer::<f64>::from_slice(&t_host))?;
-        let dev_dt = py_runtime_err(DeviceBuffer::<f64>::from_slice(&dt_host))?;
-        let dev_w = py_runtime_err(DeviceBuffer::<u32>::from_slice(&w_host))?;
-        let dev_done = py_runtime_err(DeviceBuffer::<u8>::from_slice(&done_host))?;
-        let dev_err = py_runtime_err(DeviceBuffer::<f64>::from_slice(&err_host))?;
-        let dev_time_out = py_runtime_err(DeviceBuffer::<f64>::zeroed(py_config.steps_cap * n))?;
-
-        if n == 0 {
-            return Err(pyo3::exceptions::PyValueError::new_err("N must be > 0"));
-        }
-        let mut clamp_recipes: [PotentialRecipe; 10] = [PotentialRecipe::default(); 10];
-        let supertable: Vec<f64> = Vec::new();
-        let count = stage.len().min(10);
-        let dev_supertable = py_runtime_err(DeviceBuffer::from_slice(&supertable))?;
-        clamp_recipes[..count].copy_from_slice(&stage[..count]);
-        unsafe {
-            py_runtime_err(launch!(
-                kernel<<<grid, block, 0, stream>>>(
-                    dev_state_out.as_device_ptr(),
-                    dev_time_out.as_device_ptr(),
-                    dev_t.as_device_ptr(),
-                    dev_err.as_device_ptr(),
-                    dev_dt.as_device_ptr(),
-                    dev_w.as_device_ptr(),
-                    dev_done.as_device_ptr(),
-                    dev_gate.as_device_ptr(),
-                    Config{n,..config},
-                    clamp_recipes,
-                    dev_supertable.as_device_ptr(),
-                )
-            ))?;
-        }
-
-        py_runtime_err(stream.synchronize())?;
-
-        let _gate_out = vec![0_usize; n];
-        let _dev_dt_out = vec![0_f64; n];
-        // construct_coeff_table(indices,state_out);
-        py_runtime_err(dev_state_out.copy_to(&mut state_out))?;
-        py_runtime_err(dev_time_out.copy_to(&mut time_out))?;
-        py_runtime_err(dev_t.copy_to(&mut t_host))?;
-        py_runtime_err(dev_dt.copy_to(&mut dt_host))?;
-        py_runtime_err(dev_w.copy_to(&mut w_host))?;
-        py_runtime_err(dev_err.copy_to(&mut err_host))?;
-        // println!("{:?}",time_out);
-        // println!("{:?}",state_out);
-        let filled_lens: Vec<usize> = w_host
-            .iter()
-            .map(|&w| (w as usize + 1).min(py_config.steps_cap)) // accepted steps + initial state
-            .collect();
-        let (ts0, step, indices) =
-            find_last_times_and_indices(&time_out, &ts, n, py_config.steps_cap, &filled_lens);
-        // eprintln!("{:?}",time_out);
-        // eprintln!("{:?}",ts);
-        // eprintln!("{:?}",ts0);
-        // eprintln!("{:?}",step);
-        let flat_indices: Vec<usize> = indices
-            .iter()
-            .flat_map(|x| x.iter().map(|&x| x as usize))
-            .collect();
-        // let eq_state = gather_states(&state_out,&flat_indices,n,config.poll_number);
-        let post_state: Vec<f64> =
-            gather_states_nested_extended(&state_out, &indices, n, config.poll_number)
-                .iter()
-                .flat_map(|x| x.iter().map(|&x| x as f64))
-                .collect();
-        let dev_post_state = py_runtime_err(DeviceBuffer::<f64>::from_slice(&post_state))?;
-        unsafe {
-            py_runtime_err(launch!(
-                post_kernel<<<grid, block, 0, stream>>>(
-                    dev_post_state.as_device_ptr(),
-                    Config{n,..config},
-                    clamp_recipes,
-                    dev_supertable.as_device_ptr(),
-                )
-            ))?;
-        }
-        py_runtime_err(stream.synchronize())?;
-        let mut post_state_out = vec![0.0f64; config.poll_number * n * 9];
-        py_runtime_err(dev_post_state.copy_to(&mut post_state_out))?;
-
-        let mut coeff_out = vec![0.0f64; (config.poll_number - 1) * n * 18];
-        let dev_coeff = py_runtime_err(DeviceBuffer::<f64>::from_slice(&coeff_out))?;
-
-        unsafe {
-            py_runtime_err(launch!(
-                coeff_kernel<<<grid, block, 0, stream>>>(
-                    dev_post_state.as_device_ptr(),
-                    dev_coeff.as_device_ptr(),
-                    Config{n,..config},
-                    clamp_recipes,
-                    dev_supertable.as_device_ptr(),
-                )
-            ))?;
-        }
-        py_runtime_err(dev_coeff.copy_to(&mut coeff_out))?;
-        let w0 = w_host[0] as usize;
-        if w0 >= py_config.steps_cap - 1 {
-            eprintln!(
-                "WARNING: particle 0 hit steps_cap-1; last step may have been overwritten multiple times."
-            );
+    for line_res in reader.lines() {
+        let line = line_res?;
+        let mut parts = line.split_whitespace();
+        let key = match parts.next() {
+            Some(k) => k,
+            None => continue,
+        };
+        match key {
+            "dim" => {
+                if let Some(v) = parts.next() {
+                    dim = Some(v.parse().unwrap());
+                }
+            }
+            "nt" => {
+                if let Some(v) = parts.next() {
+                    nt = Some(v.parse().unwrap());
+                }
+            }
+            "dt_one" => {
+                if let Some(v) = parts.next() {
+                    dt_one = Some(v.parse().unwrap());
+                }
+            }
+            "rtol" => {
+                if let Some(v) = parts.next() {
+                    rtol = Some(v.parse().unwrap());
+                }
+            }
+            "atol" => {
+                if let Some(v) = parts.next() {
+                    atol = Some(v.parse().unwrap());
+                }
+            }
+            "t" => {
+                for v in parts {
+                    t.push(v.parse().unwrap());
+                }
+            }
+            "yo" => {
+                for v in parts {
+                    yo.push(v.parse().unwrap());
+                }
+            }
+            "nargs" => {
+                if let Some(v) = parts.next() {
+                    nargs = v.parse().unwrap();
+                }
+            }
+            "args" => {
+                for v in parts {
+                    args.push(v.parse().unwrap());
+                }
+            }
+            _ => {
+                // ignore unknown lines
+            }
         }
     }
 
-    Ok((0.0, 0.0))
+    Ok(DumpData {
+        dim: dim.expect("dim missing in dump"),
+        nt: nt.expect("nt missing in dump"),
+        dt_one: dt_one.unwrap_or(-9999.99), // match typical galpy default
+        rtol: rtol.expect("rtol missing in dump"),
+        atol: atol.expect("atol missing in dump"),
+        t,
+        yo,
+        nargs,
+        args,
+    })
+}
+
+#[derive(Debug, Error)]
+pub enum GPUDispatchError {
+    #[error("CUDA error: {0:?}")]
+    Cuda(#[from] CudaError),
+
+    #[error("I/O error: {0}")]
+    IO(#[from] io::Error),
+}
+
+pub fn launch_kernel(
+    course: &Course,
+    input_state: &InputState,
+    flags: ModernFlags,
+    tolerance: Tolerance,
+    linspace: Linspace,
+    times: Option<Vec<Real>>
+) -> Result<OutputState, GPUDispatchError> {
+    let _ctx = cust::quick_init()?;
+
+    let times: Vec<Real> = times.unwrap_or_else(|| {
+        (0..linspace.steps)
+            .map(|i| {
+                linspace.start
+                    + (linspace.end - linspace.start) * (i as Real) / (linspace.steps as Real)
+            })
+            .collect()
+    });  
+
+    let mut output_state = OutputState::new_zeroed();
+
+    let module = Module::from_ptx(PTX, &[])?;
+    let stream = Stream::new(StreamFlags::DEFAULT, None)?;
+    let kernel = module.get_function("dopr54_cpu_port")?;
+    let dev_state0 = DeviceBuffer::<f64>::from_slice(&input_state.data)?;
+    let dev_times = DeviceBuffer::<f64>::from_slice(&times)?;
+    let dev_state_out = DeviceBuffer::<f64>::from_slice(&output_state.data)?;
+
+    let (grid, block) = grid_size(input_state.num_particles, BLOCK_SIZE);
+
+    // FIXME: hmmmm
+    let dt_one_init = -9999.99f64;
+
+    unsafe {
+        launch!(
+            kernel<<<grid, block, 0, stream>>>(
+                dev_state0.as_device_ptr(),
+                dev_times.as_device_ptr(),
+                dev_state_out.as_device_ptr(),
+                input_state.num_particles,
+                linspace.steps,
+                tolerance.rtol,
+                tolerance.atol,
+                dt_one_init
+            )
+        )?;
+    }
+    stream.synchronize()?;
+
+    dev_state_out.copy_to(&mut output_state.data)?;
+    print!("{:?}", output_state.data);
+
+    Ok(output_state)
+    // let mut f = File::create("dopr54_rust_out_gpu_yay.txt")?;
+    // let err: c_int = 0;
+    // writeln!(f, "err {}", err)?;
+    // writeln!(f, "dim {}", dump.dim)?;
+    // writeln!(f, "nt {}", dump.nt)?;
+    // writeln!(f, "t")?;
+    // for ti in &dump.t {
+    //     writeln!(f, "{:.16e}", ti)?;
+    // }
+    // writeln!(f, "states")?;
+
+    // // (step, particle, dim) = ((s * n) + tid) * DIM
+    // // here n=1, tid=0, so index = s*DIM + j
+    // for step in 0..nt {
+    //     write!(f, "step {}", step)?;
+    //     let base = step * n * DIM;
+    //     for j in 0..dim {
+    //         let v = state_out[base + j];
+    //         write!(f, " {:.16e}", v)?;
+    //     }
+    //     writeln!(f)?;
+    // }
+}
+
+pub fn gpu_dispatch(
+    config: Config, 
+    meal: Meal, 
+    arrays: InputFrame
+) -> Result<OutputFrame, GPUDispatchError> {
+
+    for (course_opt, array_opt) in meal.into_iter().zip(arrays.into_iter()) {     
+        if let (Some(course), Some(array)) = (course_opt, array_opt) {
+            launch_kernel(course, array, config.flags, config.settings.tolerance, config.settings.ts, None).expect("course failed :(");
+        }
+    }
+
+    // Temp
+    Ok(OutputFrame(core::array::from_fn(|_| None)))
 }

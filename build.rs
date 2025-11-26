@@ -5,17 +5,12 @@ use cuda_builder::CudaBuilder;
 use cuda_builder::NvvmArch;
 
 fn main() {
+    // if std::env::var_os("DOCS_RS").is_some() {
+    //     // println!("cargo:warning=build.rs skipped for docs build");
+    //     return;
+    // }
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-changed=kernels");
-
-    let galpy_dir = "/data/astrodrift/galpy";
-
-    println!("cargo:rustc-link-search=native={galpy_dir}");
-
-    println!("cargo:rustc-link-lib=dylib=galpy.cpython-313-x86_64-linux-gnu");
-
-    println!("cargo:rustc-link-arg=-Wl,-rpath,{galpy_dir}");
-
     let out_path = path::PathBuf::from(env::var("OUT_DIR").unwrap());
     let manifest_dir = path::PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
@@ -25,6 +20,7 @@ fn main() {
         .fma_contraction(false)
         .ftz(false)
         .arch(NvvmArch::Compute80)
+        .release(true)
         .use_constant_memory_space(false)
         .copy_to(out_path.join("kernels.ptx"))
         .build()

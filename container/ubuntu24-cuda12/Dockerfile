@@ -124,3 +124,4 @@ RUN set -eux; \
     \
     mkdir -p /data/home/leo; \
     chown -R "${USER_UID}:${USER_GID}" /data/home/leo
+ENV TERM=xterm

@@ -1,225 +1,129 @@
 from __future__ import annotations
+from enum import Flag
+import numpy.typing as npt
+from typing import (
+    Any,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    overload,
+    Union,
+)
 
-from typing import Sequence, Tuple
-import numpy as np
-from numpy.typing import NDArray
+# Public classes exposed by m.add_class
+# Note: These are runtime-provided by the compiled extension; this is a stub only.
 
-# ---------------------------------------------------------------------------
-# Enums
-# ---------------------------------------------------------------------------
 
-class Potential(int):
-    """
-    Gravitational potential type.
+class Engine:
+    def __init__(self, name: str) -> None: ...
 
-    Values correspond to the internal `PotentialNames` enum used by the Rust
-    integrator. They select which analytic potential is used for the force
-    calculation.
-    """
+    # "GPU" | "CPU"
+    # inner is not exposed in Python
 
-    Bovy14: "Potential"
-    Plummer: "Potential"
-    MN: "Potential"
-    NFW: "Potential"
-    SphCutoff: "Potential"
-    Kepler: "Potential"
 
-class Engine(int):
-    """
-    Execution backend for the integrator.
+class Method:
+    def __init__(self, name: str) -> None: ...
 
-    - GPU: run on CUDA GPU (if available)
-    - CPU: run on CPU (TODO: when implemented)
-    """
+    # "DOP853" | "DOPR54"
 
-    GPU: "Engine"
-    CPU: "Engine"
 
-class Method(int):
-    """
-    Integration method / scheme.
+class Variant:
+    def __init__(self, name: str) -> None: ...
 
-    - Newton: simple Newtonian step (for testing)
-    - RK54: Dormand–Prince 5(4) adaptive Runge–Kutta
-    - DOP853: Higher-order Dormand–Prince method (not yet wired in)
-    - Leapfrog: Symplectic leapfrog (not yet wired in)
-    """
+    # "Modern" | "Compatible"
 
-    Newton: "Method"
-    RK54: "Method"
-    DOP853: "Method"
-    Leapfrog: "Method"
 
-class Optimisation(int):
-    """
-    Optimisation flags for the integrator.
+class Potential:
+    @staticmethod
+    def kepler(amp: float | None = ...) -> Potential: ...
+    @staticmethod
+    def plummer(
+        amp: float | None = ..., radius: float | None = ...
+    ) -> Potential: ...
+    @staticmethod
+    def bovy() -> Potential: ...
 
-    - Recommended: use the recommended default optimisations
-    - Spline: enable spline-based interpolation (TODO)
-    - PredictiveLUT: enable predictive lookup-table use (TODO)
-    """
+    # inner not exposed
 
-    Recommended: "Optimisation"
-    Spline: "Optimisation"
-    PredictiveLUT: "Optimisation"
-
-class Debug(int):
-    """
-    Debug / logging level for the integrator.
-
-    - ALL: very verbose diagnostics
-    - INFO: informational messages
-    - WARN: warnings only
-    - ERROR: only error messages
-    """
-
-    ALL: "Debug"
-    INFO: "Debug"
-    WARN: "Debug"
-    ERROR: "Debug"
-
-class Interpolation(int):
-    """
-    Interpolation order used for post-processing / dense output.
-
-    - Linear
-    - Cubic
-    - Quintic
-    """
-
-    Linear: "Interpolation"
-    Cubic: "Interpolation"
-    Quintic: "Interpolation"
-
-# ---------------------------------------------------------------------------
-# Data containers
-# ---------------------------------------------------------------------------
 
 class Recipe:
-    """
-    Configuration for a single potential recipe passed to the integrator.
+    # Created from Potential internally; exposed as a type in containers
+    ...
 
-    Parameters
-    ----------
-    fparams:
-        Array of 6 floating-point parameters (potential-specific).
-    potential_id:
-        Potential type to use (e.g. ``Potential.Bovy14``).
-    uparams:
-        Array of 6 integer parameters (potential-specific).
-    """
 
-    fparams: list[float]
-    potential_id: Potential
-    uparams: list[int]
-
-    def __init__(
-        self,
-        fparams: Sequence[float],
-        potential_id: Potential,
-        uparams: Sequence[int],
-    ) -> None: ...
+# Flag wrapper class exposed as "Modern"
+class Modern:
+    def __init__(self) -> None: ...
+    def add(self, value: int) -> None: ...
+    def has(self, value: int) -> bool: ...
+    def bits(self) -> int: ...
     def __repr__(self) -> str: ...
 
-class Interface:
-    """
-    Global integration configuration.
 
-    Parameters
-    ----------
-    poll_number:
-        Number of desired output times (length of the target time grid).
-    steps_cap:
-        Maximum number of internal steps stored per particle.
-    t_end:
-        Final integration time (code units). If ``reverse=True``, the
-        integrator targets ``-t_end`` instead.
-    dt0:
-        Initial guess for the adaptive step size.
-    atol:
-        Absolute tolerance for adaptive time stepping.
-    rtol:
-        Relative tolerance for adaptive time stepping.
-    reverse:
-        If true, integrate backwards in time.
-    engine:
-        Execution backend (e.g. ``Engine.GPU``).
-    method:
-        Integration scheme (e.g. ``Method.RK54``).
-    optimisation:
-        Optimisation flag (e.g. ``Optimisation.Recommended``).
-    interpolation:
-        Interpolation order for dense output / post-processing.
-    debug:
-        Debug/logging verbosity.
-    """
+# Python enum.Flag defined in module and exported as "ModernFlag"
+class ModernFlag(Flag):
+    NONE: ModernFlag
+    READ: ModernFlag
+    WRITE: ModernFlag
+    EXECUTE: ModernFlag
+    DELETE: ModernFlag
+    READ_WRITE: ModernFlag
+    FULL_ACCESS: ModernFlag
 
+
+class Container:
+    # Public attributes (as seen in your Rust class)
+    recipe: Recipe | None
+    state: Any | None  # shared::InputState – treat as opaque
+    dependency_label: int  # shared::Index
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None: ...
+
+
+class Config:
     def __init__(
         self,
-        poll_number: int,
-        steps_cap: int,
-        t_end: float,
-        dt0: float,
-        atol: float,
-        rtol: float,
-        reverse: bool,
-        engine: Engine,
-        method: Method,
-        optimisation: Optimisation,
-        interpolation: Interpolation,
-        debug: Debug,
+        engine: Engine | None = ...,
+        method: Method | None = ...,
+        variant: Variant | None = ...,
+        flags: Modern | None = ...,
+        ts: tuple[float, float, int] | Sequence[float] | None = ...,
+        tolerance: tuple[float, float] | float | None = ...,
     ) -> None: ...
 
-    # internal fields are not exposed as Python properties in the Rust code,
-    # so we do not declare attributes here to avoid misleading type checkers.
+    # run returns a list of arrays (each element is a Python list converted from Rust result)
+    def run(self, *args: Container) -> list[list[float]]: ...
 
-# ---------------------------------------------------------------------------
-# Top-level functions
-# ---------------------------------------------------------------------------
+    def dependency(self, node: Container, *args: Container) -> None: ...
+    def info(self) -> None: ...
 
-def simulation_ctx(
-    py_recipes: Sequence[Sequence[Recipe]],
-    states: Sequence[NDArray[np.float64]],
-    config: Interface,
-) -> Tuple[
-    NDArray[np.float64],
-    NDArray[np.float64],
-    NDArray[np.float64],
-    NDArray[np.int64],
-]:
-    """
-    Run a GPU-backed adaptive RK54 integration.
 
-    Parameters
-    ----------
-    py_recipes:
-        Sequence of :class:`Recipe` objects describing the gravitational
-        potentials to use. Currently one recipe is used internally.
-    states:
-        Sequence of initial state arrays. Each array must be of shape
-        ``(N, 6)`` and dtype ``float64``, containing::
+# Module-level functions
+def test_group(istate: "npt.NDArray[Any] | Sequence[float]") -> Container: ...
+def part_group(
+    potential: Potential,
+    istate: "npt.NDArray[Any] | Sequence[float]",
+) -> Container: ...
+def bg_feature(potential: Potential) -> Container: ...
 
-            [x, y, z, vx, vy, vz]
 
-        for each particle in code units.
-    config:
-        :class:`Interface` object describing integrator configuration
-        (time grid, tolerances, engine, method, etc.).
+# Optional: minimal numpy typing without hard dependency
+# If you prefer to avoid importing numpy.typing at runtime, alias a Protocol
 
-    Returns
-    -------
-    state : ndarray, shape (steps_cap, N, 6)
-        Time-ordered states for each particle and each stored internal
-        step. Unused trailing rows (beyond the actual trajectory length)
-        are zero-filled.
-    time : ndarray, shape (steps_cap, N)
-        Time corresponding to each stored step for each particle. Unused
-        entries are zero-filled.
-    app_ts : ndarray, shape (N, poll_number)
-        For each particle, the last stored time **not exceeding** each
-        requested output time on the target grid.
-    indices : ndarray, shape (N, poll_number)
-        Indices into the ``state`` / ``time`` arrays that correspond to
-        the entries in ``app_ts``.
-    """
-    ...
+
+__all__ = [
+    "Engine",
+    "Method",
+    "Variant",
+    "Potential",
+    "Recipe",
+    "Modern",
+    "ModernFlag",
+    "Container",
+    "Config",
+    "test_group",
+    "part_group",
+    "bg_feature",
+]

@@ -1,94 +1,30 @@
-use cust_core::DeviceCopy;
-pub mod potentials;
-pub use crate::potentials::Potential;
-pub use crate::potentials::wrapper::CustomOrigin;
-pub use crate::potentials::{
-    KeplerPotential, MNPotential, MW2014Potential, NFWPotential, PlummerPotential,
-    SphericalcutoffPotential,
-};
-// mod macros;
+#![no_std]
+// shared/src/lib.rs
+mod modern;
+mod potential;
+mod config;
+mod digest;
 
-#[derive(Clone, Copy, DeviceCopy)]
-pub struct Config {
-    pub n: usize,
-    pub steps_cap: usize,
-    pub t_end: f64,
-    pub atol: f64,
-    pub rtol: f64,
-    pub safety: f64,
-    pub fac_min: f64,
-    pub fac_max: f64,
-    pub dt_min: f64,
-    pub dt_max: f64,
-    pub poll_number: usize,
-    pub time_direction: f64,
-}
+pub use modern::ModernFlags;
+pub use digest::{Meal,Course};
+pub use digest::{Recipe,PotentialName,KeplerRecipe,PlummerRecipe,BovyRecipe,CustomPlummerRecipe,CustomKeplerRecipe, Construct};
+pub use config::{Config,Engine,Variant,Method,Linspace,Tolerance};
+pub use potential::{Potential, PlummerPotential, PotentialEnum, KeplerPotential};
 
-#[repr(C)]
-#[derive(Clone, Copy, DeviceCopy)]
-pub struct PotentialRecipe {
-    pub fparams: [f64; 6],
-    pub uparams: [usize; 6],
-    pub potential_id: PotentialNames,
-}
+pub type Index = usize;
+pub type Real = f64;
 
-impl Default for PotentialRecipe {
-    fn default() -> PotentialRecipe {
-        PotentialRecipe {
-            fparams: [0.0_f64; 6],
-            uparams: [0_usize; 6],
-            potential_id: PotentialNames::Kepler,
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub enum PotentialEnum {
-    MW2014Potential(MW2014Potential),
-    MNPotential(MNPotential),
-    NFWPotential(NFWPotential),
-    PlummerPotential(PlummerPotential),
-    SphericalcutoffPotential(SphericalcutoffPotential),
-    KeplerPotential(KeplerPotential),
-    CustomKepler(CustomOrigin<KeplerPotential>),
-    CustomPlummer(CustomOrigin<PlummerPotential>),
-}
-
-impl Potential for PotentialEnum {
-    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-        match self {
-            PotentialEnum::MW2014Potential(p) => p.force(t, x, y, z),
-            PotentialEnum::MNPotential(p) => p.force(t, x, y, z),
-            PotentialEnum::NFWPotential(p) => p.force(t, x, y, z),
-            PotentialEnum::PlummerPotential(p) => p.force(t, x, y, z),
-            PotentialEnum::SphericalcutoffPotential(p) => p.force(t, x, y, z),
-            PotentialEnum::KeplerPotential(p) => p.force(t, x, y, z),
-            PotentialEnum::CustomKepler(p) => p.force(t, x, y, z),
-            PotentialEnum::CustomPlummer(p) => p.force(t, x, y, z),
-        }
-    }
-
-    // Optional if you uncomment in the trait:
-    // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
-    //     match self {
-    //         PotentialEnum::MW2014Potential(p) => p.evaluate(t, x, y, z),
-    //         PotentialEnum::MNPotential(p) => p.evaluate(t, x, y, z),
-    //         PotentialEnum::NFWPotential(p) => p.evaluate(t, x, y, z),
-    //         PotentialEnum::PlummerPotential(p) => p.evaluate(t, x, y, z),
-    //         PotentialEnum::SphericalcutoffPotential(p) => p.evaluate(t, x, y, z),
-    //     }
-    // }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, DeviceCopy)]
-pub enum PotentialNames {
-    Kepler = 0,
-    Plummer = 1,
-    MN = 2,
-    NFW = 3,
-    SphCutoff = 4,
-    Bovy14 = 5,
-    CustomKepler = 6,
-    CustomPlummer = 7,
-}
+pub const MAX_ITERATIONS: Index = 1000;
+pub const MAX_COURSES: Index = 11;
+pub const MAX_RECIPES: Index = MAX_COURSES;
+pub const MAX_CONTAINERS: Index = MAX_COURSES;
+pub const MAX_STATES: Index = MAX_COURSES;
+pub const MAX_PARTICLES: Index = 1000;
+pub const MAX_ORDER: Index = 5000;
+pub const MIN_RTOL: Real = 1e-12;
+pub const MIN_ATOL: Real = 1e-12;
+pub const INPUT_STATE_DIM: Index = 6;
+pub const INPUT_LENGTH: Index = INPUT_STATE_DIM * MAX_PARTICLES;
+pub const OUTPUT_STATE_DIM: Index = 11; 
+pub const OUTPUT_LENGTH: Index = OUTPUT_STATE_DIM * MAX_PARTICLES;
+pub const FUZZ_FACTOR: Real = 1e3;
