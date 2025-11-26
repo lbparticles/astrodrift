@@ -25,7 +25,7 @@ libc = "0.2.177"
 thiserror = "2.0.17"
 
 [build-dependencies]
-cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_builder", branch = "main"}
+cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_builder", branch = "main", features = ["rustc_codegen_nvvm"] }
 
 [package.metadata.maturin]
 name = "drift"
