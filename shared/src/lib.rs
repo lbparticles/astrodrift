@@ -1,4 +1,4 @@
-// #![no_std]
+#![no_std]
 // shared/src/lib.rs
 mod modern;
 mod potential;

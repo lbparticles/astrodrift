@@ -23,17 +23,17 @@ pub fn run_integration(config: Config, recipes: Meal, arrays: InputFrame) -> Res
     match (config.engine, config.method, config.variant) {
         (Engine::GPU, Method::DOPR54, Variant::Modern) => {
             let arr: [Option<OutputState>; MAX_STATES] = array::from_fn(|_| None);
-            Ok(OutputFrame(Box::new(arr)))
+            Ok(OutputFrame(arr))
         }
         (Engine::CPU, Method::DOPR54, Variant::Modern) => {
             let arr: [Option<OutputState>; MAX_STATES] = array::from_fn(|_| None);
-            Ok(OutputFrame(Box::new(arr)))
+            Ok(OutputFrame(arr))
         }
         (Engine::GPU, Method::DOPR54, Variant::Compatible) => Ok(gpu_dispatch2(config, recipes, arrays).expect("gpu_dispatch2 failed")),
         (Engine::CPU, Method::DOPR54, Variant::Compatible) => Ok(cpu_dispatch(config, recipes, arrays).expect("cpu_dispatch failed")),
         _ => {
             let arr: [Option<OutputState>; MAX_STATES] = array::from_fn(|_| None);
-            Ok(OutputFrame(Box::new(arr)))
+            Ok(OutputFrame(arr))
         }
     }
 }

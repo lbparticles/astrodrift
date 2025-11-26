@@ -28,20 +28,19 @@ pub struct Container {
 #[pyo3(signature = (istate))]
 pub fn test_group<'py>(_py: Python<'py>, istate:PyReadonlyArrayDyn<shared::Real>) -> Container {
     
-	let mut boxed: shared::InputState =
-	    shared::InputState(Box::new([0.0; shared::INPUT_LENGTH]));
+	let mut state= shared::InputState([0.0; shared::INPUT_LENGTH]);
 
     let mut i = 0usize;
     for v in istate.as_array().iter().copied() {
         if i >= shared::INPUT_LENGTH {
             break; // truncate
         }
-        boxed.0[i] = v;
+        state.0[i] = v;
         i += 1;
     }
     Container {
         recipe: None,
-        state: Some(boxed),
+        state: Some(state),
         dependency_label: next_dep_label(),
     }
 }
@@ -55,20 +54,19 @@ pub fn part_group<'py>(_py: Python<'py>, potential: PyRecipe,istate:PyReadonlyAr
         _ => {eprintln!("Bovy isn't implemented, or how have you passed in a custom Potential???"); None},
     };    
 
-	let mut boxed: shared::InputState =
-	    shared::InputState(Box::new([0.0; shared::INPUT_LENGTH]));
+	let mut state = shared::InputState([0.0; shared::INPUT_LENGTH]);
 
     let mut i = 0usize;
     for v in istate.as_array().iter().copied() {
         if i >= shared::INPUT_LENGTH {
             break; // truncate
         }
-        boxed.0[i] = v;
+        state.0[i] = v;
         i += 1;
     }
     Container {
         recipe: Some(recipe.unwrap()),
-        state: Some(boxed),
+        state: Some(state),
         dependency_label: next_dep_label(),
     }
 }

@@ -9,8 +9,8 @@ pub fn cpu_dispatch(
     recipes: Meal, 
     arrays: InputFrame
 ) -> Result<OutputFrame, GPUDispatchError> {
-    
+
 
     let arr: [Option<OutputState>; MAX_STATES] = array::from_fn(|_| None);
-    Ok(OutputFrame(Box::new(arr)))
+    Ok(OutputFrame(arr))
 }

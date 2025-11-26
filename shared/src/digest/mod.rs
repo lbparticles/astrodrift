@@ -6,7 +6,7 @@ use core::array;
 mod flux;
 pub use crate::digest::flux::{PotentialName,Recipe,KeplerRecipe,PlummerRecipe,BovyRecipe,CustomKeplerRecipe,CustomPlummerRecipe,Construct};
 pub struct Course(pub [Option<Recipe>; MAX_RECIPES]);
-pub struct Meal(pub Box<[Option<Course>; MAX_COURSES]>);
+pub struct Meal(pub [Option<Course>; MAX_COURSES]);
 
 impl<'a> IntoIterator for &'a Course {
     type Item = &'a Option<Recipe>;
@@ -121,16 +121,6 @@ impl From<[Option<[Option<Recipe>; 11]>; 11]> for Meal {
             }
         });
 
-        Meal(Box::new(courses))
-    }
-}
-
-impl From<Box<[Option<[Option<Recipe>; 11]>; 11]>> for Meal {
-    fn from(arr: Box<[Option<[Option<Recipe>; 11]>; 11]>) -> Self {
-        // Move out of Box, transform, and rebox
-        let inner = *arr;
-        let courses: [Option<Course>; 11] =
-            array::from_fn(|i| inner[i].map(Course));
-        Meal(Box::new(courses))
+        Meal(courses)
     }
 }

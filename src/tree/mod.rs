@@ -257,13 +257,7 @@ impl AdjacencyMatrix {
             }
         }
 
-
-        // Box to match return types
-        let meal: shared::Meal = Box::new(meal_by_stage).into();
-        
-    	let input_states: shared::InputFrame = shared::InputFrame(Box::new(istates_by_stage));
-
-        (meal, input_states)
+        (meal_by_stage.into(), shared::InputFrame(istates_by_stage))
     }
 }
 
