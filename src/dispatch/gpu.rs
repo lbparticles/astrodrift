@@ -2,13 +2,15 @@ use cust::error::CudaError;
 // use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
-use shared::{Config, InputFrame, Meal, OutputFrame, OutputState, MAX_STATES};
+use shared::{Config, Meal, MAX_STATES};
 use std::array;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::raw::{c_double, c_int};
 use std::path::Path;
 use thiserror::Error;
+
+use crate::state::{InputFrame, OutputFrame, OutputState};
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 
@@ -269,6 +271,5 @@ pub fn gpu_dispatch2(
     }
 
     // Temp
-    let arr: [Option<OutputState>; MAX_STATES] = array::from_fn(|_| None);
-    Ok(OutputFrame(arr))
+    Ok(OutputFrame(core::array::from_fn(|_| None)))
 }

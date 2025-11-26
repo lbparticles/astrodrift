@@ -54,3 +54,7 @@ pyo3 = { version = "0.27", features = ["extension-module"] }
 # codegen-units = 1
 # debug = false
 
+[profile.dev]
+opt-level = 0
+debug = 2
+

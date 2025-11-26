@@ -19,6 +19,7 @@ pub use method::PyMethod;
 pub use recipe::PyRecipe;
 pub use variant::PyVariant;
 use crate::integrators::run_integration;
+use crate::state::InputFrame;
 use crate::tree::AdjacencyMatrix;
 
 #[derive(Default, Clone, Debug)]
@@ -106,7 +107,7 @@ pub struct PyConfig {
 
 impl PyConfig {
     fn build_tree(&self,
-         containers: Vec<Container>) -> (shared::Meal, shared::InputFrame) {
+         containers: Vec<Box<Container>>) -> (shared::Meal, InputFrame) {
         let input = vec_to_option_array_11(containers);
         let (x,y) = self.adjacency_matrix.build(input);
         // println!("{:?}",x);
@@ -116,11 +117,11 @@ impl PyConfig {
 }
 
 
-fn vec_to_option_array_11(mut v: Vec<Container>) -> Box<[Option<Container>; 11]> {
+fn vec_to_option_array_11(mut v: Vec<Box<Container>>) -> Box<[Option<Box<Container>>; 11]> {
     if v.len() > 11 {
         v.truncate(11);
     }
-    let mut out: Box<[Option<Container>; 11]> = Box::new([None,None,None,None,None,None,None,None,None,None,None]);
+    let mut out: Box<[Option<Box<Container>>; 11]> = Box::new([None,None,None,None,None,None,None,None,None,None,None]);
 
     // Copy by cloning into out[i]
     for (i, item) in v.iter().enumerate() {
@@ -143,7 +144,7 @@ impl PyConfig {
         ts: Option<BoundLinspace>,
         tolerance: Option<BoundTolerance>,
     ) -> Self {
-        Self {
+        let thing = Self {
             inner: shared::Config::new(
                 engine.unwrap_or_default().inner,
                 method.unwrap_or_default().inner,
@@ -153,7 +154,9 @@ impl PyConfig {
                 tolerance.unwrap_or_default().0,
             ),
             adjacency_matrix: AdjacencyMatrix(0),
-        }
+        };
+        println!("newpyconfig");
+        thing
     }
 
     #[pyo3(signature = (*args))]
@@ -164,15 +167,13 @@ impl PyConfig {
     ) 
     -> PyResult<Bound<'py, PyList>> 
     {
-        let mut containers: Vec<Container> = Vec::new();
-
+        let mut containers: Vec<Box<Container>> = Vec::new();
         for i in 0..args.len() {
             let obj = args.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
-            containers.push(container.clone());
+            containers.push(Box::new(container.clone()));
         }
         let (meal, istates) = self.build_tree(containers);
-
         let results = run_integration(self.inner, meal, istates).unwrap();
         let items: Vec<Py<PyAny>> = results.0
             .iter()
@@ -182,10 +183,10 @@ impl PyConfig {
                 // PyList::new -> PyResult<Bound<PyList>>
                 // .into_any() -> Bound<PyAny>
                 // .unbind() -> Py<PyAny>
-                PyList::new(py, arr.0.as_slice()).map(|lst| lst.into_any().unbind())
+                PyList::new(py, arr.data.as_slice()).map(|lst| lst.into_any().unbind())
             })
             .collect::<PyResult<Vec<_>>>()?;
-
+        let items: Vec<Py<PyAny>> = Vec::new();
         PyList::new(py, items)
     }
 

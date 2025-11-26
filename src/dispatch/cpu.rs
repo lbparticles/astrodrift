@@ -1,8 +1,8 @@
 use std::array;
 
-use shared::{Config, InputFrame, Meal, OutputFrame, OutputState, MAX_STATES};
+use shared::{Config, Meal, MAX_STATES};
 
-use crate::dispatch::gpu::GPUDispatchError;
+use crate::{dispatch::gpu::GPUDispatchError, state::{InputFrame, OutputFrame, OutputState}};
 
 pub fn cpu_dispatch(
     config: Config, 
@@ -11,6 +11,5 @@ pub fn cpu_dispatch(
 ) -> Result<OutputFrame, GPUDispatchError> {
 
 
-    let arr: [Option<OutputState>; MAX_STATES] = array::from_fn(|_| None);
-    Ok(OutputFrame(arr))
+    Ok(OutputFrame(core::array::from_fn(|_| None)))
 }

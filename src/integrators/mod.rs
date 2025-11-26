@@ -1,12 +1,12 @@
-use shared::{Config, Construct, Engine, InputFrame, Meal, Method, OutputFrame, OutputState, Potential, Variant, MAX_STATES};
+use shared::{Config, Construct, Engine, Meal, Method, Potential, Variant, MAX_STATES};
 use core::array;
-use crate::dispatch::{cpu::cpu_dispatch, gpu_dispatch2};
+use crate::{dispatch::{cpu::cpu_dispatch, gpu_dispatch2}, state::{InputFrame, OutputFrame, OutputState}};
 
 pub mod dopr54_cpu;
 
 pub fn run_integration(config: Config, recipes: Meal, arrays: InputFrame) -> Result<OutputFrame, ()> {
-    println!("{}",recipes);
-    println!("{:?}",arrays);
+    // println!("{}",recipes);
+    // println!("{:?}",arrays);
     let ptr = core::ptr::null();
     for course_opt in recipes.0.iter() {
         if let Some(course) = course_opt {
@@ -22,18 +22,15 @@ pub fn run_integration(config: Config, recipes: Meal, arrays: InputFrame) -> Res
     }
     match (config.engine, config.method, config.variant) {
         (Engine::GPU, Method::DOPR54, Variant::Modern) => {
-            let arr: [Option<OutputState>; MAX_STATES] = array::from_fn(|_| None);
-            Ok(OutputFrame(arr))
+            Ok(OutputFrame(core::array::from_fn(|_| None)))
         }
         (Engine::CPU, Method::DOPR54, Variant::Modern) => {
-            let arr: [Option<OutputState>; MAX_STATES] = array::from_fn(|_| None);
-            Ok(OutputFrame(arr))
+            Ok(OutputFrame(core::array::from_fn(|_| None)))
         }
         (Engine::GPU, Method::DOPR54, Variant::Compatible) => Ok(gpu_dispatch2(config, recipes, arrays).expect("gpu_dispatch2 failed")),
         (Engine::CPU, Method::DOPR54, Variant::Compatible) => Ok(cpu_dispatch(config, recipes, arrays).expect("cpu_dispatch failed")),
         _ => {
-            let arr: [Option<OutputState>; MAX_STATES] = array::from_fn(|_| None);
-            Ok(OutputFrame(arr))
+            Ok(OutputFrame(core::array::from_fn(|_| None)))
         }
     }
 }

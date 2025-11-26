@@ -2,7 +2,7 @@ use cust_core::DeviceCopy;
 use core::f64::consts::PI;
 use core::array;
 
-use crate::{ModernFlags,Meal,InputFrame,OutputFrame,OutputState};
+use crate::{ModernFlags,Meal};
 use crate::{MAX_STATES,MIN_RTOL,MIN_ATOL,Real,Index};
 use crate::potential::Potential;
 

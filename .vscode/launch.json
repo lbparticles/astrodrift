@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Python + Rust",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/.venv/bin/python",
+      "args": [
+        "${workspaceFolder}/tests/test.py"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "RUST_BACKTRACE": "full"
+      },
+      "sourceLanguages": ["rust", "python"]
+    }
+  ]
+}

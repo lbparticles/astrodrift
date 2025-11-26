@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::interface::Container;
+use crate::{interface::Container, state::{InputFrame, InputState}};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AdjacencyMatrix(pub u128);
@@ -200,8 +200,8 @@ impl AdjacencyMatrix {
     }
     pub fn build(
         &self,
-        containers: Box<[Option<Container>; 11]>,
-    ) -> (shared::Meal, shared::InputFrame) {
+        containers: Box<[Option<Box<Container>>; 11]>,
+    ) -> (shared::Meal, InputFrame) {
         let last = self.last_true_column_power(11);
 
         let mut with_deps: Vec<usize> = (0..11).filter(|&v| last[v] >= 1).collect();
@@ -221,7 +221,7 @@ impl AdjacencyMatrix {
 
         let mut meal_by_stage: [Option<[Option<shared::Recipe>; shared::MAX_RECIPES]>; shared::MAX_COURSES] =
             std::array::from_fn(|_| None);
-        let mut istates_by_stage: [Option<shared::InputState>; shared::MAX_STATES] =
+        let mut istates_by_stage: [Option<InputState>; shared::MAX_STATES] =
             std::array::from_fn(|_| None);
         let mut rank: [usize; 11] = [0; 11];
         for (s, &v) in order.iter().enumerate() {
@@ -257,7 +257,7 @@ impl AdjacencyMatrix {
             }
         }
 
-        (meal_by_stage.into(), shared::InputFrame(istates_by_stage))
+        (meal_by_stage.into(), InputFrame(istates_by_stage))
     }
 }
 
