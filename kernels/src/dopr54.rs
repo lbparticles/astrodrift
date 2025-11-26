@@ -1,35 +1,9 @@
 use cuda_std::{kernel, thread};
 #[cfg(target_os = "cuda")]
 use cuda_std::GpuFloat;
+use shared::{PotentialEnum, KeplerPotential, Potential};
 
 const DIM: usize = 6;
-
-#[inline(always)]
-fn kepler_rhs(
-    _t: f64,
-    q: &[f64; DIM],
-    a: &mut [f64; DIM],
-) {
-    let x = q[0];
-    let y = q[1];
-    let z = q[2];
-    let vx = q[3];
-    let vy = q[4];
-    let vz = q[5];
-
-    let r2 = x * x + y * y + z * z;
-    let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
-    let r = r2_safe.sqrt();
-    let inv_r3 = 1.0 / (r2_safe * r);
-
-    a[0] = vx;
-    a[1] = vy;
-    a[2] = vz;
-
-    a[3] = -x * inv_r3;
-    a[4] = -y * inv_r3;
-    a[5] = -z * inv_r3;
-}
 
 const MAX_STEPCHANGE_POWERTWO: f64 = 3.0;
 const MIN_STEPCHANGE_POWERTWO: f64 = -3.0;
@@ -505,6 +479,52 @@ fn thread_id_limit_check(n: usize) -> Option<usize> {
         Some(tid)
     }
 }
+
+const pot_enum: PotentialEnum = PotentialEnum::Kepler(
+            KeplerPotential{amp:1.0}
+        );
+
+
+fn kepler_rhs(
+    _t: f64,
+    q: &[f64; DIM],
+    a: &mut [f64; DIM],
+) {
+    let (ax, ay, az) = pot_enum.force(_t, q[0], q[1], a[2]);
+    a[0] = q[3];
+    a[1] = q[4];
+    a[2] = q[5];
+    a[3] = ax;
+    a[4] = ay;
+    a[5] = az;
+}
+
+// #[inline(always)]
+// fn kepler_rhs(
+//     _t: f64,
+//     q: &[f64; DIM],
+//     a: &mut [f64; DIM],
+// ) {
+//     let x = q[0];
+//     let y = q[1];
+//     let z = q[2];
+//     let vx = q[3];
+//     let vy = q[4];
+//     let vz = q[5];
+
+//     let r2 = x * x + y * y + z * z;
+//     let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
+//     let r = r2_safe.sqrt();
+//     let inv_r3 = 1.0 / (r2_safe * r);
+
+//     a[0] = vx;
+//     a[1] = vy;
+//     a[2] = vz;
+
+//     a[3] = -x * inv_r3;
+//     a[4] = -y * inv_r3;
+//     a[5] = -z * inv_r3;
+// }
 
 #[kernel]
 pub unsafe fn dopr54_cpu_port(

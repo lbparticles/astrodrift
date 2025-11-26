@@ -9,7 +9,7 @@ pub use modern::ModernFlags;
 pub use digest::{Meal,Course};
 pub use digest::{Recipe,PotentialName,KeplerRecipe,PlummerRecipe,BovyRecipe,CustomPlummerRecipe,CustomKeplerRecipe, Construct};
 pub use config::{Config,Engine,Variant,Method,Linspace,Tolerance};
-pub use potential::{Potential, PlummerPotential};
+pub use potential::{Potential, PlummerPotential, PotentialEnum, KeplerPotential};
 
 pub type Index = usize;
 pub type Real = f64;

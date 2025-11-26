@@ -237,7 +237,9 @@ impl Potential for KeplerPotential {
     #[inline(always)]
     fn force(&self, _t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         let r2 = x * x + y * y + z * z;
-        let ar = -self.amp / pow(r2, 1.5);
+        let r = sqrt(r2);
+        let inv_r3 = 1.0 / (r2 * r);
+        let ar = -self.amp * inv_r3;
         let ax = ar * x;
         let ay = ar * y;
         let az = ar * z;
