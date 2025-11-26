@@ -2,7 +2,7 @@ use cust::error::CudaError;
 // use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
-use shared::{Config, Meal, MAX_STATES};
+use shared::{Config, Course, Linspace, Meal, ModernFlags, Real, Tolerance, MAX_STATES};
 use std::array;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
@@ -10,7 +10,7 @@ use std::os::raw::{c_double, c_int};
 use std::path::Path;
 use thiserror::Error;
 
-use crate::state::{InputFrame, OutputFrame, OutputState};
+use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 
@@ -176,8 +176,6 @@ fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
     })
 }
 
-const DIM: usize = 6;
-
 #[derive(Debug, Error)]
 pub enum GPUDispatchError {
     #[error("CUDA error: {0:?}")]
@@ -187,46 +185,38 @@ pub enum GPUDispatchError {
     IO(#[from] io::Error),
 }
 
-pub fn gpu_dispatch2(
-    // states: Vec<Vec<Vec<f64>>>,
-    // stages: Vec<Vec<PotentialRecipe>>,
-    // config: Config
-// ) -> PyResult<(f64, f64)> {
-    config: Config, 
-    recipes: Meal, 
-    arrays: InputFrame
-) -> Result<OutputFrame, GPUDispatchError> {
-
+pub fn launch_kernel(
+    course: &Course,
+    input_state: &InputState,
+    flags: ModernFlags,
+    tolerance: Tolerance,
+    linspace: Linspace,
+    times: Option<Vec<Real>>
+) -> Result<OutputState, GPUDispatchError> {
     let _ctx = cust::quick_init()?;
 
-    let dump = parse_dopr54_dump("dopr54_init_dump.txt").expect("msg");
-    let dim = dump.dim as usize;
-    let nt  = dump.nt as usize;
+    let times: Vec<Real> = times.unwrap_or_else(|| {
+        (0..linspace.steps)
+            .map(|i| {
+                linspace.start
+                    + (linspace.end - linspace.start) * (i as Real) / (linspace.steps as Real)
+            })
+            .collect()
+    });  
 
-    assert_eq!(dim, DIM, "dump dim ({}) != DIM ({})", dim, DIM);
-    assert_eq!(dump.t.len(), nt, "t length != nt");
-    assert_eq!(dump.yo.len(), dim, "yo length != dim");
-
-    let n: usize = 1;
-    let mut state0 = vec![0.0_f64; n * DIM];
-    state0[..DIM].copy_from_slice(&dump.yo[..DIM]);
-
-    let times = dump.t.clone();
-
-    let mut state_out = vec![0.0_f64; nt * n * DIM];
+    let mut output_state = OutputState::new_zeroed();
 
     let module = Module::from_ptx(PTX, &[])?;
     let stream = Stream::new(StreamFlags::DEFAULT, None)?;
     let kernel = module.get_function("dopr54_cpu_port")?;
-    let dev_state0 = DeviceBuffer::<f64>::from_slice(&state0)?;
+    let dev_state0 = DeviceBuffer::<f64>::from_slice(&input_state.data)?;
     let dev_times = DeviceBuffer::<f64>::from_slice(&times)?;
-    let dev_state_out = DeviceBuffer::<f64>::from_slice(&state_out)?;
+    let dev_state_out = DeviceBuffer::<f64>::from_slice(&output_state.data)?;
 
-    let (grid, block) = grid_size(n, BLOCK_SIZE);
+    let (grid, block) = grid_size(input_state.num_particles, BLOCK_SIZE);
 
-    let rtol = dump.rtol as f64;
-    let atol = dump.atol as f64;
-    let dt_one_init = dump.dt_one as f64;
+    // FIXME: hmmmm
+    let dt_one_init = -9999.99f64;
 
     unsafe {
         launch!(
@@ -234,40 +224,54 @@ pub fn gpu_dispatch2(
                 dev_state0.as_device_ptr(),
                 dev_times.as_device_ptr(),
                 dev_state_out.as_device_ptr(),
-                n,
-                nt,
-                rtol,
-                atol,
+                input_state.num_particles,
+                linspace.steps,
+                tolerance.rtol,
+                tolerance.atol,
                 dt_one_init
             )
         )?;
     }
     stream.synchronize()?;
 
-    dev_state_out.copy_to(&mut state_out)?;
+    dev_state_out.copy_to(&mut output_state.data)?;
+    print!("{:?}", output_state.data);
 
+    Ok(output_state)
+    // let mut f = File::create("dopr54_rust_out_gpu_yay.txt")?;
+    // let err: c_int = 0;
+    // writeln!(f, "err {}", err)?;
+    // writeln!(f, "dim {}", dump.dim)?;
+    // writeln!(f, "nt {}", dump.nt)?;
+    // writeln!(f, "t")?;
+    // for ti in &dump.t {
+    //     writeln!(f, "{:.16e}", ti)?;
+    // }
+    // writeln!(f, "states")?;
 
-    let mut f = File::create("dopr54_rust_out_gpu_yay.txt")?;
-    let err: c_int = 0;
-    writeln!(f, "err {}", err)?;
-    writeln!(f, "dim {}", dump.dim)?;
-    writeln!(f, "nt {}", dump.nt)?;
-    writeln!(f, "t")?;
-    for ti in &dump.t {
-        writeln!(f, "{:.16e}", ti)?;
-    }
-    writeln!(f, "states")?;
+    // // (step, particle, dim) = ((s * n) + tid) * DIM
+    // // here n=1, tid=0, so index = s*DIM + j
+    // for step in 0..nt {
+    //     write!(f, "step {}", step)?;
+    //     let base = step * n * DIM;
+    //     for j in 0..dim {
+    //         let v = state_out[base + j];
+    //         write!(f, " {:.16e}", v)?;
+    //     }
+    //     writeln!(f)?;
+    // }
+}
 
-    // (step, particle, dim) = ((s * n) + tid) * DIM
-    // here n=1, tid=0, so index = s*DIM + j
-    for step in 0..nt {
-        write!(f, "step {}", step)?;
-        let base = step * n * DIM;
-        for j in 0..dim {
-            let v = state_out[base + j];
-            write!(f, " {:.16e}", v)?;
+pub fn gpu_dispatch(
+    config: Config, 
+    meal: Meal, 
+    arrays: InputFrame
+) -> Result<OutputFrame, GPUDispatchError> {
+
+    for (course_opt, array_opt) in meal.into_iter().zip(arrays.into_iter()) {     
+        if let (Some(course), Some(array)) = (course_opt, array_opt) {
+            launch_kernel(course, array, config.flags, config.settings.tolerance, config.settings.ts, None).expect("course failed :(");
         }
-        writeln!(f)?;
     }
 
     // Temp

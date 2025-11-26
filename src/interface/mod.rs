@@ -17,6 +17,8 @@ pub use engine::PyEngine;
 pub use flag::Modern;
 pub use method::PyMethod;
 pub use recipe::PyRecipe;
+use shared::Linspace;
+use shared::Tolerance;
 pub use variant::PyVariant;
 use crate::integrators::run_integration;
 use crate::state::InputFrame;
@@ -31,13 +33,13 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
         if let Ok(tup) = obj.cast::<PyTuple>() {
             if tup.len() != 3 {
                 return Err(PyValueError::new_err(
-                    "Linspace tuple must have 3 elements: (start, end, num)",
+                    "Linspace tuple must have 3 elements: (start, end, steps)",
                 ));
             }
             let start: f64 = tup.get_item(0)?.extract()?;
             let end: f64 = tup.get_item(1)?.extract()?;
-            let num: usize = tup.get_item(2)?.extract()?;
-            return Ok(BoundLinspace(shared::Linspace(start, end, num)));
+            let steps: usize = tup.get_item(2)?.extract()?;
+            return Ok(BoundLinspace(Linspace{start, end, steps}));
         }
 
         // --- Case 2: NumPy array ---
@@ -53,8 +55,8 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
 
             let start = slice.first().copied().unwrap_or(0.0);
             let end = slice.last().copied().unwrap_or(start);
-            let num = n;
-            return Ok(BoundLinspace(shared::Linspace(start, end, num)));
+            let steps = n;
+            return Ok(BoundLinspace(Linspace{start, end, steps}));
         }
         if let Ok(seq) = obj.extract::<Vec<f64>>() {
             if seq.len() < 2 {
@@ -64,12 +66,12 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
             }
             let start = seq[0];
             let end = *seq.last().unwrap();
-            let num = seq.len();
-            return Ok(BoundLinspace(shared::Linspace(start, end, num)));
+            let steps = seq.len();
+            return Ok(BoundLinspace(Linspace{start, end, steps}));
         }
 
         Err(PyValueError::new_err(
-            "Expected (start, end, num) tuple or 1D numpy.linspace array",
+            "Expected (start, end, steps) tuple or 1D numpy.linspace array",
         ))
     }
 }
@@ -84,12 +86,12 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance {
         {
             let rtol: f64 = tup.get_item(0)?.extract()?;
             let atol: f64 = tup.get_item(1)?.extract()?;
-            return Ok(BoundTolerance(shared::Tolerance(rtol, atol)));
+            return Ok(BoundTolerance(Tolerance{rtol, atol}));
         }
 
         // Accept single float for convenience
         if let Ok(val) = obj.extract::<f64>() {
-            return Ok(BoundTolerance(shared::Tolerance(val, val)));
+            return Ok(BoundTolerance(Tolerance{rtol: val, atol: val}));
         }
 
         Err(PyValueError::new_err(

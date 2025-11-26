@@ -17,6 +17,15 @@ impl<'a> IntoIterator for &'a Course {
     }
 }
 
+impl<'a> IntoIterator for &'a Meal {
+    type Item = &'a Option<Course>;
+    type IntoIter = slice::Iter<'a, Option<Course>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
 
 // #[repr(C)]
 // #[derive(Debug, Clone, Copy)]

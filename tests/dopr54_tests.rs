@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
+    use drift_rs::dispatch::gpu::launch_kernel;
     use drift_rs::integrators::dopr54_cpu::*;
+    use drift_rs::state::InputState;
+    use shared::{Config, Course, Index, Tolerance};
     use std::ptr;
     use libc::{self, c_double, c_int};
     use std::fs::File;
@@ -90,6 +93,65 @@ mod tests {
             ];
 
             let tail = &result[result.len() - 6..];
+
+            for (i, &actual_f64) in tail.iter().enumerate() {
+                let actual_bits = actual_f64.to_bits();
+                let expected_bits = expected[i];
+
+                assert_eq!(
+                    actual_bits,
+                    expected_bits,
+                    "Mismatch in tail element {i}: got 0x{:016x}, expected 0x{:016x}",
+                    actual_bits,
+                    expected_bits
+                );
+            }
+
+        }
+    }
+
+    #[test]
+    fn dopr54_gpu_matches_reference() {
+        unsafe {           
+
+            let init = parse_dopr54_dump("dopr54_init_dump.txt").expect("could not parse init dump");
+
+            let mut config = Config::default();
+            config.settings.tolerance = Tolerance{ rtol: init.rtol, atol: init.atol };
+            config.settings.ts.end = *init.t.last().unwrap();
+            config.settings.ts.steps = init.nt as Index;
+
+            let mut input_state = InputState::new_zeroed();
+            input_state.num_particles = init.yo.len() as Index / init.dim as Index;
+            println!("HERE");
+            for (i, v) in init.yo.iter().enumerate() {
+                input_state.data[i] = *v;
+            }
+            print!("{:?}", input_state.data);
+
+            let course = Course(core::array::from_fn(|_| None));
+
+            let output_state = launch_kernel(&course, &input_state, config.flags, config.settings.tolerance, config.settings.ts, Some(init.t)).expect("course failed :(");
+            
+            for step in 0..(init.nt as usize) {
+                println!("step {}", step);
+                for j in 0..(init.dim as usize) {
+                    let v = output_state.data[step * (init.dim as usize) + j];
+                    println!(" (0x{:016x})", v.to_bits());
+                }
+            }
+            
+            let expected: [u64; 6] = [
+                0xbfead9ac890cbf34,
+                0xbfe1689ef5f2f595,
+                0x0000000000000000,
+                0x3fe1689ef5f2da49,
+                0xbfead9ac890ca8be,
+                0x0000000000000000,
+            ];
+
+            let end_index = init.nt as Index * init.dim as Index;
+            let tail = &output_state.data[end_index-6..end_index];
 
             for (i, &actual_f64) in tail.iter().enumerate() {
                 let actual_bits = actual_f64.to_bits();

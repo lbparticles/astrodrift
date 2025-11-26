@@ -9,7 +9,7 @@ use crate::potential::Potential;
 
 unsafe impl DeviceCopy for Settings {}
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Config {
     pub engine: Engine,
     pub method: Method,
@@ -19,7 +19,7 @@ pub struct Config {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Settings {
     pub ts: Linspace,
     pub tolerance: Tolerance,
@@ -49,17 +49,31 @@ impl Config {
 
 
 #[derive(Clone, Copy, Debug)]
-pub struct Linspace(pub Real, pub Real, pub Index);
+pub struct Linspace{
+    pub start: Real, 
+    pub end: Real, 
+    pub steps: Index,
+}
 impl Default for Linspace {
     fn default() -> Self {
-        Self(0.0, 2. * PI, 100)
+        Self{
+            start: 0.0, 
+            end: 2. * PI, 
+            steps:100
+        }
     }
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Tolerance(pub Real, pub Real);
+pub struct Tolerance{
+    pub atol: Real, 
+    pub rtol: Real
+}
 impl Default for Tolerance {
     fn default() -> Self {
-        Self(MIN_RTOL, MIN_ATOL)
+        Self{
+            atol: MIN_ATOL, 
+            rtol: MIN_RTOL
+        }
     }
 }
 

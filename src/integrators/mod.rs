@@ -1,14 +1,14 @@
 use shared::{Config, Construct, Engine, Meal, Method, Potential, Variant, MAX_STATES};
 use core::array;
-use crate::{dispatch::{cpu::cpu_dispatch, gpu_dispatch2}, state::{InputFrame, OutputFrame, OutputState}};
+use crate::{dispatch::{cpu::cpu_dispatch, gpu_dispatch}, state::{InputFrame, OutputFrame, OutputState}};
 
 pub mod dopr54_cpu;
 
-pub fn run_integration(config: Config, recipes: Meal, arrays: InputFrame) -> Result<OutputFrame, ()> {
+pub fn run_integration(config: Config, meal: Meal, arrays: InputFrame) -> Result<OutputFrame, ()> {
     // println!("{}",recipes);
     // println!("{:?}",arrays);
     let ptr = core::ptr::null();
-    for course_opt in recipes.0.iter() {
+    for course_opt in meal.0.iter() {
         if let Some(course) = course_opt {
             for recipe_opt in course.0.iter() {
                 if let Some(recipe) = recipe_opt {
@@ -27,8 +27,8 @@ pub fn run_integration(config: Config, recipes: Meal, arrays: InputFrame) -> Res
         (Engine::CPU, Method::DOPR54, Variant::Modern) => {
             Ok(OutputFrame(core::array::from_fn(|_| None)))
         }
-        (Engine::GPU, Method::DOPR54, Variant::Compatible) => Ok(gpu_dispatch2(config, recipes, arrays).expect("gpu_dispatch2 failed")),
-        (Engine::CPU, Method::DOPR54, Variant::Compatible) => Ok(cpu_dispatch(config, recipes, arrays).expect("cpu_dispatch failed")),
+        (Engine::GPU, Method::DOPR54, Variant::Compatible) => Ok(gpu_dispatch(config, meal, arrays).expect("gpu_dispatch failed")),
+        (Engine::CPU, Method::DOPR54, Variant::Compatible) => Ok(cpu_dispatch(config, meal, arrays).expect("cpu_dispatch failed")),
         _ => {
             Ok(OutputFrame(core::array::from_fn(|_| None)))
         }
