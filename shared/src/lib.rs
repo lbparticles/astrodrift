@@ -1,3 +1,4 @@
+// #![no_std]
 // shared/src/lib.rs
 mod modern;
 mod potential;
@@ -7,9 +8,10 @@ mod state;
 
 pub use modern::ModernFlags;
 pub use digest::{Meal,Course};
-pub use digest::{Recipe,PotentialName,KeplerRecipe,PlummerRecipe,BovyRecipe,CustomPlummerRecipe,CustomKeplerRecipe};
+pub use digest::{Recipe,PotentialName,KeplerRecipe,PlummerRecipe,BovyRecipe,CustomPlummerRecipe,CustomKeplerRecipe, Construct};
 pub use state::{InputFrame,OutputFrame,InputState,OutputState};
 pub use config::{Config,Engine,Variant,Method,Linspace,Tolerance};
+pub use potential::{Potential};
 
 pub type Index = usize;
 pub type Real = f64;

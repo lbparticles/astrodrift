@@ -5,10 +5,10 @@ use cuda_builder::CudaBuilder;
 use cuda_builder::NvvmArch;
 
 fn main() {
-    if std::env::var_os("RUSTDOC").is_some() || std::env::var_os("DOCS_RS").is_some() {
-        println!("cargo:warning=build.rs skipped for docs build");
-        return;
-    }
+    // if std::env::var_os("DOCS_RS").is_some() {
+    //     // println!("cargo:warning=build.rs skipped for docs build");
+    //     return;
+    // }
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-changed=kernels");
     let out_path = path::PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -20,7 +20,7 @@ fn main() {
         .fma_contraction(false)
         .ftz(false)
         .arch(NvvmArch::Compute80)
-        .release(false)
+        .release(true)
         .use_constant_memory_space(false)
         .copy_to(out_path.join("kernels.ptx"))
         .build()

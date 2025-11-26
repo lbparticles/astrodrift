@@ -1,6 +1,3 @@
-use cuda_std::kernel;
+mod dopr54;
 
-#[kernel]
-unsafe fn test(){
-    return
-}
+pub use crate::dopr54::dopr54_cpu_port;

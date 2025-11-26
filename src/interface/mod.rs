@@ -18,6 +18,7 @@ pub use flag::Modern;
 pub use method::PyMethod;
 pub use recipe::PyRecipe;
 pub use variant::PyVariant;
+use crate::integrators::run_integration;
 use crate::tree::AdjacencyMatrix;
 
 #[derive(Default, Clone, Debug)]
@@ -172,7 +173,7 @@ impl PyConfig {
         }
         let (meal, istates) = self.build_tree(containers);
 
-        let results = self.inner.run(meal, istates);
+        let results = run_integration(self.inner, meal, istates).unwrap();
         let items: Vec<Py<PyAny>> = results.0
             .iter()
             .filter_map(|opt| opt.as_ref())
