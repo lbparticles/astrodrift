@@ -1,12 +1,12 @@
 use std::array;
 
-use shared::{Config, Meal, MAX_STATES};
+use shared::{Config, Model, MAX_STATES};
 
 use crate::{dispatch::gpu::GPUDispatchError, state::{InputFrame, OutputFrame, OutputState}};
 
 pub fn cpu_dispatch(
     config: Config, 
-    meal: Meal, 
+    model: Model, 
     arrays: InputFrame
 ) -> Result<OutputFrame, GPUDispatchError> {
 

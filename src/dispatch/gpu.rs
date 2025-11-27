@@ -2,7 +2,7 @@ use cust::error::CudaError;
 // use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
-use shared::{Config, Course, Linspace, Meal, ModernFlags, Real, Tolerance, MAX_STATES};
+use shared::{Config, ModelComponent, Linspace, Model, ModernFlags, Real, Tolerance, MAX_STATES};
 use std::array;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
@@ -186,7 +186,7 @@ pub enum GPUDispatchError {
 }
 
 pub fn launch_kernel(
-    course: &Course,
+    model_component: &ModelComponent,
     input_state: &InputState,
     flags: ModernFlags,
     tolerance: Tolerance,
@@ -264,13 +264,13 @@ pub fn launch_kernel(
 
 pub fn gpu_dispatch(
     config: Config, 
-    meal: Meal, 
-    arrays: InputFrame
+    model: Model, 
+    input_frame: InputFrame
 ) -> Result<OutputFrame, GPUDispatchError> {
 
-    for (course_opt, array_opt) in meal.into_iter().zip(arrays.into_iter()) {     
-        if let (Some(course), Some(array)) = (course_opt, array_opt) {
-            launch_kernel(course, array, config.flags, config.settings.tolerance, config.settings.ts, None).expect("course failed :(");
+    for (model_component_opt, input_state_opt) in model.into_iter().zip(input_frame.into_iter()) {     
+        if let (Some(model_component), Some(input_state)) = (model_component_opt, input_state_opt) {
+            launch_kernel(model_component, input_state, config.flags, config.settings.tolerance, config.settings.ts, None).expect("course failed :(");
         }
     }
 

@@ -1,6 +1,7 @@
 use core::fmt;
 
 use crate::{interface::Container, state::{InputFrame, InputState}};
+use shared::{Model,MAX_MODEL_COMPONENTS,ModelComponent,Recipe,MAX_RECIPES,MAX_STATES};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AdjacencyMatrix(pub u128);
@@ -201,7 +202,7 @@ impl AdjacencyMatrix {
     pub fn build(
         &self,
         containers: Box<[Option<Box<Container>>; 11]>,
-    ) -> (shared::Meal, InputFrame) {
+    ) -> (Model, InputFrame) {
         let last = self.last_true_column_power(11);
 
         let mut with_deps: Vec<usize> = (0..11).filter(|&v| last[v] >= 1).collect();
@@ -219,9 +220,9 @@ impl AdjacencyMatrix {
             order[split + i] = v;
         }
 
-        let mut meal_by_stage: [Option<[Option<shared::Recipe>; shared::MAX_RECIPES]>; shared::MAX_COURSES] =
+        let mut meal_by_stage: [Option<[Option<Recipe>; MAX_RECIPES]>; MAX_MODEL_COMPONENTS] =
             std::array::from_fn(|_| None);
-        let mut istates_by_stage: [Option<InputState>; shared::MAX_STATES] =
+        let mut istates_by_stage: [Option<InputState>; MAX_STATES] =
             std::array::from_fn(|_| None);
         let mut rank: [usize; 11] = [0; 11];
         for (s, &v) in order.iter().enumerate() {
@@ -242,7 +243,7 @@ impl AdjacencyMatrix {
             }
 
             // Build the per-upstream array for this stage
-            let mut arr_k: [Option<shared::Recipe>; 11] = std::array::from_fn(|_| None);
+            let mut arr_k: [Option<Recipe>; 11] = std::array::from_fn(|_| None);
             for k in 0..11 {
                 if self.get(k, v) {
                     if let Some(src) = containers[k].as_ref() {
