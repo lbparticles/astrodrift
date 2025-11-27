@@ -17,15 +17,14 @@ pub use engine::PyEngine;
 pub use flag::Modern;
 pub use method::PyMethod;
 pub use recipe::PyRecipe;
-use shared::Linspace;
-use shared::Tolerance;
+use shared::{Linspace,Tolerance,Real,Model,Config,Index};
 pub use variant::PyVariant;
 use crate::integrators::run_integration;
 use crate::state::InputFrame;
 use crate::tree::AdjacencyMatrix;
 
 #[derive(Default, Clone, Debug)]
-pub struct BoundLinspace(pub shared::Linspace);
+pub struct BoundLinspace(pub Linspace);
 impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
     type Error = PyErr;
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
@@ -77,7 +76,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
 }
 
 #[derive(Default, Clone, Debug)]
-pub struct BoundTolerance(pub shared::Tolerance);
+pub struct BoundTolerance(pub Tolerance);
 impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance {
     type Error = PyErr;
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
@@ -103,13 +102,13 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance {
 #[pyclass(name = "Config")]
 #[derive(Debug)]
 pub struct PyConfig {
-    inner: shared::Config,
+    inner: Config,
     adjacency_matrix: AdjacencyMatrix,
 }
 
 impl PyConfig {
     fn build_tree(&self,
-         containers: Vec<Box<Container>>) -> (shared::Meal, InputFrame) {
+         containers: Vec<Box<Container>>) -> (Model, InputFrame) {
         let input = vec_to_option_array_11(containers);
         let (x,y) = self.adjacency_matrix.build(input);
         // println!("{:?}",x);
@@ -147,7 +146,7 @@ impl PyConfig {
         tolerance: Option<BoundTolerance>,
     ) -> Self {
         let thing = Self {
-            inner: shared::Config::new(
+            inner: Config::new(
                 engine.unwrap_or_default().inner,
                 method.unwrap_or_default().inner,
                 variant.unwrap_or_default().inner,
@@ -199,7 +198,7 @@ impl PyConfig {
         node: Container,
         args: &Bound<'py, PyTuple>,
     ) -> PyResult<()> {
-        let mut dep: Vec<shared::Index> = Vec::new();
+        let mut dep: Vec<Index> = Vec::new();
 
         for i in 0..args.len() {
             let obj = args.get_item(i)?;

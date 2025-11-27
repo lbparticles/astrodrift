@@ -3,7 +3,7 @@ mod tests {
     use drift_rs::dispatch::gpu::launch_kernel;
     use drift_rs::integrators::dopr54_cpu::*;
     use drift_rs::state::InputState;
-    use shared::{Config, Course, Index, Tolerance};
+    use shared::{Config, ModelComponent, Index, Tolerance};
     use std::ptr;
     use libc::{self, c_double, c_int};
     use std::fs::File;
@@ -129,9 +129,9 @@ mod tests {
             }
             print!("{:?}", input_state.data);
 
-            let course = Course(core::array::from_fn(|_| None));
+            let model_component= ModelComponent(core::array::from_fn(|_| None));
 
-            let output_state = launch_kernel(&course, &input_state, config.flags, config.settings.tolerance, config.settings.ts, Some(init.t)).expect("course failed :(");
+            let output_state = launch_kernel(&model_component, &input_state, config.flags, config.settings.tolerance, config.settings.ts, Some(init.t)).expect("course failed :(");
             
             for step in 0..(init.nt as usize) {
                 println!("step {}", step);
