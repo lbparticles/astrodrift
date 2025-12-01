@@ -3,9 +3,12 @@ use core::fmt::{self, Display, Formatter};
 use core::slice;
 use core::array;
 use crate::{Real};
+use cust_core::{DeviceCopy};
 use crate::potential::{PotentialEnum,KeplerPotential,PlummerPotential,BovyPotential,CustomOrigin};
 
+#[derive(Copy,Clone,DeviceCopy)]
 pub struct ModelComponent(pub [Option<Recipe>; MAX_RECIPES]);
+#[derive(Copy,Clone)]
 pub struct Model(pub [Option<ModelComponent>; MAX_MODEL_COMPONENTS]);
 
 impl<'a> IntoIterator for &'a ModelComponent{
@@ -137,7 +140,7 @@ impl From<[Option<[Option<Recipe>; 11]>; 11]> for Model {
 
 
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug,DeviceCopy)]
 pub enum Recipe {
     Kepler(KeplerRecipe),
     Plummer(PlummerRecipe),
@@ -168,7 +171,7 @@ impl Default for Recipe {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug,DeviceCopy)]
 pub enum PotentialName {
     Kepler,
     Plummer,
@@ -176,7 +179,7 @@ pub enum PotentialName {
     CustomKepler,
     CustomPlummer,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug,DeviceCopy)]
 pub struct KeplerRecipe {
     pub name: PotentialName,
     pub amp: Real,
@@ -196,7 +199,7 @@ impl Construct for KeplerRecipe {
         )
     }
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug,DeviceCopy)]
 pub struct CustomKeplerRecipe {
     pub name: PotentialName,
     pub amp: Real,
@@ -214,7 +217,7 @@ impl Construct for CustomKeplerRecipe {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug,DeviceCopy)]
 pub struct PlummerRecipe {
     pub name: PotentialName,
     pub amp: Real,
@@ -227,7 +230,7 @@ impl Construct for PlummerRecipe {
         )
     }
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug,DeviceCopy)]
 pub struct CustomPlummerRecipe {
     pub name: PotentialName,
     pub amp: Real,
@@ -245,7 +248,7 @@ impl Construct for CustomPlummerRecipe {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug,DeviceCopy)]
 pub struct BovyRecipe {
     pub name: PotentialName,
 }

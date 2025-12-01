@@ -37,3 +37,17 @@ impl PyRecipe {
         }
     }
 }
+
+// #[pymethods]
+// imp PyRecipe {
+//     fn force(&self,positions:Vec<f64>,t:f64)->Vec<f64>{
+//         for p in postiions{
+//             let (ax,ay,az) = self.inner.construct().force(t,p[0],p[1],p[2])
+//         }
+//     }
+//     fn evaluate(&self,positions:Vec<f64>,t:f64)->f64{
+//         for p in postiions{
+//             let (ax,ay,az) = self.inner.construct().force(t,p[0],p[1],p[2])
+//         }
+//     }
+// }

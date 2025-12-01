@@ -228,7 +228,8 @@ pub fn launch_kernel(
                 linspace.steps,
                 tolerance.rtol,
                 tolerance.atol,
-                dt_one_init
+                dt_one_init,
+                *model_component
             )
         )?;
     }

@@ -1,7 +1,7 @@
 use cuda_std::{kernel, thread};
 #[cfg(target_os = "cuda")]
 use cuda_std::GpuFloat;
-use shared::{PotentialEnum, KeplerPotential, Potential};
+use shared::{PotentialEnum, KeplerPotential, Potential,ModelComponent};
 
 const DIM: usize = 6;
 
@@ -536,6 +536,7 @@ pub unsafe fn dopr54_cpu_port(
     rtol: f64,
     atol: f64,
     dt_one_init: f64,
+    model_component: ModelComponent,
 ) {
     let tid = match thread_id_limit_check(n) {
         Some(id) => id,
