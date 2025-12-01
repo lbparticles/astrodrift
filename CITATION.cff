@@ -1,9 +1,21 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
 cff-version: 1.2.0
-message: "If you use drift, please cite it as below"
+title: >-
+  Drift Software Package - GPU Accelerated Numerical
+  Integrator
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
 authors:
-	- family-names: Forrest
-	  given-names: Angus John
-	  orcid: https://orcid.org/0009-0008-0355-5809
-title: "Drift Software Package - GPU Accelerated Numerical Integration"
-version: 0.1.0
-date-released: 2026-01-01
+  - given-names: Angus John
+    family-names: Forrest
+    email: academic@angusforrest.com
+    affiliation: University of Canterbury
+    orcid: 'https://orcid.org/0009-0008-0355-5809'
+  - given-names: Jack
+    family-names: Patterson
+repository-code: 'https://github.com/lbparticles/astrodrift'
+license: MIT
