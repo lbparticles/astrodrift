@@ -48,8 +48,8 @@ pub fn test_group<'py>(_py: Python<'py>, istate: PyReadonlyArrayDyn<Real>) -> Py
 #[pyo3(signature = (potential,istate))]
 pub fn part_group<'py>(_py: Python<'py>, potential: PyRecipe,istate:PyReadonlyArrayDyn<Real>) -> PyResult<Py<Container>> {
     let recipe:Option<PyRecipe> = match potential.inner {
-        Recipe::Kepler(p) => Some(PyRecipe{inner:Recipe::CustomKepler(CustomKeplerRecipe{length:0,offset:0,division:0,final_time:0.,amp:p.amp,name:PotentialName::CustomKepler})}),
-        Recipe::Plummer(p) => Some(PyRecipe{inner:Recipe::CustomPlummer(CustomPlummerRecipe{length:0,offset:0,division:0,final_time:0.,amp:p.amp,radius:p.radius,name:PotentialName::CustomPlummer})}),
+        Recipe::Kepler(p) => Some(PyRecipe{inner:Recipe::CustomKepler(CustomKeplerRecipe{length:0,offset:0,division:0,final_time:0.,amp:p.amp,name:PotentialName::CustomKepler,output_state:0})}),
+        Recipe::Plummer(p) => Some(PyRecipe{inner:Recipe::CustomPlummer(CustomPlummerRecipe{length:0,offset:0,division:0,final_time:0.,amp:p.amp,radius:p.radius,name:PotentialName::CustomPlummer,output_state:0})}),
         _ => {eprintln!("Bovy isn't implemented, or how have you passed in a custom Potential???"); None},
     };    
     initialize_container(_py, istate, recipe)

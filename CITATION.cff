@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use drift, please cite it as below"
+authors:
+	- family-names: Forrest
+	  given-names: Angus John
+	  orcid: https://orcid.org/0009-0008-0355-5809
+title: "Drift Software Package - GPU Accelerated Numerical Integration"
+version: 0.1.0
+date-released: 2026-01-01

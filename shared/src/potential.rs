@@ -1,4 +1,5 @@
 use libm::{pow,sqrt,log,floor};
+use crate::{Real,Index};
 
 #[derive(Clone, Copy)]
 pub enum PotentialEnum {
@@ -274,10 +275,10 @@ impl Potential for PlummerPotential {
 pub struct CustomOrigin<P: Potential + Copy> {
     pub table: *const f64,
     pub potential: P,
-    pub offset: usize,
-    pub length: usize,
-    pub division: usize,
-    pub final_time: f64,
+    pub offset: Index,
+    pub length: Index,
+    pub division: Index,
+    pub final_time: Real,
 }
 
 struct QuinticCoeff {

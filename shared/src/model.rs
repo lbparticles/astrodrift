@@ -2,7 +2,7 @@ use crate::{MAX_RECIPES,MAX_MODEL_COMPONENTS};
 use core::fmt::{self, Display, Formatter};
 use core::slice;
 use core::array;
-use crate::{Real};
+use crate::{Index,Real};
 use cust_core::{DeviceCopy};
 use crate::potential::{PotentialEnum,KeplerPotential,PlummerPotential,BovyPotential,CustomOrigin};
 
@@ -26,6 +26,15 @@ impl<'a> IntoIterator for &'a Model{
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut ModelComponent {
+    type Item = &'a mut Option<Recipe>;
+    type IntoIter = slice::IterMut<'a, Option<Recipe>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter_mut()
     }
 }
 
@@ -153,6 +162,11 @@ pub trait Construct{
     fn construct(&self,ptr:*const f64)->PotentialEnum;
 }
 
+pub trait Update{
+    fn update(&mut self, output_state:Index);
+}
+
+
 impl Construct for Recipe {
     fn construct(&self,ptr:*const f64)->PotentialEnum{
        match self {
@@ -164,6 +178,19 @@ impl Construct for Recipe {
        } 
     }
 }
+
+impl Update for Recipe{
+    fn update(&mut self,output_state:Index){
+       match self {
+           Recipe::Kepler(v) =>v.update(output_state),
+           Recipe::Plummer(v) =>v.update(output_state),
+           Recipe::Bovy(v) =>v.update(output_state),
+           Recipe::CustomKepler(v) =>v.update(output_state),
+           Recipe::CustomPlummer(v) =>v.update(output_state),
+       } 
+    }
+}
+
 
 impl Default for Recipe {
     fn default() -> Self {
@@ -199,21 +226,29 @@ impl Construct for KeplerRecipe {
         )
     }
 }
+impl Update for KeplerRecipe {
+    fn update(&mut self,_output_state:Index){
+    }
+}
 #[derive(Clone, Copy, Debug,DeviceCopy)]
 pub struct CustomKeplerRecipe {
     pub name: PotentialName,
     pub amp: Real,
-    pub offset: usize,
-    pub length: usize,
-    pub division: usize,
-    pub final_time: f64,
+    pub output_state:Index,
+    pub offset: Index,
+    pub length: Index,
+    pub division: Index,
+    pub final_time: Real,
+}
+impl Update for CustomKeplerRecipe {
+    fn update(&mut self,output_state:Index){
+        self.output_state = output_state;
+    }
 }
 
 impl Construct for CustomKeplerRecipe {
-    fn construct(&self,_ptr:*const f64)->PotentialEnum{
-        PotentialEnum::Kepler(
-            KeplerPotential{amp:self.amp}
-        )
+    fn construct(&self,ptr:*const f64)->PotentialEnum{
+        PotentialEnum::CustomKepler(CustomOrigin{table:ptr,potential:KeplerPotential{amp:self.amp},offset:self.offset,length:self.length,division:self.division,final_time:self.final_time})
     }
 }
 
@@ -230,23 +265,35 @@ impl Construct for PlummerRecipe {
         )
     }
 }
+impl Update for PlummerRecipe {
+    fn update(&mut self,_output_state:Index){
+    }
+}
 #[derive(Clone, Copy, Debug,DeviceCopy)]
 pub struct CustomPlummerRecipe {
     pub name: PotentialName,
     pub amp: Real,
     pub radius: Real,
-    pub offset: usize,
-    pub length: usize,
-    pub division: usize,
-    pub final_time: f64,
+    pub output_state:Index,
+    pub offset: Index,
+    pub length: Index,
+    pub division: Index,
+    pub final_time: Real,
 }
 impl Construct for CustomPlummerRecipe {
-    fn construct(&self,_ptr:*const f64)->PotentialEnum{
-        PotentialEnum::Plummer(
-            PlummerPotential{amp:self.amp,b:self.radius}
+    fn construct(&self,ptr:*const f64)->PotentialEnum{
+        PotentialEnum::CustomPlummer(
+            CustomOrigin{table:ptr,potential:PlummerPotential{amp:self.amp,b:self.radius},offset:self.offset,length:self.length,division:self.division,final_time:self.final_time}
         )
     }
 }
+
+impl Update for CustomPlummerRecipe {
+    fn update(&mut self,output_state:Index){
+        self.output_state = output_state;
+    }
+}
+
 
 #[derive(Clone, Copy, Debug,DeviceCopy)]
 pub struct BovyRecipe {
@@ -257,6 +304,10 @@ impl Construct for BovyRecipe {
         PotentialEnum::Bovy(
             BovyPotential::new(ptr,1.,1.,1)
         )
+    }
+}
+impl Update for BovyRecipe {
+    fn update(&mut self,_output_state:Index){
     }
 }
 

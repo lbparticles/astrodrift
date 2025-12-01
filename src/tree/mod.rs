@@ -1,7 +1,7 @@
 use core::fmt;
 
 use crate::{interface::Container, state::{InputFrame, InputState}};
-use shared::{Model,MAX_MODEL_COMPONENTS,ModelComponent,Recipe,MAX_RECIPES,MAX_STATES};
+use shared::{Model,MAX_MODEL_COMPONENTS,ModelComponent,Recipe,Update,MAX_RECIPES,MAX_STATES};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AdjacencyMatrix(pub u128);
@@ -220,6 +220,8 @@ impl AdjacencyMatrix {
             order[split + i] = v;
         }
 
+
+        println!("{:?}",order);
         let mut meal_by_stage: [Option<[Option<Recipe>; MAX_RECIPES]>; MAX_MODEL_COMPONENTS] =
             std::array::from_fn(|_| None);
         let mut istates_by_stage: [Option<InputState>; MAX_STATES] =
@@ -228,6 +230,7 @@ impl AdjacencyMatrix {
         for (s, &v) in order.iter().enumerate() {
             rank[v] = s;
         }
+        println!("{:?}",rank);
 
         for v in 0..11 {
             let has_incoming = (0..11).any(|k| self.get(k, v));
@@ -248,7 +251,9 @@ impl AdjacencyMatrix {
                 if self.get(k, v) {
                     if let Some(src) = containers[k].as_ref() {
                         if let Some(py_recipe) = src.recipe.as_ref() {
-                            arr_k[k] = Some(py_recipe.inner.clone());
+                            let mut recipe = py_recipe.inner.clone();
+                            recipe.update(rank[k]);
+                            arr_k[k] = Some(recipe);
                         }
                     }
                 }
@@ -257,7 +262,7 @@ impl AdjacencyMatrix {
                 meal_by_stage[s] = Some(arr_k);
             }
         }
-
+        println!("{:?}",meal_by_stage);
         (meal_by_stage.into(), InputFrame(istates_by_stage))
     }
 }

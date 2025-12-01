@@ -2,7 +2,7 @@ use cust::error::CudaError;
 // use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
-use shared::{Config, ModelComponent, Linspace, Model, ModernFlags, Real, Tolerance, MAX_STATES};
+use shared::{Config, ModelComponent, Linspace, Model, ModernFlags, Real, Tolerance, MAX_STATES,Recipe};
 use std::array;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
@@ -185,15 +185,44 @@ pub enum GPUDispatchError {
     IO(#[from] io::Error),
 }
 
+fn load_data(recipe:&mut Recipe,output_frame:&OutputFrame,lut:&mut Vec<Real>){
+   match recipe{
+       Recipe::Kepler(v) =>{},
+       Recipe::Plummer(v) =>{},
+       Recipe::Bovy(v) =>{
+           // Create tables
+       },
+       Recipe::CustomKepler(v) => {
+            v.offset = lut.len();
+            if let Some(Some(state)) = output_frame.0.get(v.output_state) {
+                if let Some(val) = state.data.get(0) {
+                    lut.push(*val);
+                }
+            }
+        },
+        Recipe::CustomPlummer(v) => {
+            v.offset = lut.len();
+            if let Some(Some(state)) = output_frame.0.get(v.output_state) {
+                if let Some(val) = state.data.get(0) {
+                    lut.push(*val);
+                }
+            }
+        }
+   } 
+}
+
+
 pub fn launch_kernel(
+    output_frame: &mut OutputFrame,
     model_component: &ModelComponent,
     input_state: &InputState,
     flags: ModernFlags,
     tolerance: Tolerance,
     linspace: Linspace,
     times: Option<Vec<Real>>
-) -> Result<OutputState, GPUDispatchError> {
+) -> Result<(), GPUDispatchError> {
     let _ctx = cust::quick_init()?;
+    let mut work_model_component = model_component.clone();
 
     let times: Vec<Real> = times.unwrap_or_else(|| {
         (0..linspace.steps)
@@ -212,7 +241,13 @@ pub fn launch_kernel(
     let dev_state0 = DeviceBuffer::<f64>::from_slice(&input_state.data)?;
     let dev_times = DeviceBuffer::<f64>::from_slice(&times)?;
     let dev_state_out = DeviceBuffer::<f64>::from_slice(&output_state.data)?;
-
+    let mut lut:Vec<Real> = Vec::new();
+    for recipe_opt in work_model_component.0.iter_mut() {
+        if let Some(recipe) = recipe_opt.as_mut() {
+            load_data(recipe, output_frame, &mut lut);
+        }
+    }
+    let dev_lut = DeviceBuffer::<f64>::from_slice(&output_state.data)?;
     let (grid, block) = grid_size(input_state.num_particles, BLOCK_SIZE);
 
     // FIXME: hmmmm
@@ -236,9 +271,10 @@ pub fn launch_kernel(
     stream.synchronize()?;
 
     dev_state_out.copy_to(&mut output_state.data)?;
-    print!("{:?}", output_state.data);
-
-    Ok(output_state)
+    if let Some(idx) = output_frame.0.iter().position(|x| x.is_none()) {
+    output_frame.0[idx] = Some(output_state);
+    }
+    Ok(())
     // let mut f = File::create("dopr54_rust_out_gpu_yay.txt")?;
     // let err: c_int = 0;
     // writeln!(f, "err {}", err)?;
@@ -268,13 +304,13 @@ pub fn gpu_dispatch(
     model: Model, 
     input_frame: InputFrame
 ) -> Result<OutputFrame, GPUDispatchError> {
-
+    let mut output_frame = OutputFrame(core::array::from_fn(|_| None));    
     for (model_component_opt, input_state_opt) in model.into_iter().zip(input_frame.into_iter()) {     
         if let (Some(model_component), Some(input_state)) = (model_component_opt, input_state_opt) {
-            launch_kernel(model_component, input_state, config.flags, config.settings.tolerance, config.settings.ts, None).expect("course failed :(");
+            launch_kernel(&mut output_frame,model_component, input_state, config.flags, config.settings.tolerance, config.settings.ts, None).expect("course failed :(");
         }
     }
 
     // Temp
-    Ok(OutputFrame(core::array::from_fn(|_| None)))
+    Ok(output_frame)
 }
