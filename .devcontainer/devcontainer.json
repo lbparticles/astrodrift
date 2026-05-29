@@ -32,6 +32,8 @@
  "mounts": [
    "source=/mnt/main/jack/src/astrodrift,target=/data/astrodrift,type=bind",
    "source=/mnt/main/jack/src/galpy,target=/data/galpy,type=bind",
-   "source=/mnt/main/jack/src/bovy_v2,target=/data/bovy_v2,type=bind"
+   "source=/mnt/main/jack/src/bovy_v2,target=/data/bovy_v2,type=bind",
+   "source=/mnt/main/jack/src/rust-cuda-2,target=/data/rust_cuda,type=bind",
+   "source=/mnt/main/jack/src/rust_cuda_debug,target=/data/rust_cuda_debug,type=bind"
  ]
 }
