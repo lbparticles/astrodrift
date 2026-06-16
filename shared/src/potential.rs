@@ -1,4 +1,12 @@
-use libm::{pow,sqrt,log,floor};
+#[cfg(not(feature = "cuda-oxide"))]
+use libm::sqrt;
+use libm::{floor, log, pow};
+
+#[cfg(feature = "cuda-oxide")]
+#[inline(always)]
+fn sqrt(x: f64) -> f64 {
+    x.sqrt()
+}
 
 #[derive(Clone, Copy)]
 pub enum PotentialEnum {
@@ -37,7 +45,6 @@ impl Potential for PotentialEnum {
     //     }
     // }
 }
-
 
 pub trait Potential {
     // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64;
@@ -85,8 +92,6 @@ macro_rules! combine_potentials {
     }};
 }
 
-
-
 #[derive(Clone, Copy)]
 pub struct BovyPotential {
     bulge: SphericalcutoffPotential,
@@ -130,7 +135,6 @@ impl Potential for BovyPotential {
     }
 }
 
-
 #[derive(Clone, Copy)]
 pub struct MNPotential {
     pub amp: f64,
@@ -159,7 +163,6 @@ impl Potential for MNPotential {
     }
 }
 
-
 #[derive(Clone, Copy)]
 pub struct NFWPotential {
     pub amp: f64,
@@ -184,7 +187,7 @@ impl Potential for NFWPotential {
     }
 }
 
-#[derive(Debug,Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct SphericalcutoffPotential {
     pub ar_table: *const f64,
     pub r_min: f64,
@@ -223,7 +226,7 @@ impl Potential for SphericalcutoffPotential {
     }
 }
 
-#[derive(Debug,Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct KeplerPotential {
     pub amp: f64,
 }
@@ -247,7 +250,7 @@ impl Potential for KeplerPotential {
     }
 }
 
-#[derive(Debug,Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct PlummerPotential {
     pub amp: f64,
     pub b: f64,
@@ -270,7 +273,7 @@ impl Potential for PlummerPotential {
     }
 }
 
-#[derive(Debug,Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct CustomOrigin<P: Potential + Copy> {
     pub table: *const f64,
     pub potential: P,

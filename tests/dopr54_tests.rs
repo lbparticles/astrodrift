@@ -3,12 +3,15 @@ mod tests {
     use drift_rs::dispatch::gpu::launch_kernel;
     use drift_rs::integrators::dopr54_cpu::*;
     use drift_rs::state::InputState;
-    use shared::{Config, ModelComponent, Index, Tolerance};
-    use std::ptr;
+    #[cfg(feature = "galpy-kepler-reference")]
+    use libm::pow;
+    use libm::sqrt;
     use libc::{self, c_double, c_int};
+    use shared::{Config, Index, ModelComponent, Tolerance};
     use std::fs::File;
     use std::io::{self, BufRead, BufReader};
     use std::path::Path;
+    use std::ptr;
 
     extern "C" fn kepler_rhs(
         _t: c_double,
@@ -25,27 +28,80 @@ mod tests {
             let vy = *q.add(4);
             let vz = *q.add(5);
 
-            let r2 = x * x + y * y + z * z;
-            // guard against r=0 just in case
-            let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
-            let r = sqrt(r2_safe);
-            let inv_r3 = 1.0 / (r2_safe * r); // 1 / r^3
+            let (ax, ay, az) = reference_kepler_force(x, y, z);
 
             *a.add(0) = vx;
             *a.add(1) = vy;
             *a.add(2) = vz;
 
-            *a.add(3) = -x * inv_r3;
-            *a.add(4) = -y * inv_r3;
-            *a.add(5) = -z * inv_r3;
+            *a.add(3) = ax;
+            *a.add(4) = ay;
+            *a.add(5) = az;
         }
+    }
+
+    #[cfg(not(feature = "galpy-kepler-reference"))]
+    fn reference_kepler_force(
+        x: c_double,
+        y: c_double,
+        z: c_double,
+    ) -> (c_double, c_double, c_double) {
+        let r2 = x * x + y * y + z * z;
+        let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
+        let r = sqrt(r2_safe);
+        let inv_r3 = 1.0 / (r2_safe * r);
+
+        (-x * inv_r3, -y * inv_r3, -z * inv_r3)
+    }
+
+    #[cfg(feature = "galpy-kepler-reference")]
+    fn reference_kepler_force(
+        x: c_double,
+        y: c_double,
+        z: c_double,
+    ) -> (c_double, c_double, c_double) {
+        let r = sqrt(x * x + y * y);
+        let sinphi = y / r;
+        let cosphi = x / r;
+        let r2 = r * r + z * z;
+        let rforce = -r * pow(r2, -1.5);
+        let phitorque = 0.0;
+        let ax = cosphi * rforce - 1.0 / r * sinphi * phitorque;
+        let ay = sinphi * rforce + 1.0 / r * cosphi * phitorque;
+        let az = -z * pow(r2, -1.5);
+
+        (ax, ay, az)
+    }
+
+    #[cfg(not(feature = "galpy-kepler-reference"))]
+    fn expected_tail_bits() -> [u64; 6] {
+        [
+            0xbfead9ac890cbf34,
+            0xbfe1689ef5f2f595,
+            0x0000000000000000,
+            0x3fe1689ef5f2da49,
+            0xbfead9ac890ca8be,
+            0x0000000000000000,
+        ]
+    }
+
+    #[cfg(feature = "galpy-kepler-reference")]
+    fn expected_tail_bits() -> [u64; 6] {
+        [
+            0xbfead9ac890cbf36,
+            0xbfe1689ef5f2f535,
+            0x0000000000000000,
+            0x3fe1689ef5f2da37,
+            0xbfead9ac890ca90a,
+            0x0000000000000000,
+        ]
     }
 
     #[test]
     fn dopr54_cpu_matches_reference() {
-        unsafe {           
-
-            let init = parse_dopr54_dump("dopr54_init_dump.txt").expect("could not parse init dump");
+        unsafe {
+            let init =
+                parse_dopr54_dump("dopr54_init_dump.txt").expect("could not parse init dump");
 
             let dim = init.dim;
             let nt = init.nt;
@@ -74,7 +130,7 @@ mod tests {
                 result.as_mut_ptr(),
                 &mut err,
             );
-            
+
             for step in 0..(nt as usize) {
                 println!("step {}", step);
                 for j in 0..(dim as usize) {
@@ -82,15 +138,8 @@ mod tests {
                     println!(" (0x{:016x})", v.to_bits());
                 }
             }
-            
-            let expected: [u64; 6] = [
-                0xbfead9ac890cbf34,
-                0xbfe1689ef5f2f595,
-                0x0000000000000000,
-                0x3fe1689ef5f2da49,
-                0xbfead9ac890ca8be,
-                0x0000000000000000,
-            ];
+
+            let expected = expected_tail_bits();
 
             let tail = &result[result.len() - 6..];
 
@@ -99,25 +148,25 @@ mod tests {
                 let expected_bits = expected[i];
 
                 assert_eq!(
-                    actual_bits,
-                    expected_bits,
+                    actual_bits, expected_bits,
                     "Mismatch in tail element {i}: got 0x{:016x}, expected 0x{:016x}",
-                    actual_bits,
-                    expected_bits
+                    actual_bits, expected_bits
                 );
             }
-
         }
     }
 
     #[test]
     fn dopr54_gpu_matches_reference() {
-        unsafe {           
-
-            let init = parse_dopr54_dump("dopr54_init_dump.txt").expect("could not parse init dump");
+        unsafe {
+            let init =
+                parse_dopr54_dump("dopr54_init_dump.txt").expect("could not parse init dump");
 
             let mut config = Config::default();
-            config.settings.tolerance = Tolerance{ rtol: init.rtol, atol: init.atol };
+            config.settings.tolerance = Tolerance {
+                rtol: init.rtol,
+                atol: init.atol,
+            };
             config.settings.ts.end = *init.t.last().unwrap();
             config.settings.ts.steps = init.nt as Index;
 
@@ -129,10 +178,18 @@ mod tests {
             }
             print!("{:?}", input_state.data);
 
-            let model_component= ModelComponent(core::array::from_fn(|_| None));
+            let model_component = ModelComponent(core::array::from_fn(|_| None));
 
-            let output_state = launch_kernel(&model_component, &input_state, config.flags, config.settings.tolerance, config.settings.ts, Some(init.t)).expect("course failed :(");
-            
+            let output_state = launch_kernel(
+                &model_component,
+                &input_state,
+                config.flags,
+                config.settings.tolerance,
+                config.settings.ts,
+                Some(init.t),
+            )
+            .expect("course failed :(");
+
             for step in 0..(init.nt as usize) {
                 println!("step {}", step);
                 for j in 0..(init.dim as usize) {
@@ -140,32 +197,22 @@ mod tests {
                     println!(" (0x{:016x})", v.to_bits());
                 }
             }
-            
-            let expected: [u64; 6] = [
-                0xbfead9ac890cbf34,
-                0xbfe1689ef5f2f595,
-                0x0000000000000000,
-                0x3fe1689ef5f2da49,
-                0xbfead9ac890ca8be,
-                0x0000000000000000,
-            ];
+
+            let expected = expected_tail_bits();
 
             let end_index = init.nt as Index * init.dim as Index;
-            let tail = &output_state.data[end_index-6..end_index];
+            let tail = &output_state.data[end_index - 6..end_index];
 
             for (i, &actual_f64) in tail.iter().enumerate() {
                 let actual_bits = actual_f64.to_bits();
                 let expected_bits = expected[i];
 
                 assert_eq!(
-                    actual_bits,
-                    expected_bits,
+                    actual_bits, expected_bits,
                     "Mismatch in tail element {i}: got 0x{:016x}, expected 0x{:016x}",
-                    actual_bits,
-                    expected_bits
+                    actual_bits, expected_bits
                 );
             }
-
         }
     }
 
@@ -269,5 +316,5 @@ mod tests {
         let bits = u64::from_str_radix(s, 16)
             .unwrap_or_else(|e| panic!("failed to parse hex f64 '{}': {}", s, e));
         f64::from_bits(bits)
-    }    
+    }
 }

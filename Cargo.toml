@@ -34,6 +34,8 @@ members = ["shared", "."]
 [features]
 default = []
 extension-module = ["pyo3/extension-module"]
+cuda-oxide-kernel = []
+galpy-kepler-reference = []
 
 
 [target.'cfg(unix)'.dependencies]
@@ -55,4 +57,3 @@ pyo3 = { version = "0.28", features = ["extension-module"] }
 [profile.dev]
 opt-level = 0
 debug = 2
-

@@ -2,7 +2,7 @@ use cust::error::CudaError;
 // use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
-use shared::{Config, ModelComponent, Linspace, Model, ModernFlags, Real, Tolerance, MAX_STATES};
+use shared::{Config, Linspace, MAX_STATES, Model, ModelComponent, ModernFlags, Real, Tolerance};
 use std::array;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
@@ -12,6 +12,9 @@ use thiserror::Error;
 
 use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
 
+#[cfg(feature = "cuda-oxide-kernel")]
+static CUBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kernels.cubin"));
+#[cfg(not(feature = "cuda-oxide-kernel"))]
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 
 fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
@@ -191,7 +194,7 @@ pub fn launch_kernel(
     flags: ModernFlags,
     tolerance: Tolerance,
     linspace: Linspace,
-    times: Option<Vec<Real>>
+    times: Option<Vec<Real>>,
 ) -> Result<OutputState, GPUDispatchError> {
     let _ctx = cust::quick_init()?;
 
@@ -202,10 +205,13 @@ pub fn launch_kernel(
                     + (linspace.end - linspace.start) * (i as Real) / (linspace.steps as Real)
             })
             .collect()
-    });  
+    });
 
     let mut output_state = OutputState::new_zeroed();
 
+    #[cfg(feature = "cuda-oxide-kernel")]
+    let module = Module::from_cubin(CUBIN, &[])?;
+    #[cfg(not(feature = "cuda-oxide-kernel"))]
     let module = Module::from_ptx(PTX, &[])?;
     let stream = Stream::new(StreamFlags::DEFAULT, None)?;
     let kernel = module.get_function("dopr54_cpu_port")?;
@@ -263,14 +269,21 @@ pub fn launch_kernel(
 }
 
 pub fn gpu_dispatch(
-    config: Config, 
-    model: Model, 
-    input_frame: InputFrame
+    config: Config,
+    model: Model,
+    input_frame: InputFrame,
 ) -> Result<OutputFrame, GPUDispatchError> {
-
-    for (model_component_opt, input_state_opt) in model.into_iter().zip(input_frame.into_iter()) {     
+    for (model_component_opt, input_state_opt) in model.into_iter().zip(input_frame.into_iter()) {
         if let (Some(model_component), Some(input_state)) = (model_component_opt, input_state_opt) {
-            launch_kernel(model_component, input_state, config.flags, config.settings.tolerance, config.settings.ts, None).expect("course failed :(");
+            launch_kernel(
+                model_component,
+                input_state,
+                config.flags,
+                config.settings.tolerance,
+                config.settings.ts,
+                None,
+            )
+            .expect("course failed :(");
         }
     }
 

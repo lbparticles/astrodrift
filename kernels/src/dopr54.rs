@@ -1,7 +1,9 @@
+#[cfg(feature = "cuda-oxide")]
+use cuda_device::{kernel, thread};
+#[cfg(not(feature = "cuda-oxide"))]
 use cuda_std::{kernel, thread};
-#[cfg(target_os = "cuda")]
+#[cfg(all(target_os = "cuda", not(feature = "cuda-oxide")))]
 use cuda_std::GpuFloat;
-use shared::{PotentialEnum, KeplerPotential, Potential};
 
 const DIM: usize = 6;
 
@@ -418,8 +420,14 @@ fn dopr54_integrate_kepler(
     let mut yerr= [0.0_f64; DIM];
     let mut ynk = [0.0_f64; DIM];
 
+    #[cfg(feature = "cuda-oxide")]
+    copy_state(&mut yn, yo);
+    #[cfg(not(feature = "cuda-oxide"))]
     yn.copy_from_slice(yo);
 
+    #[cfg(feature = "cuda-oxide")]
+    copy_state(&mut out_states[0], yo);
+    #[cfg(not(feature = "cuda-oxide"))]
     out_states[0].copy_from_slice(yo);
     let mut out_idx = 1usize;
 
@@ -459,6 +467,9 @@ fn dopr54_integrate_kepler(
             &mut ynk,
         );
 
+        #[cfg(feature = "cuda-oxide")]
+        copy_state(&mut out_states[out_idx], &yn);
+        #[cfg(not(feature = "cuda-oxide"))]
         out_states[out_idx].copy_from_slice(&yn);
         out_idx += 1;
     }
@@ -466,10 +477,19 @@ fn dopr54_integrate_kepler(
     *yo = yn;
 }
 
+#[cfg(feature = "cuda-oxide")]
+#[inline(always)]
+fn copy_state(dst: &mut [f64; DIM], src: &[f64; DIM]) {
+    for i in 0..DIM {
+        dst[i] = src[i];
+    }
+}
+
 
 
 
 #[inline(always)]
+#[cfg(not(feature = "cuda-oxide"))]
 fn thread_id_limit_check(n: usize) -> Option<usize> {
     let tid = (thread::block_idx_x() * thread::block_dim_x()
         + thread::thread_idx_x()) as usize;
@@ -480,23 +500,52 @@ fn thread_id_limit_check(n: usize) -> Option<usize> {
     }
 }
 
-const pot_enum: PotentialEnum = PotentialEnum::Kepler(
-            KeplerPotential{amp:1.0}
-        );
-
-
 fn kepler_rhs(
     _t: f64,
     q: &[f64; DIM],
     a: &mut [f64; DIM],
 ) {
-    let (ax, ay, az) = pot_enum.force(_t, q[0], q[1], a[2]);
+    let (ax, ay, az) = kepler_force(q[0], q[1], q[2]);
     a[0] = q[3];
     a[1] = q[4];
     a[2] = q[5];
     a[3] = ax;
     a[4] = ay;
     a[5] = az;
+}
+
+#[inline(always)]
+#[cfg(not(feature = "galpy-kepler-reference"))]
+fn kepler_force(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+    let r2 = x * x + y * y + z * z;
+    let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
+    let r = r2_safe.sqrt();
+    let inv_r3 = 1.0 / (r2_safe * r);
+
+    (-x * inv_r3, -y * inv_r3, -z * inv_r3)
+}
+
+#[inline(always)]
+#[cfg(feature = "galpy-kepler-reference")]
+fn kepler_force(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+    galpy_kepler_force(x, y, z)
+}
+
+#[inline(always)]
+#[cfg(feature = "galpy-kepler-reference")]
+fn galpy_kepler_force(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+    // Match galpy's full-orbit cylindrical force projection for the Kepler case.
+    let r = (x * x + y * y).sqrt();
+    let sinphi = y / r;
+    let cosphi = x / r;
+    let r2 = r * r + z * z;
+    let rforce = -r * r2.powf(-1.5);
+    let phitorque = 0.0_f64;
+    let ax = cosphi * rforce - 1.0 / r * sinphi * phitorque;
+    let ay = sinphi * rforce + 1.0 / r * cosphi * phitorque;
+    let az = -z * r2.powf(-1.5);
+
+    (ax, ay, az)
 }
 
 // #[inline(always)]
@@ -537,6 +586,16 @@ pub unsafe fn dopr54_cpu_port(
     atol: f64,
     dt_one_init: f64,
 ) {
+    #[cfg(feature = "cuda-oxide")]
+    let tid = {
+        let tid = thread::index_1d().get();
+        if tid >= n {
+            return;
+        }
+        tid
+    };
+
+    #[cfg(not(feature = "cuda-oxide"))]
     let tid = match thread_id_limit_check(n) {
         Some(id) => id,
         None => return,

@@ -9,6 +9,11 @@ glam = { version = "0.33.0", default-features = false, features = ["cuda", "nost
 libm = "0.2.11"
 shared = { path="../shared"}
 
+[features]
+default = []
+cuda-oxide = []
+galpy-kepler-reference = []
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
