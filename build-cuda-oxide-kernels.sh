@@ -47,12 +47,30 @@ if [[ -z "$container" ]]; then
 fi
 
 workdir="/tmp/astrodrift-cuda-oxide-kernels"
+host_triple="$(
+    docker exec "$container" rustc -vV \
+        | awk '$1 == "host:" { print $2 }'
+)"
+backend="/workspaces/cuda-oxide/crates/rustc-codegen-cuda/target/$host_triple/debug/librustc_codegen_cuda.so"
+
+if [[ -z "$host_triple" ]] || ! docker exec "$container" test -f "$backend"; then
+    echo "Could not find the cuda-oxide backend. Run 'cargo oxide setup' in the cuda-oxide devcontainer." >&2
+    exit 1
+fi
+
 feature_words=" ${kernel_features//,/ } "
 if [[ "$feature_words" == *" galpy-kepler-reference "* ]]; then
     out_dir="$repo_root/target/cuda-oxide/galpy-kepler-reference"
 else
     out_dir="$repo_root/target/cuda-oxide"
 fi
+
+# Avoid leaving artifacts from a previous codegen mode beside the current build.
+rm -f \
+    "$out_dir/kernels.cubin" \
+    "$out_dir/kernels.ll" \
+    "$out_dir/kernels.ltoir" \
+    "$out_dir/kernels.ptx"
 
 copy_artifacts() {
     mkdir -p "$out_dir"
@@ -116,8 +134,8 @@ EOF"
 
 docker exec "$container" bash -lc "cd '$workdir' && \
     CUDA_OXIDE_PTX_DIR='$workdir/out' \
-    CUDA_OXIDE_BACKEND='/workspaces/cuda-oxide/crates/rustc-codegen-cuda/target/debug/librustc_codegen_cuda.so' \
-    /workspaces/cuda-oxide/target/debug/cargo-oxide build --arch '$arch' --features '$kernel_features'"
+    CUDA_OXIDE_BACKEND='$backend' \
+    /workspaces/cuda-oxide/target/debug/cargo-oxide build --emit-nvvm-ir --arch '$arch' --features '$kernel_features' --no-fmad"
 
 if ! docker exec "$container" bash -lc "cd '$workdir/cubin-builder' && \
     cargo run --release -- '$workdir/out/kernels.ll' '$arch'"; then

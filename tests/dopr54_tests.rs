@@ -10,6 +10,8 @@ mod tests {
     use std::fs;
     use std::fs::File;
     use std::io::{self, Read};
+    #[cfg(feature = "galpy-kepler-reference")]
+    use std::io::{BufWriter, Write};
     use std::path::Path;
     #[cfg(feature = "galpy-kepler-reference")]
     use std::path::PathBuf;
@@ -151,13 +153,31 @@ mod tests {
     #[ignore = "diagnostic report for host libm versus CUDA device math drift"]
     fn dopr54_gpu_native_galpy_fixture_error_summary() {
         let mut summary = ErrorSummary::default();
+        let mut dump = std::env::var_os("ASTRODRIFT_DOPR54_GPU_DUMP").map(|path| {
+            BufWriter::new(
+                File::create(&path)
+                    .unwrap_or_else(|error| panic!("failed to create {}: {error}", path.display())),
+            )
+        });
 
         for path in galpy_native_fixture_paths() {
             let case_name = path.file_stem().unwrap().to_string_lossy();
             let init = parse_dopr54_dump(&path).expect("could not parse galpy fixture");
             let result = integrate_gpu(&init);
 
+            if let Some(writer) = dump.as_mut() {
+                for value in &result {
+                    writer
+                        .write_all(&value.to_bits().to_le_bytes())
+                        .expect("failed to write GPU output dump");
+                }
+            }
+
             summary.observe_fixture(&case_name, &result, &init);
+        }
+
+        if let Some(mut writer) = dump {
+            writer.flush().expect("failed to flush GPU output dump");
         }
 
         println!(
