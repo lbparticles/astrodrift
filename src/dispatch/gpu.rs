@@ -2,7 +2,7 @@ use cust::error::CudaError;
 // use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
-use shared::{Config, Linspace, MAX_STATES, Model, ModelComponent, ModernFlags, Real, Tolerance};
+use shared::{Config, Linspace, Model, ModelComponent, ModernFlags, Real, Tolerance, MAX_STATES};
 use std::array;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
@@ -241,7 +241,6 @@ pub fn launch_kernel(
     stream.synchronize()?;
 
     dev_state_out.copy_to(&mut output_state.data)?;
-    print!("{:?}", output_state.data);
 
     Ok(output_state)
     // let mut f = File::create("dopr54_rust_out_gpu_yay.txt")?;

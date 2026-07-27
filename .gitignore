@@ -77,4 +77,6 @@ docs/_build/
 *.sif
 *.png
 
+/tmp/
+tests/fixtures/dopr54_galpy_native/*.fixture
 *.txt
