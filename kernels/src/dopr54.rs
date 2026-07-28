@@ -6,7 +6,6 @@ use cuda_std::{kernel, thread};
 use cuda_std::GpuFloat;
 
 const DIM: usize = 6;
-const MAX_TIME_STEPS: usize = 1024;
 
 const MAX_STEPCHANGE_POWERTWO: f64 = 3.0;
 const MIN_STEPCHANGE_POWERTWO: f64 = -3.0;
@@ -397,10 +396,6 @@ fn dopr54_onestep_kepler(
 
 
 
-// FIXME: Restore the slice parameter and pass `&mut out_steps[..nt]` once the
-// upstream trap-floor fix lands:
-// https://github.com/NVlabs/cuda-oxide/issues/519
-// https://github.com/NVlabs/cuda-oxide/pull/520
 #[inline(always)]
 fn dopr54_integrate_kepler(
     yo: &mut [f64; DIM],
@@ -408,7 +403,7 @@ fn dopr54_integrate_kepler(
     rtol: f64,
     atol: f64,
     mut dt_one: f64,
-    out_states: &mut [[f64; DIM]; MAX_TIME_STEPS],
+    out_states: &mut [[f64; DIM]],
 ) {
     let nt = t_grid.len() as i32;
 
@@ -613,7 +608,7 @@ pub unsafe fn dopr54_cpu_port(
         yo[i] = *state0.add(base_in + i);
     }
 
-    let mut out_steps = [[0.0; DIM]; MAX_TIME_STEPS];
+    let mut out_steps: [[f64; DIM]; 1024] = [[0.0; DIM]; 1024];
 
     dopr54_integrate_kepler(
         &mut yo,
@@ -621,7 +616,7 @@ pub unsafe fn dopr54_cpu_port(
         rtol,
         atol,
         dt_one_init,
-        &mut out_steps,
+        &mut out_steps[..nt],
     );
 
     // Write back to global memory: layout (step, particle, dim)
