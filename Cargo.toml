@@ -10,9 +10,10 @@ crate-type = ["rlib", "cdylib"]
 [dependencies]
 shared = { path = "shared"}
 pyo3 = "0.28.3"
-blastoff = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "blastoff", branch = "main" }
-cust = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust", branch = "main" }
-cust_raw = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust_raw", branch = "main", features = ["driver"] }
+# Host-side CUDA driver runtime (context/module/stream/buffers). Pinned in
+# Cargo.lock to the same commit as the local cuda-oxide checkout used for
+# kernel builds.
+cuda-core = { git = "https://github.com/NVlabs/cuda-oxide", package = "cuda-core", branch = "main" }
 ndarray-rand = "0.16.0"
 rand = "0.10.1"
 rayon = "1.11.0"
@@ -23,7 +24,10 @@ libc = "0.2.177"
 thiserror = "2.0.17"
 
 [build-dependencies]
-cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_builder", branch = "main", features = ["rustc_codegen_nvvm"] }
+# Optional: only needed for the legacy Rust-CUDA nvvm backend (requires LLVM 7
+# via LLVM_CONFIG, see container/ubuntu24-cuda13/Dockerfile). The cuda-oxide
+# path (cuda-oxide-kernel) does not need it.
+cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_builder", branch = "main", features = ["rustc_codegen_nvvm"], optional = true }
 
 [package.metadata.maturin]
 name = "drift"
@@ -32,9 +36,12 @@ name = "drift"
 members = ["shared", "."]
 
 [features]
-default = []
+default = ["nvvm-kernel"]
 extension-module = ["pyo3/extension-module"]
 cuda-oxide-kernel = []
+# Legacy Rust-CUDA nvvm kernel builder (LLVM 7). Default so existing container
+# workflows keep working; the python build disables it (see pyproject.toml).
+nvvm-kernel = ["dep:cuda_builder"]
 galpy-kepler-reference = []
 
 

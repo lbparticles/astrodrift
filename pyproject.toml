@@ -16,7 +16,11 @@ dependencies = [
 ]
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
+# Build the python extension against the cuda-oxide kernel (kernels.cubin built
+# by ./build-cuda-oxide-kernels.sh). no-default-features disables the legacy
+# nvvm backend, which needs LLVM 7 and is not required for cuda-oxide.
+features = ["pyo3/extension-module", "cuda-oxide-kernel"]
+no-default-features = true
 python-source = "python"
 module-name = "drift.drift_rs"
 

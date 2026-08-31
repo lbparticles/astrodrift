@@ -1,9 +1,14 @@
-#[cfg(not(feature = "cuda-oxide-kernel"))]
+#[cfg(all(not(feature = "cuda-oxide-kernel"), not(feature = "nvvm-kernel")))]
+compile_error!(
+    "no kernel backend selected: use default (nvvm-kernel, needs LLVM 7) or --features cuda-oxide-kernel"
+);
+
+#[cfg(all(not(feature = "cuda-oxide-kernel"), feature = "nvvm-kernel"))]
 use cuda_builder::CudaBuilder;
-#[cfg(not(feature = "cuda-oxide-kernel"))]
+#[cfg(all(not(feature = "cuda-oxide-kernel"), feature = "nvvm-kernel"))]
 use cuda_builder::NvvmArch;
 
-#[cfg(not(feature = "cuda-oxide-kernel"))]
+#[cfg(all(not(feature = "cuda-oxide-kernel"), feature = "nvvm-kernel"))]
 fn main() {
     // if std::env::var_os("DOCS_RS").is_some() {
     //     // println!("cargo:warning=build.rs skipped for docs build");

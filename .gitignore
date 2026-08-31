@@ -80,3 +80,7 @@ docs/_build/
 /tmp/
 tests/fixtures/dopr54_galpy_native/*.fixture
 *.txt
+
+# nix
+result
+result-*

@@ -71,17 +71,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
 
 [[package]]
-name = "blastoff"
-version = "0.1.0"
-source = "git+https://github.com/Rust-GPU/Rust-CUDA?branch=main#103a8d56935c4e0885ff7c3d25402319df1a8e00"
-dependencies = [
- "bitflags",
- "cust",
- "cust_raw",
- "num-complex",
-]
-
-[[package]]
 name = "build-helper"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -189,6 +178,43 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
+name = "crunchy"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
+
+[[package]]
+name = "cuda-bindings"
+version = "0.2.1"
+source = "git+https://github.com/NVlabs/cuda-oxide?branch=main#97f8b2b7882f0c15ad9ce9b53abed5553920caa8"
+dependencies = [
+ "bindgen",
+]
+
+[[package]]
+name = "cuda-core"
+version = "0.2.1"
+source = "git+https://github.com/NVlabs/cuda-oxide?branch=main#97f8b2b7882f0c15ad9ce9b53abed5553920caa8"
+dependencies = [
+ "anyhow",
+ "cuda-bindings",
+ "cuda-macros",
+ "half",
+ "oxide-artifacts",
+]
+
+[[package]]
+name = "cuda-macros"
+version = "0.2.1"
+source = "git+https://github.com/NVlabs/cuda-oxide?branch=main#97f8b2b7882f0c15ad9ce9b53abed5553920caa8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "reserved-oxide-symbols",
+ "syn",
+]
+
+[[package]]
 name = "cuda_builder"
 version = "0.3.0"
 source = "git+https://github.com/Rust-GPU/Rust-CUDA?branch=main#103a8d56935c4e0885ff7c3d25402319df1a8e00"
@@ -230,45 +256,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cust"
-version = "0.3.2"
-source = "git+https://github.com/Rust-GPU/Rust-CUDA?branch=main#103a8d56935c4e0885ff7c3d25402319df1a8e00"
-dependencies = [
- "bitflags",
- "bytemuck",
- "cust_core",
- "cust_derive",
- "cust_raw",
- "glam",
- "mint",
- "num-complex",
- "serde_json",
- "vek",
-]
-
-[[package]]
-name = "cust_core"
-version = "0.1.1"
-source = "git+https://github.com/Rust-GPU/Rust-CUDA?branch=main#103a8d56935c4e0885ff7c3d25402319df1a8e00"
-dependencies = [
- "cust_derive",
- "glam",
- "mint",
- "num-complex",
- "vek",
-]
-
-[[package]]
-name = "cust_derive"
-version = "0.2.0"
-source = "git+https://github.com/Rust-GPU/Rust-CUDA?branch=main#103a8d56935c4e0885ff7c3d25402319df1a8e00"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "cust_raw"
 version = "0.11.3"
 source = "git+https://github.com/Rust-GPU/Rust-CUDA?branch=main#103a8d56935c4e0885ff7c3d25402319df1a8e00"
@@ -282,10 +269,8 @@ dependencies = [
 name = "drift"
 version = "0.1.0"
 dependencies = [
- "blastoff",
+ "cuda-core",
  "cuda_builder",
- "cust",
- "cust_raw",
  "libc",
  "libm",
  "ndarray-rand",
@@ -449,19 +434,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "glam"
-version = "0.30.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
-dependencies = [
- "libm",
-]
-
-[[package]]
 name = "glob"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
+
+[[package]]
+name = "half"
+version = "2.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
+dependencies = [
+ "cfg-if",
+ "crunchy",
+ "zerocopy",
+]
 
 [[package]]
 name = "hashbrown"
@@ -647,12 +634,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mint"
-version = "0.5.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e53debba6bda7a793e5f99b8dacf19e626084f525f7829104ba9898f367d85ff"
-
-[[package]]
 name = "nalgebra"
 version = "0.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -794,7 +775,10 @@ version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62948e14d923ea95ea2c7c86c71013138b66525b86bdc08d2dcc262bdb497b87"
 dependencies = [
+ "crc32fast",
  "flate2",
+ "hashbrown 0.15.5",
+ "indexmap",
  "memchr",
  "ruzstd",
 ]
@@ -821,6 +805,14 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "oxide-artifacts"
+version = "0.2.1"
+source = "git+https://github.com/NVlabs/cuda-oxide?branch=main#97f8b2b7882f0c15ad9ce9b53abed5553920caa8"
+dependencies = [
+ "object",
 ]
 
 [[package]]
@@ -1130,6 +1122,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
 
 [[package]]
+name = "reserved-oxide-symbols"
+version = "0.2.1"
+source = "git+https://github.com/NVlabs/cuda-oxide?branch=main#97f8b2b7882f0c15ad9ce9b53abed5553920caa8"
+
+[[package]]
 name = "rstest"
 version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1331,7 +1328,6 @@ name = "shared"
 version = "0.1.0"
 dependencies = [
  "approx",
- "cust_core",
  "libm",
  "rand 0.9.4",
  "rstest",
@@ -1616,18 +1612,6 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
-
-[[package]]
-name = "vek"
-version = "0.17.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25215c4675beead435b254fc510932ff7f519cbc585b1b9fe2539ee9f20ca331"
-dependencies = [
- "approx",
- "num-integer",
- "num-traits",
- "rustc_version",
-]
 
 [[package]]
 name = "wasi"
