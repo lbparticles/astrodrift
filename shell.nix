@@ -110,12 +110,13 @@ pkgs.mkShell {
     export UV_PYTHON_DOWNLOADS="never"
     export UV_LINK_MODE="copy"
 
-    # Where the cuda-oxide checkout lives (override to relocate).
-    export CUDA_OXIDE_REPO="''${CUDA_OXIDE_REPO:-/software/cuda-oxide}"
+    # Where the cuda-oxide checkout lives: sibling dir of the project by
+    # default (override to relocate).
+    export CUDA_OXIDE_REPO="''${CUDA_OXIDE_REPO:-$PWD/../cuda-oxide}"
 
     # GPU target for ./build-cuda-oxide-kernels.sh. The container default is
-    # sm_80, but cubins are NOT forward-compatible: this machine's RTX 3070 Ti
-    # is sm_86, so build for it (override to cross-build for another GPU).
+    # sm_80, but cubins are NOT forward-compatible: default here is sm_86 (the
+    # local GPU); override when building for a different GPU.
     export CUDA_OXIDE_ARCH="''${CUDA_OXIDE_ARCH:-sm_86}"
 
     # Toolchains: the project pins nightly-2026-04-02 (rust-toolchain.toml);

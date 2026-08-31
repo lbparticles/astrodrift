@@ -1,7 +1,7 @@
 # NIXOS NATIVE SETUP — astrodrift
 
-How to build, test and run this project on the current machine (NixOS 26.11,
-"glacier") **without Docker**, using `shell.nix` as a faithful port of
+How to build, test and run this project natively on a NixOS host
+**without Docker**, using `shell.nix` as a faithful port of
 `container/ubuntu24-cuda13/Dockerfile` + `.devcontainer/devcontainer.json`.
 
 The kernel path used here is **cuda-oxide** (NVlabs) — Rust → MIR → Pliron IR →
@@ -14,15 +14,13 @@ that `libnvvm` requires for compute < 100).
 
 ## 1. System requirements (NixOS)
 
-On this machine everything is already configured. For a fresh NixOS box you need:
-
-| Requirement | Why | This machine |
+| Requirement | Why | Check with |
 |---|---|---|
-| NVIDIA driver (`hardware.nvidia`, `hardware.graphics.enable`) | `libcuda.so` (driver API) lives in `/run/opengl-driver/lib` | ✅ `nvidia.nix` |
-| `programs.nix-ld.enable = true` | rustup/uv-downloaded binaries (rustc nightly, python) are dynamically linked against glibc | ✅ `env.nix` + `system/nix-ld.nix` |
+| NVIDIA driver (`hardware.nvidia`, `hardware.graphics.enable`) | `libcuda.so` (driver API) lives in `/run/opengl-driver/lib` | `nvidia-smi` |
+| `programs.nix-ld.enable = true` | rustup/uv-downloaded binaries (rustc nightly, python) are dynamically linked against glibc | `nix-ld --version` |
 | `nixpkgs.config.allowUnfree = true` | CUDA toolkit is CUDA-EULA (unfree) | handled inside `shell.nix` (`import <nixpkgs> { config.allowUnfree = true; }`) |
-| rustup | installs the two pinned nightlies (see below) | ✅ system package |
-| git, network access | cargo fetches `Rust-CUDA`… no longer needed; fetches `NVlabs/cuda-oxide` + crates.io | ✅ |
+| rustup | installs the two pinned nightlies (see below) | `rustup --version` |
+| git, network access | cargo fetches `NVlabs/cuda-oxide` + crates.io | — |
 
 Nothing else is required system-wide. Docker/Apptainer are **not** needed
 (`virtualisation.docker.enable` exists but the `docker` group is not a
@@ -53,7 +51,7 @@ LLVM_CONFIG_PATH    = <llvm-21>/bin/llvm-config  # container: llvm-config-21
 LIBNVJITLINK_PATH   = <libnvjitlink lib output>/lib/libnvJitLink.so
 LD_LIBRARY_PATH     = <cuda>/nvvm/lib64 : <libnvjitlink>/lib : /run/opengl-driver/lib
 LIBRARY_PATH        = /run/opengl-driver/lib     # link-time -lcuda (rust-lld)
-CUDA_OXIDE_REPO     = /software/cuda-oxide       # override to relocate
+CUDA_OXIDE_REPO     = ../cuda-oxide (sibling of the project; override)
 CUDA_OXIDE_ARCH     = sm_86                      # container default: sm_80
 ```
 
@@ -68,17 +66,18 @@ Notes:
 ## 3. One-time setup
 
 ```bash
-# 1. clone cuda-oxide next to the project (path is the shell default)
-git clone https://github.com/NVlabs/cuda-oxide /software/cuda-oxide
+# 1. clone cuda-oxide as a sibling of the project checkout
+#    (this is the shell's default; set CUDA_OXIDE_REPO to relocate it)
+git clone https://github.com/NVlabs/cuda-oxide ../cuda-oxide
 
 # 2. enter the dev shell (installs both pinned nightlies on first run)
-cd /software/astrodrift
+cd /path/to/astrodrift
 nix-shell
 
 # 3. build the cuda-oxide rustc codegen backend (one-time, ~1 min)
-cd /software/cuda-oxide
+cd ../cuda-oxide
 cargo oxide setup          # publishes the backend to ~/.cargo/cuda-oxide/
-cd /software/astrodrift
+cd ../astrodrift
 ```
 
 ## 4. Daily workflow
@@ -106,10 +105,11 @@ compile must use it. The main project keeps its own pin
 (`rust-toolchain.toml`, nightly-2026-04-02) — the env var applies only to the
 kernel-build invocation.
 
-GPU arch: `CUDA_OXIDE_ARCH` defaults to **sm_86** in `shell.nix` (RTX 3070 Ti).
+GPU arch: `CUDA_OXIDE_ARCH` defaults to **sm_86** in `shell.nix` (the GPU this
+setup was written for — check yours with `nvidia-smi --query-gpu=compute_cap`).
 Unlike PTX, **cubins are not forward-compatible**, so a cubin built for the
-container default sm_80 would fail to load on this GPU. Override to cross-build
-for another GPU, e.g. `CUDA_OXIDE_ARCH=sm_80 ./build-cuda-oxide-kernels.sh`.
+container default sm_80 would fail to load on an sm_86 GPU. Override to
+cross-build for another GPU, e.g. `CUDA_OXIDE_ARCH=sm_80 ./build-cuda-oxide-kernels.sh`.
 
 ## 5. Tests
 
@@ -126,8 +126,7 @@ cargo test --release --no-default-features \
 ```
 
 Note `--no-default-features`: the default feature set still selects the legacy
-`nvvm-kernel` backend (see below), which needs LLVM 7 and is not available on
-this machine.
+`nvvm-kernel` backend (see below), which needs LLVM 7 and is not set up here.
 
 ## 6. Code changes made for this setup (up for review)
 
@@ -184,5 +183,5 @@ build + Rust-CUDA host runtime). To run natively without LLVM 7:
 ## 8. Container path (still works)
 
 The devcontainer/apptainer flow is untouched and remains the reference
-environment for the other developer. On this machine it would require the
-`docker` group (password sudo) — the native flow above replaces it.
+environment for the other developer. It requires docker group membership
+(or sudo); the native flow above replaces it.
