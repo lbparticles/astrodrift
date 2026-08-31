@@ -2,6 +2,7 @@ use shared::{Config, Construct, Engine, Model, Method, Potential, Variant, MAX_S
 use core::array;
 use crate::{dispatch::{cpu::cpu_dispatch, gpu_dispatch}, state::{InputFrame, OutputFrame, OutputState}};
 
+pub mod dop853_cpu;
 pub mod dopr54_cpu;
 
 pub fn run_integration(config: Config, model: Model, input_frame: InputFrame) -> Result<OutputFrame, ()> {
