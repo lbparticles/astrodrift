@@ -2,7 +2,9 @@ use cust::error::CudaError;
 // use crate::tables::build_sphericalcutoff_force_table;
 use cust::prelude::*;
 use pyo3::prelude::*;
-use shared::{Config, Linspace, Model, ModelComponent, ModernFlags, Real, Tolerance, MAX_STATES};
+use shared::{
+    Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance, MAX_STATES,
+};
 use std::array;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
@@ -196,6 +198,45 @@ pub fn launch_kernel(
     linspace: Linspace,
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, GPUDispatchError> {
+    launch_kernel_named(
+        "dopr54_cpu_port",
+        model_component,
+        input_state,
+        flags,
+        tolerance,
+        linspace,
+        times,
+    )
+}
+
+pub fn launch_dop853_kernel(
+    model_component: &ModelComponent,
+    input_state: &InputState,
+    flags: ModernFlags,
+    tolerance: Tolerance,
+    linspace: Linspace,
+    times: Option<Vec<Real>>,
+) -> Result<OutputState, GPUDispatchError> {
+    launch_kernel_named(
+        "dop853_cpu_port",
+        model_component,
+        input_state,
+        flags,
+        tolerance,
+        linspace,
+        times,
+    )
+}
+
+fn launch_kernel_named(
+    kernel_name: &str,
+    model_component: &ModelComponent,
+    input_state: &InputState,
+    flags: ModernFlags,
+    tolerance: Tolerance,
+    linspace: Linspace,
+    times: Option<Vec<Real>>,
+) -> Result<OutputState, GPUDispatchError> {
     let _ctx = cust::quick_init()?;
 
     let times: Vec<Real> = times.unwrap_or_else(|| {
@@ -214,7 +255,7 @@ pub fn launch_kernel(
     #[cfg(not(feature = "cuda-oxide-kernel"))]
     let module = Module::from_ptx(PTX, &[])?;
     let stream = Stream::new(StreamFlags::DEFAULT, None)?;
-    let kernel = module.get_function("dopr54_cpu_port")?;
+    let kernel = module.get_function(kernel_name)?;
     let dev_state0 = DeviceBuffer::<f64>::from_slice(&input_state.data)?;
     let dev_times = DeviceBuffer::<f64>::from_slice(&times)?;
     let dev_state_out = DeviceBuffer::<f64>::from_slice(&output_state.data)?;
@@ -274,15 +315,25 @@ pub fn gpu_dispatch(
 ) -> Result<OutputFrame, GPUDispatchError> {
     for (model_component_opt, input_state_opt) in model.into_iter().zip(input_frame.into_iter()) {
         if let (Some(model_component), Some(input_state)) = (model_component_opt, input_state_opt) {
-            launch_kernel(
-                model_component,
-                input_state,
-                config.flags,
-                config.settings.tolerance,
-                config.settings.ts,
-                None,
-            )
-            .expect("course failed :(");
+            match config.method {
+                Method::DOPR54 => launch_kernel(
+                    model_component,
+                    input_state,
+                    config.flags,
+                    config.settings.tolerance,
+                    config.settings.ts,
+                    None,
+                ),
+                Method::DOP853 => launch_dop853_kernel(
+                    model_component,
+                    input_state,
+                    config.flags,
+                    config.settings.tolerance,
+                    config.settings.ts,
+                    None,
+                ),
+            }
+            .expect("GPU integration failed");
         }
     }
 

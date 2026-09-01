@@ -72,6 +72,7 @@ copy_artifacts() {
 rm -rf "$workdir"
 mkdir -p "$workdir/src" "$workdir/shared" "$workdir/out" "$workdir/cubin-builder/src"
 cp "$repo_root/kernels/src/dopr54.rs" "$workdir/src/dopr54.rs"
+cp "$repo_root/kernels/src/dop853.rs" "$workdir/src/dop853.rs"
 cp "$repo_root/kernels/src/lib.rs" "$workdir/src/lib.rs"
 cp -a "$repo_root/shared/." "$workdir/shared"
 

@@ -1,9 +1,13 @@
 #[cfg(test)]
 mod tests {
+    use drift_rs::dispatch::gpu::launch_dop853_kernel;
     use drift_rs::integrators::dop853_cpu::{dop853, potentialArg};
+    use drift_rs::state::InputState;
     use libc::{c_double, c_int};
+    use shared::{Config, Index, ModelComponent, Tolerance};
     use std::fs::{self, File};
     use std::io::{self, Read};
+    use std::io::{BufWriter, Write};
     use std::path::{Path, PathBuf};
     use std::ptr;
 
@@ -55,6 +59,37 @@ mod tests {
         assert_all_state_bits("dop853_init_dump.txt", &result, &dump);
     }
 
+    // two differing libdevice pow(x, 1/8) results in this run. Substituting those bits makes all
+    // 6,006 GPU state bits match galpy exactly.
+    #[test]
+    #[ignore = "CUDA device math first differs from native galpy by 1 ULP at step 3, component 3"]
+    fn dop853_gpu_matches_native_galpy_dump() {
+        let dump = parse_dump("dop853_init_dump.txt").expect("could not parse DOP853 dump");
+        let result = integrate_gpu(&dump);
+
+        assert_all_state_bits("dop853_init_dump.txt", &result, &dump);
+    }
+
+    #[test]
+    fn dop853_gpu_tracks_native_galpy_dump() {
+        let dump = parse_dump("dop853_init_dump.txt").expect("could not parse DOP853 dump");
+        let result = integrate_gpu(&dump);
+        let mut mismatched = 0;
+        let mut max_absolute_error = 0.0_f64;
+
+        for (&actual, &expected_bits) in result.iter().zip(&dump.expected_state_bits) {
+            mismatched += usize::from(actual.to_bits() != expected_bits);
+            max_absolute_error =
+                max_absolute_error.max((actual - f64::from_bits(expected_bits)).abs());
+        }
+
+        assert!(mismatched > 0, "expected host/device math to differ");
+        assert!(
+            max_absolute_error < 1.0e-12,
+            "GPU/native galpy max absolute error was {max_absolute_error}"
+        );
+    }
+
     #[test]
     #[ignore = "local generated native galpy fixture corpus"]
     fn dop853_cpu_matches_native_galpy_fixtures() {
@@ -65,6 +100,67 @@ mod tests {
 
             assert_all_state_bits(&case_name, &result, &dump);
         }
+    }
+
+    #[test]
+    #[ignore = "native galpy C/libm may not be bit-identical to CUDA device math"]
+    fn dop853_gpu_matches_native_galpy_fixtures() {
+        for path in galpy_native_fixture_paths() {
+            let case_name = path.file_stem().unwrap().to_string_lossy();
+            let dump = parse_dump(&path).expect("could not parse galpy fixture");
+            let result = integrate_gpu(&dump);
+
+            assert_all_state_bits(&case_name, &result, &dump);
+        }
+    }
+
+    #[test]
+    #[ignore = "diagnostic report for host libm versus CUDA device math drift"]
+    fn dop853_gpu_native_galpy_fixture_error_summary() {
+        let mut summary = ErrorSummary::default();
+        let mut output_dump = std::env::var_os("ASTRODRIFT_DOP853_GPU_DUMP").map(|path| {
+            BufWriter::new(
+                File::create(&path)
+                    .unwrap_or_else(|error| panic!("failed to create {}: {error}", path.display())),
+            )
+        });
+
+        for path in galpy_native_fixture_paths() {
+            let case_name = path.file_stem().unwrap().to_string_lossy();
+            let dump = parse_dump(&path).expect("could not parse galpy fixture");
+            let result = integrate_gpu(&dump);
+
+            if let Some(writer) = output_dump.as_mut() {
+                for value in &result {
+                    writer
+                        .write_all(&value.to_bits().to_le_bytes())
+                        .expect("failed to write GPU output dump");
+                }
+            }
+
+            summary.observe_fixture(&case_name, &result, &dump);
+        }
+
+        if let Some(mut writer) = output_dump {
+            writer.flush().expect("failed to flush GPU output dump");
+        }
+
+        println!(
+            "gpu/native galpy summary: compared={} mismatched={} max_abs={} at {} step {} component {} got=0x{:016x} expected=0x{:016x} max_rel={} max_ulp={}",
+            summary.compared,
+            summary.mismatched,
+            summary.max_abs,
+            summary.max_abs_case,
+            summary.max_abs_step,
+            summary.max_abs_component,
+            summary.max_abs_actual_bits,
+            summary.max_abs_expected_bits,
+            summary.max_rel,
+            summary.max_ulp,
+        );
+
+        assert_eq!(summary.compared, 100 * 1000 * 6);
+        assert!(summary.max_abs.is_finite());
     }
 
     fn integrate_cpu(dump: &DumpData) -> Vec<c_double> {
@@ -102,6 +198,39 @@ mod tests {
         result
     }
 
+    fn integrate_gpu(dump: &DumpData) -> Vec<c_double> {
+        assert_eq!(dump.t.len(), dump.nt as usize, "t length != nt");
+        assert_eq!(dump.y0.len(), dump.dim as usize, "y0 length != dim");
+
+        let mut config = Config::default();
+        config.settings.tolerance = Tolerance {
+            rtol: dump.rtol,
+            atol: dump.atol,
+        };
+        config.settings.ts.end = *dump.t.last().unwrap();
+        config.settings.ts.steps = dump.nt as Index;
+
+        let mut input_state = InputState::new_zeroed();
+        input_state.num_particles = dump.y0.len() as Index / dump.dim as Index;
+        for (index, value) in dump.y0.iter().enumerate() {
+            input_state.data[index] = *value;
+        }
+
+        let model_component = ModelComponent(core::array::from_fn(|_| None));
+        let output_state = launch_dop853_kernel(
+            &model_component,
+            &input_state,
+            config.flags,
+            config.settings.tolerance,
+            config.settings.ts,
+            Some(dump.t.clone()),
+        )
+        .expect("kernel launch failed");
+
+        let len = dump.nt as usize * dump.dim as usize;
+        output_state.data[..len].to_vec()
+    }
+
     fn assert_all_state_bits(case_name: &str, result: &[c_double], dump: &DumpData) {
         for (index, (&actual, &expected)) in result
             .iter()
@@ -111,12 +240,82 @@ mod tests {
             assert_eq!(
                 actual.to_bits(),
                 expected,
-                "mismatch at step {}, component {}: got 0x{:016x}, expected 0x{:016x}",
+                "{case_name}: mismatch at step {}, component {}: got 0x{:016x}, expected 0x{:016x}",
                 index / dump.dim as usize,
                 index % dump.dim as usize,
                 actual.to_bits(),
                 expected,
             );
+        }
+    }
+
+    #[derive(Default)]
+    struct ErrorSummary {
+        compared: usize,
+        mismatched: usize,
+        max_abs: f64,
+        max_rel: f64,
+        max_ulp: u64,
+        max_abs_case: String,
+        max_abs_step: usize,
+        max_abs_component: usize,
+        max_abs_actual_bits: u64,
+        max_abs_expected_bits: u64,
+    }
+
+    impl ErrorSummary {
+        fn observe_fixture(&mut self, case_name: &str, result: &[c_double], dump: &DumpData) {
+            assert_eq!(
+                dump.expected_state_bits.len(),
+                result.len(),
+                "{case_name}: expected state length mismatch"
+            );
+
+            for (index, (&actual, &expected_bits)) in result
+                .iter()
+                .zip(dump.expected_state_bits.iter())
+                .enumerate()
+            {
+                self.compared += 1;
+
+                let actual_bits = actual.to_bits();
+                if actual_bits != expected_bits {
+                    self.mismatched += 1;
+                }
+
+                let expected = f64::from_bits(expected_bits);
+                let absolute_error = (actual - expected).abs();
+                let relative_error = if expected == 0.0 {
+                    absolute_error
+                } else {
+                    absolute_error / expected.abs()
+                };
+                let ulp_error = ulp_distance(actual_bits, expected_bits);
+
+                self.max_rel = self.max_rel.max(relative_error);
+                self.max_ulp = self.max_ulp.max(ulp_error);
+
+                if absolute_error > self.max_abs {
+                    self.max_abs = absolute_error;
+                    self.max_abs_case = case_name.to_string();
+                    self.max_abs_step = index / dump.dim as usize;
+                    self.max_abs_component = index % dump.dim as usize;
+                    self.max_abs_actual_bits = actual_bits;
+                    self.max_abs_expected_bits = expected_bits;
+                }
+            }
+        }
+    }
+
+    fn ulp_distance(a: u64, b: u64) -> u64 {
+        ordered_f64_bits(a).abs_diff(ordered_f64_bits(b))
+    }
+
+    fn ordered_f64_bits(bits: u64) -> u64 {
+        if bits & (1 << 63) == 0 {
+            bits | (1 << 63)
+        } else {
+            !bits
         }
     }
 
