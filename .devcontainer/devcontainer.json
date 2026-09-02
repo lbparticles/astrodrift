@@ -9,6 +9,7 @@
   ],
   "remoteUser": "ubuntu",
   "updateRemoteUserUID": true,
+  "postCreateCommand": "bash -c 'cd /workspaces/astrodrift && cargo oxide setup && ./build-cuda-oxide-kernels.sh'",
   "workspaceFolder": "/workspaces",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/astrodrift,type=bind",
   "mounts": [
@@ -21,8 +22,6 @@
     "CUDA_OXIDE_LLC": "/usr/bin/llc-21",
     "LIBCLANG_PATH": "/usr/lib/llvm-21/lib",
     "LLVM_CONFIG_PATH": "/usr/bin/llvm-config-21",
-    "LLVM_CONFIG": "/usr/local/bin/llvm-config-7",
-    "LLVM_LINK_STATIC": "1",
     "NVIDIA_DRIVER_CAPABILITIES": "all",
     "UV_PROJECT_ENVIRONMENT": "/opt/astrodrift-venv"
   },

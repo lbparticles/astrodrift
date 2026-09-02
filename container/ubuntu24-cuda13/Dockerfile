@@ -8,8 +8,6 @@ ENV CUDA_HOME=/usr/local/cuda \
     CUDA_OXIDE_LLC=/usr/bin/llc-21 \
     LIBCLANG_PATH=/usr/lib/llvm-21/lib \
     LLVM_CONFIG_PATH=/usr/bin/llvm-config-21 \
-    LLVM_CONFIG=/usr/local/bin/llvm-config-7 \
-    LLVM_LINK_STATIC=1 \
     RUSTUP_HOME=/opt/rustup \
     CARGO_HOME=/home/ubuntu/.cargo \
     UV_PYTHON_INSTALL_DIR=/opt/uv/python \
@@ -64,30 +62,6 @@ RUN apt-get update \
         llvm-21-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-
-# Rust-CUDA emits the legacy LLVM 7 NVVM dialect. Install it separately so
-# cuda-oxide continues to use the LLVM 21 tools above.
-WORKDIR /tmp/llvm-7-build
-RUN curl -fsSLO https://github.com/llvm/llvm-project/releases/download/llvmorg-7.1.0/llvm-7.1.0.src.tar.xz \
-    && tar -xf llvm-7.1.0.src.tar.xz \
-    && cmake -S llvm-7.1.0.src -B build -G Ninja \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/opt/llvm-7 \
-        -DLLVM_TARGETS_TO_BUILD="X86;NVPTX" \
-        -DLLVM_BUILD_LLVM_DYLIB=ON \
-        -DLLVM_LINK_LLVM_DYLIB=ON \
-        -DLLVM_ENABLE_ASSERTIONS=OFF \
-        -DLLVM_ENABLE_BINDINGS=OFF \
-        -DLLVM_INCLUDE_EXAMPLES=OFF \
-        -DLLVM_INCLUDE_TESTS=OFF \
-        -DLLVM_INCLUDE_BENCHMARKS=OFF \
-        -DLLVM_ENABLE_ZLIB=ON \
-        -DLLVM_ENABLE_TERMINFO=ON \
-    && cmake --build build --parallel "$(nproc)" \
-    && cmake --install build \
-    && ln -s /opt/llvm-7/bin/llvm-config /usr/local/bin/llvm-config-7 \
-    && cd / \
-    && rm -rf /tmp/llvm-7-build
 
 ARG UV_VERSION=0.12.7
 ADD https://astral.sh/uv/${UV_VERSION}/install.sh /tmp/uv-installer.sh

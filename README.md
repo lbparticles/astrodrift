@@ -30,7 +30,7 @@ To install from source
 
 To use the gpu functions calls you must have an nvidia gpu and drivers installed on your system, download them from the [official website]( https://www.nvidia.com/en-us/drivers/) or use your os package manager.
 
-It is recommended to use the provided devcontainer which includes CUDA, LLVM, Rust, Python, Rust-CUDA, and the cuda-oxide tooling used for GPU development. The cuda-oxide repository is mounted by default alongside drift so both the Rust-CUDA and cuda-oxide backends can be built and tested in the same environment.
+It is recommended to use the provided devcontainer which includes CUDA, LLVM, Rust, Python and the cuda-oxide tooling used for GPU development. The cuda-oxide repository is mounted by default alongside drift; on container start the codegen backend is set up and the GPU kernels are built (`./build-cuda-oxide-kernels.sh`), so `maturin develop` / `uv sync` work immediately.
 
 # Testing Instructions
 
