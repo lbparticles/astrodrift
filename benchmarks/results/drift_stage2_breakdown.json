@@ -1,0 +1,94 @@
+{
+  "config": {
+    "n_gmc": 2000,
+    "n_test": 12288,
+    "t_end": 2.0,
+    "division": 32,
+    "rtol": 1e-09,
+    "atol": 1e-09,
+    "seed": 2024,
+    "numcores": 24,
+    "sweep": "20,12288",
+    "out": null
+  },
+  "runs": [
+    {
+      "name": "mw2014 only (pot_type=1)",
+      "n": 12288,
+      "n_gmc": 0,
+      "rtol": 1e-09,
+      "wall_s": 0.234,
+      "tolist_s": 0.0,
+      "particles_per_s": 52501.1695,
+      "finite": true
+    },
+    {
+      "name": "stack: 1 GMC",
+      "n": 12288,
+      "n_gmc": 1,
+      "rtol": 1e-09,
+      "wall_s": 0.07,
+      "tolist_s": 0.0,
+      "particles_per_s": 175439.6435,
+      "finite": true
+    },
+    {
+      "name": "stack: 2000 GMCs",
+      "n": 12288,
+      "n_gmc": 2000,
+      "rtol": 1e-09,
+      "wall_s": 102.874,
+      "tolist_s": 0.024,
+      "particles_per_s": 119.4471,
+      "finite": true
+    },
+    {
+      "name": "stack: 2000 GMCs, loose tol",
+      "n": 12288,
+      "n_gmc": 2000,
+      "rtol": 0.0001,
+      "wall_s": 15.292,
+      "tolist_s": 0.026,
+      "particles_per_s": 803.5826,
+      "finite": true
+    },
+    {
+      "name": "scaling sweep",
+      "n": 20,
+      "n_gmc": 2000,
+      "rtol": 1e-09,
+      "wall_s": 21.741,
+      "tolist_s": 0.026,
+      "particles_per_s": 0.9199,
+      "finite": true
+    },
+    {
+      "name": "scaling sweep",
+      "n": 12288,
+      "n_gmc": 2000,
+      "rtol": 1e-09,
+      "wall_s": 102.882,
+      "tolist_s": 0.023,
+      "particles_per_s": 119.4381,
+      "finite": true
+    }
+  ],
+  "ablation": {
+    "mw_only_s": 0.23405192885547876,
+    "one_gmc_s": 0.07004118198528886,
+    "full_s": 102.87402122374624,
+    "loose_tol_s": 15.291521444916725,
+    "stack_fraction": 0.9977248684743603,
+    "per_gmc_us": 51427.703872816885
+  },
+  "sweep": [
+    {
+      "n": 20,
+      "wall_s": 21.740920713171363
+    },
+    {
+      "n": 12288,
+      "wall_s": 102.88171743508428
+    }
+  ]
+}

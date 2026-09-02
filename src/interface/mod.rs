@@ -184,8 +184,31 @@ impl PyConfig {
                             fparams: [table.r_min, table.dr, 0.0, 0.0, 0.0, 0.0],
                             uparams: [0, table.values.len(), 0, 0, 0, 0],
                             supertable: table.values.clone(),
+                            annulus: None,
                         });
                     }
+                }
+            }
+            // Test-particle container may carry the annulus perturber stack
+            // (quintic-origin coefficients); attach it to the potential spec.
+            if container.annulus.is_some() {
+                match &mut pot {
+                    Some(spec) => {
+                        spec.annulus = container.annulus.clone().map(|a| {
+                            crate::dispatch::AnnulusSpec {
+                                coeffs: a.coeffs.clone(),
+                                n_gmc: a.n_gmc,
+                                division: a.division,
+                                final_time: a.final_time,
+                                plummer_amp: a.plummer_amp,
+                                plummer_b: a.plummer_b,
+                            }
+                        })
+                    }
+                    None => panic!(
+                        "annulus stack requires a Bovy/MW2014 background \
+                         container in the same run"
+                    ),
                 }
             }
             containers.push(Box::new(container.clone()));

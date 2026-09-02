@@ -184,13 +184,16 @@ def mw_rhs(t, y):
     szb = np.sqrt(z * z + mn["b"] ** 2)
     denom = (mn["a"] + szb) ** 2 + R2
     ad = -mn["amp"] / denom ** 1.5
+    # az carries the (a+szb)/szb factor (missing before: the vertical force
+    # was ~12x too small at z~0.004, contaminating mirror-based validation)
+    adz = -mn["amp"] * z * (mn["a"] + szb) / (szb * denom ** 1.5)
     rn2 = (r / nfw["a"]) ** 2
     ar_n = -nfw["amp"] * (np.log(1 + r / nfw["a"]) - (r / nfw["a"]) / (1 + r / nfw["a"])) / r2
     an = ar_n / r
     return np.array([vx, vy, vz,
                      ab * x + ad * x + an * x,
                      ab * yy + ad * yy + an * yy,
-                     ab * z + ad * z + an * z])
+                     ab * z + adz + an * z])
 
 
 @dataclass(frozen=True)

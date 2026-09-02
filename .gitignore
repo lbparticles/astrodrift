@@ -93,3 +93,6 @@ result-*
 *.ncu-rep
 *.nsys-rep
 benchmarks/results/profiling/
+
+# Kepler regression fixture consumed by tests/dopr54_tests.rs
+!dopr54_init_dump.txt

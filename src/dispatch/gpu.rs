@@ -206,6 +206,19 @@ pub struct PotSpec {
     pub fparams: [f64; 6],
     pub uparams: [usize; 6],
     pub supertable: Vec<Real>,
+    /// MW2014 + Plummer-stack (pot_type 2): quintic-origin coefficients for
+    /// the perturber stack (18 doubles per (particle, division)).
+    pub annulus: Option<AnnulusSpec>,
+}
+
+/// Annulus perturber-stack specification for the interpolated simulation.
+pub struct AnnulusSpec {
+    pub coeffs: Vec<Real>,
+    pub n_gmc: usize,
+    pub division: usize,
+    pub final_time: Real,
+    pub plummer_amp: Real,
+    pub plummer_b: Real,
 }
 
 /// Per-slot resources for the double-buffered chunk pipeline.
@@ -245,6 +258,12 @@ fn pipeline_slots(
     });
     let mut cache = mutex.lock().unwrap_or_else(|e| e.into_inner());
     if cache.nt_len != nt_len || cache.chunk_n_max != chunk_n_max {
+        // Free the previous shape's buffers BEFORE allocating new ones: the
+        // buffers are sized to the per-launch output budget (up to 2 GiB per
+        // slot), so allocating the new shape while still holding the old one
+        // transiently needed 2x and OOMed 8 GB cards when a process used two
+        // different (nt, n) shapes (e.g. probes then a real integration).
+        cache.slots = Vec::new();
         // SAFETY: dev_in is filled by copy_from_host before the kernel reads
         // it, and dev_out is fully overwritten by the kernel (every (step,
         // tid) output slot is written directly to global memory), so neither
@@ -424,11 +443,20 @@ fn launch_kernel_named(
         .and_then(|v| v.parse().ok())
         .unwrap_or(MAX_LAUNCH_OUTPUT_BYTES);
     let out_bytes_per_particle = nt_len * NF64 * std::mem::size_of::<Real>();
-    let chunk_n_max = if out_bytes_per_particle > 0 {
+    let mut chunk_n_max = if out_bytes_per_particle > 0 {
         (budget / out_bytes_per_particle).max(1)
     } else {
         1
     };
+    // Never size the buffers for more particles than the input actually has:
+    // the budget formula alone allocates the full 2 GiB worth of output even
+    // for n=1 probe launches (two pipeline slots => ~4.5 GB for a single
+    // particle at nt=1001), which OOMs small GPUs and crowds out concurrent
+    // processes. Chunking only splits launches; per-particle results are
+    // identical, so capping at n_total is behavior-preserving.
+    if n_total > 0 {
+        chunk_n_max = chunk_n_max.min(n_total);
+    }
 
     let mut output_state = OutputState {
         data: vec![0.0; nt_len * n_total * NF64],
@@ -454,15 +482,38 @@ fn launch_kernel_named(
     // Potential specification: flattened MW2014 params + bulge force LUT
     // ("supertable", previous-method layout). Uploaded per call; it is tiny
     // (a few thousand doubles at most). None => Kepler fast path.
-    let (pot_type, fparams, uparams, supertable) = match pot {
-        Some(spec) => (
-            1_i32,
-            spec.fparams,
-            spec.uparams,
-            Some(DeviceBuffer::<f64>::from_host(&compute, &spec.supertable)?),
-        ),
-        None => (0_i32, [0.0; 6], [0usize; 6], None),
-    };
+    // supertable layout: [bulge LUT (n_ar) | quintic origin coefficients]
+    let (pot_type, mw_r_min, mw_dr, mw_n_ar, mw_lut_offset, ann_spec, ann_coeff_offset, supertable) =
+        match pot {
+            Some(spec) => match &spec.annulus {
+                None => (
+                    1_i32,
+                    spec.fparams[0],
+                    spec.fparams[1],
+                    spec.uparams[1],
+                    spec.uparams[0],
+                    None,
+                    0usize,
+                    Some(DeviceBuffer::<f64>::from_host(&compute, &spec.supertable)?),
+                ),
+                Some(ann) => {
+                    // supertable = [bulge LUT | quintic origin coefficients]
+                    let mut supertable = spec.supertable.clone();
+                    supertable.extend_from_slice(&ann.coeffs);
+                    (
+                        2_i32,
+                        spec.fparams[0],
+                        spec.fparams[1],
+                        spec.uparams[1],
+                        spec.uparams[0],
+                        Some(ann),
+                        spec.supertable.len(),
+                        Some(DeviceBuffer::<f64>::from_host(&compute, &supertable)?),
+                    )
+                }
+            },
+            None => (0_i32, 0.0, 0.0, 0usize, 0usize, None, 0usize, None),
+        };
 
     let mut i0: usize = 0;
     let mut chunk: usize = 0;
@@ -514,17 +565,22 @@ fn launch_kernel_named(
         // INTERIM: the dop853 kernel still has the original 8-parameter ABI
         // until its replacement lands; the extended potential parameters
         // apply to dopr54 only.
-        let mut pot_type_arg = pot_type;
-        let mut fparams_arg = fparams;
-        let mut uparams_arg = uparams;
-        // For the Kepler fast path the kernel never dereferences the
-        // supertable; pass the times buffer as a valid placeholder pointer.
         let mut supertable_arg = match &supertable {
             Some(buf) => buf.cu_deviceptr() as *const f64,
             None => times_arg,
         };
+        let mut pot_type_arg = pot_type;
+        let mut mw_r_min_arg = mw_r_min;
+        let mut mw_dr_arg = mw_dr;
+        let mut mw_n_ar_arg = mw_n_ar;
+        let mut mw_lut_offset_arg = mw_lut_offset;
+        let (mut ann_n_gmc_arg, mut ann_division_arg, mut ann_final_time_arg, mut ann_plummer_amp_arg, mut ann_plummer_b_arg, mut ann_coeff_offset_arg) = match ann_spec {
+            Some(ann) => (ann.n_gmc, ann.division, ann.final_time, ann.plummer_amp, ann.plummer_b, ann_coeff_offset),
+            None => (0usize, 0usize, 0.0, 0.0, 0.0, mw_n_ar),
+        };
 
-        let mut params: [*mut std::os::raw::c_void; 12] = [
+        let mut params: [*mut std::os::raw::c_void; 20] = [
+            (&mut supertable_arg as *mut *const f64).cast(),
             (&mut state0_arg as *mut *const f64).cast(),
             (&mut times_arg as *mut *const f64).cast(),
             (&mut state_out_arg as *mut *mut f64).cast(),
@@ -534,12 +590,20 @@ fn launch_kernel_named(
             (&mut atol_arg as *mut f64).cast(),
             (&mut dt_one_arg as *mut f64).cast(),
             (&mut pot_type_arg as *mut i32).cast(),
-            (&mut fparams_arg as *mut [f64; 6]).cast(),
-            (&mut uparams_arg as *mut [usize; 6]).cast(),
-            (&mut supertable_arg as *mut *const f64).cast(),
+            (&mut mw_r_min_arg as *mut f64).cast(),
+            (&mut mw_dr_arg as *mut f64).cast(),
+            (&mut mw_n_ar_arg as *mut usize).cast(),
+            (&mut mw_lut_offset_arg as *mut usize).cast(),
+            (&mut ann_n_gmc_arg as *mut usize).cast(),
+            (&mut ann_division_arg as *mut usize).cast(),
+            (&mut ann_final_time_arg as *mut f64).cast(),
+            (&mut ann_plummer_amp_arg as *mut f64).cast(),
+            (&mut ann_plummer_b_arg as *mut f64).cast(),
+            (&mut ann_coeff_offset_arg as *mut usize).cast(),
         ];
         let params: &mut [*mut std::os::raw::c_void] = if kernel_name == "dop853_cpu_port" {
-            &mut params[..8]
+            // state0..dt_one_init occupy indices 1..9 of the extended layout.
+            &mut params[1..9]
         } else {
             &mut params[..]
         };

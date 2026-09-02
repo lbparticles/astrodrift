@@ -397,6 +397,7 @@ mod tests {
             config.settings.tolerance,
             config.settings.ts,
             Some(init.t.clone()),
+            None,
         )
         .expect("kernel launch failed");
 

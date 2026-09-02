@@ -253,6 +253,7 @@ mod tests {
             config.settings.tolerance,
             config.settings.ts,
             Some(dump.t.clone()),
+            None,
         )
         .expect("kernel launch failed");
 

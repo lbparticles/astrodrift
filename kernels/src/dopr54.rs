@@ -5,7 +5,7 @@ use cuda_std::{kernel, thread};
 #[cfg(all(target_os = "cuda", not(feature = "cuda-oxide")))]
 use cuda_std::GpuFloat;
 
-use shared::{BovyPotential, Potential};
+use shared::{BovyPotential, PlummerPotential, Potential, QuinticOriginTable};
 
 const DIM: usize = 6;
 
@@ -14,28 +14,70 @@ const MIN_STEPCHANGE_POWERTWO: f64 = -3.0;
 const MAX_STEPREDUCE: f64 = 10000.0;
 const MAX_DT_REDUCE: f64 = 10000.0;
 
-/// Per-launch potential context. pot_type 0 = Kepler fast path (default),
+/// pot_type 0 = Kepler fast path (default),
 /// 1 = MW2014 composite: bulge force LUT + Miyamoto-Nagai disk + NFW halo
 /// (all three implemented in shared::potential; the LUT pointer is device
 /// memory uploaded by the host).
 struct PotCtx {
     pot_type: i32,
     bovy: BovyPotential,
+    /// pot_type == 2: MW2014 background plus a stack of Plummer perturbers
+    /// whose origins are quintic-interpolated in time from the coefficient
+    /// supertable (see shared::QuinticOriginTable for the single-source
+    /// layout/local-time convention, shared with the host mirror/tests).
+    annulus: Option<AnnulusCtx>,
 }
 
-#[inline(always)]
+/// Quintic-origin Plummer stack: the coefficient supertable lives in device
+/// memory right after the MW2014 bulge LUT.
+struct AnnulusCtx {
+    plummer: PlummerPotential,
+    origins: QuinticOriginTable,
+}
+
+#[inline(never)]
 fn force_eval(t: f64, q: &[f64; DIM], a: &mut [f64; DIM], ctx: &PotCtx) {
-    if ctx.pot_type == 1 {
-        let (ax, ay, az) = ctx.bovy.force(t, q[0], q[1], q[2]);
-        a[0] = q[3];
-        a[1] = q[4];
-        a[2] = q[5];
-        a[3] = ax;
-        a[4] = ay;
-        a[5] = az;
-    } else {
+    if ctx.pot_type == 0 {
         kepler_rhs(t, q, a);
+        return;
     }
+    let (ax, ay, az) = ctx.bovy.force(t, q[0], q[1], q[2]);
+    a[0] = q[3];
+    a[1] = q[4];
+    a[2] = q[5];
+    a[3] = ax;
+    a[4] = ay;
+    a[5] = az;
+    if let Some(ann) = &ctx.annulus {
+        let (px, py, pz) = annulus_stack_force(t, q, ann, ax, ay, az);
+        a[3] = px;
+        a[4] = py;
+        a[5] = pz;
+    }
+}
+
+#[inline(never)]
+// NOTE: #[inline(never)] is a deliberate workaround for a suspected
+// cuda-oxide codegen miscompile in the inline GMC loop (see bench history);
+// keep it until the codegen issue is root-caused.
+fn annulus_stack_force(
+    t: f64,
+    q: &[f64; DIM],
+    ann: &AnnulusCtx,
+    mut fx: f64,
+    mut fy: f64,
+    mut fz: f64,
+) -> (f64, f64, f64) {
+    for i in 0..ann.origins.n_objects {
+        let p = unsafe { ann.origins.origin(t, i) };
+        let (px, py, pz) = ann
+            .plummer
+            .force(t, q[0] - p[0], q[1] - p[1], q[2] - p[2]);
+        fx += px;
+        fy += py;
+        fz += pz;
+    }
+    (fx, fy, fz)
 }
 
 #[inline(always)]
@@ -619,6 +661,7 @@ fn galpy_kepler_force(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
 
 #[kernel]
 pub unsafe fn dopr54_cpu_port(
+    supertable: *const f64, // [bulge LUT | quintic coefficients] (device)
     state0: *const f64,    // [n * DIM]
     times:  *const f64,    // [nt]
     state_out: *mut f64,   // [nt * n * DIM]
@@ -627,10 +670,17 @@ pub unsafe fn dopr54_cpu_port(
     rtol: f64,
     atol: f64,
     dt_one_init: f64,
-    pot_type: i32,         // 0 = Kepler fast path, 1 = MW2014 composite
-    fparams: [f64; 6],     // MW2014: [0] = bulge table r_min, [1] = dr
-    uparams: [usize; 6],   // MW2014: [0] = supertable element offset, [1] = n_ar
-    supertable: *const f64, // bulge force LUT (device memory)
+    pot_type: i32,          // 0 = Kepler fast path, 1 = MW2014, 2 = MW2014+annulus
+    mw_r_min: f64,          // MW2014 bulge LUT geometry
+    mw_dr: f64,
+    mw_n_ar: usize,
+    mw_lut_offset: usize,   // supertable element offset of the bulge LUT
+    ann_n_gmc: usize,       // annulus stack (pot_type 2)
+    ann_division: usize,
+    ann_final_time: f64,
+    ann_plummer_amp: f64,
+    ann_plummer_b: f64,
+    ann_coeff_offset: usize, // supertable element offset of the quintic coeffs
 ) {
     #[cfg(feature = "cuda-oxide")]
     let tid = {
@@ -654,21 +704,33 @@ pub unsafe fn dopr54_cpu_port(
     //   uparams[0] = supertable element offset, uparams[1] = n_ar,
     //   supertable = bulge force LUT in device memory; the Miyamoto-Nagai
     //   disk and NFW halo are analytic (baked into MW2014Potential::new).
-    let pot_ctx = if pot_type == 1 {
-        PotCtx {
+    let pot_ctx = match pot_type {
+        1 => PotCtx {
             pot_type: 1,
-            bovy: BovyPotential::new(
-                supertable.add(uparams[0]),
-                fparams[0],
-                fparams[1],
-                uparams[1],
-            ),
-        }
-    } else {
-        PotCtx {
+            bovy: BovyPotential::new(supertable.add(mw_lut_offset), mw_r_min, mw_dr, mw_n_ar),
+            annulus: None,
+        },
+        2 => PotCtx {
+            pot_type: 2,
+            bovy: BovyPotential::new(supertable.add(mw_lut_offset), mw_r_min, mw_dr, mw_n_ar),
+            annulus: Some(AnnulusCtx {
+                plummer: PlummerPotential {
+                    amp: ann_plummer_amp,
+                    b: ann_plummer_b,
+                },
+                origins: QuinticOriginTable {
+                    table: supertable.add(ann_coeff_offset),
+                    n_objects: ann_n_gmc,
+                    division: ann_division,
+                    final_time: ann_final_time,
+                },
+            }),
+        },
+        _ => PotCtx {
             pot_type: 0,
             bovy: BovyPotential::new(core::ptr::null(), 0.0, 0.0, 0),
-        }
+            annulus: None,
+        },
     };
     let mut yo = [0.0_f64; DIM];
     let base_in = tid * DIM;
