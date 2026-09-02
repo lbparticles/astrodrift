@@ -125,6 +125,74 @@ else:
 # ---------------------------------------------------------------------------
 
 
+# MW2014 composite constants (shared/src/potential.rs BovyPotential):
+# bulge via radial force LUT (PowerSpherical w/ Gaussian cutoff, normalized
+# to 0.05 of vc^2 at r=1), Miyamoto-Nagai disk and NFW halo analytic.
+MW_CONSTANTS = {
+    # All values are galpy 1.12 MWPotential2014's own parameters in its
+    # internal units (ro=8 kpc, vo=220 km/s) -- verified against
+    # galpy.potential.MWPotential2014 component attributes.
+    "MN": {"amp": 0.7574802019, "a": 3.0 / 8.0, "b": 0.28 / 8.0},
+    "NFW": {"amp": 4.852230533528, "a": 16.0 / 8.0},
+    # bulge: PowerSphericalPotentialwCutoff(amp, alpha=1.8, rc=1.94/8),
+    # amp == MWPotential2014[0]._amp
+    "alpha": 1.8,
+    "rc": 1.9 / 8.0,
+    "bulge_amp": 0.029994597188218296,
+}
+
+_BULGE_TABLE_CACHE: dict = {}
+
+
+def build_bulge_table(n_ar: int = 65536, r_min: float = 1e-3, r_max: float = 1e3):
+    """Bulge radial force LUT (matches the previous-method builder)."""
+    key = (n_ar, r_min, r_max)
+    if key in _BULGE_TABLE_CACHE:
+        return _BULGE_TABLE_CACHE[key]
+    from math import gamma, pi
+    from scipy.special import gammainc
+
+    alpha, rc = MW_CONSTANTS["alpha"], MW_CONSTANTS["rc"]
+    dr = (r_max - r_min) / (n_ar - 1)
+    rs = r_min + np.arange(n_ar) * dr
+    g = gamma(1.5 - alpha / 2.0)
+    ar_unit = (
+        -2.0 * pi * (rc ** (3.0 - alpha)) * g
+        * np.array([gammainc(1.5 - alpha / 2.0, (r / rc) ** 2) for r in rs])
+        / rs ** 2
+    )
+    amp = MW_CONSTANTS["bulge_amp"]
+    table = amp * ar_unit
+    _BULGE_TABLE_CACHE[key] = (table, r_min, dr)
+    return _BULGE_TABLE_CACHE[key]
+
+
+def mw_rhs(t, y):
+    """MW2014 composite RHS (numpy mirror of the kernel's force_eval)."""
+    x, yy, z, vx, vy, vz = y
+    r2 = x * x + yy * yy + z * z
+    r = np.sqrt(r2) if r2 > 0 else 1e-300
+    table, r_min, dr = build_bulge_table()
+    tpos = np.clip((r - r_min) / dr, 0, len(table) - 2)
+    i = int(tpos)
+    f = tpos - i
+    ar_b = (1 - f) * table[i] + f * table[i + 1]
+    ab = ar_b / r
+    mn = MW_CONSTANTS["MN"]
+    nfw = MW_CONSTANTS["NFW"]
+    R2 = x * x + yy * yy
+    szb = np.sqrt(z * z + mn["b"] ** 2)
+    denom = (mn["a"] + szb) ** 2 + R2
+    ad = -mn["amp"] / denom ** 1.5
+    rn2 = (r / nfw["a"]) ** 2
+    ar_n = -nfw["amp"] * (np.log(1 + r / nfw["a"]) - (r / nfw["a"]) / (1 + r / nfw["a"])) / r2
+    an = ar_n / r
+    return np.array([vx, vy, vz,
+                     ab * x + ad * x + an * x,
+                     ab * yy + ad * yy + an * yy,
+                     ab * z + ad * z + an * z])
+
+
 @dataclass(frozen=True)
 class Problem:
     """The shared physical problem both systems integrate."""
@@ -134,6 +202,7 @@ class Problem:
     n_times: int
     rtol: float
     atol: float
+    potential: str = "kepler"
     seed: int = 42
 
     @property
@@ -167,7 +236,12 @@ class Problem:
 
 def run_drift_gpu(problem: Problem, ics: np.ndarray) -> np.ndarray:
     """Integrate with astrodrift's GPU engine; returns (nt, N, 6)."""
-    gal = dft.bg_feature(dft.Potential.kepler(1.0))
+    if problem.potential == "mw2014":
+        table, r_min, dr = build_bulge_table()
+        gal = dft.bg_feature(dft.Potential.bovy(), ar_table=table.tolist(),
+                             r_min=r_min, dr=dr)
+    else:
+        gal = dft.bg_feature(dft.Potential.kepler(1.0))
     iso = dft.test_group(ics)
     sim = dft.Config(
         engine=dft.Engine("GPU"),
@@ -201,10 +275,15 @@ def omp_threads() -> int:
 
 def run_galpy(problem: Problem, gics: np.ndarray) -> np.ndarray:
     """Integrate with galpy dopr54_c (OpenMP-parallel per OMP_NUM_THREADS)."""
+    if problem.potential == "mw2014":
+        from galpy.potential import MWPotential2014
+        pot = MWPotential2014
+    else:
+        pot = KeplerPotential(amp=1.0)
     o = Orbit(vxvv=gics, ro=1.0, vo=1.0)
     o.integrate(
         problem.times,
-        KeplerPotential(amp=1.0),
+        pot,
         method="dopr54_c",
         progressbar=False,
         rtol=problem.rtol,
@@ -245,15 +324,17 @@ def _time_runs(name: str, problem: Problem, repeats: int, warmup: int):
 # ---------------------------------------------------------------------------
 
 
-def ground_truth(ics: np.ndarray, t_eval: np.ndarray) -> np.ndarray:
+def ground_truth(ics: np.ndarray, t_eval: np.ndarray,
+                 potential: str = "kepler") -> np.ndarray:
     """scipy DOP853 ground truth for each orbit; returns (nt, N, 6)."""
     from scipy.integrate import solve_ivp
 
+    rhs = _kepler_rhs if potential == "kepler" else mw_rhs
     nt = len(t_eval)
     out = np.empty((nt, len(ics), 6))
     for i, y0 in enumerate(ics):
         sol = solve_ivp(
-            _kepler_rhs,
+            rhs,
             (t_eval[0], t_eval[-1]),
             y0,
             t_eval=t_eval,
@@ -278,10 +359,11 @@ def accuracy_probe(problem: Problem, n_probe: int = 16):
         n_times=problem.n_times,
         rtol=problem.rtol,
         atol=problem.atol,
+        potential=problem.potential,
         seed=problem.seed,
     )
     ics = probe.initial_conditions()
-    truth = ground_truth(ics, probe.times)
+    truth = ground_truth(ics, probe.times, potential=probe.potential)
 
     results = {}
     if dft is not None:
@@ -333,6 +415,8 @@ def main(argv=None) -> int:
                     help="integration end time")
     ap.add_argument("--n-times", type=int, default=201,
                     help="number of output times (drift kernel caps at 1024)")
+    ap.add_argument("--potential", default="kepler",
+                    choices=("kepler", "mw2014"))
     ap.add_argument("--rtol", type=float, default=1e-9)
     ap.add_argument("--atol", type=float, default=1e-9)
     ap.add_argument("--repeats", type=int, default=3)
@@ -366,19 +450,22 @@ def main(argv=None) -> int:
             return 1
 
     n_sweep = np.geomspace(args.n_min, args.n_max, args.points).astype(int)
+    if args.potential not in ("kepler", "mw2014"):
+        ap.error(f"unknown potential {args.potential!r}")
     print(f"astrodrift vs galpy throughput comparison")
     print(f"  CPU: {cpu_info()}")
     print(f"  GPU: {gpu_info()}")
     print(f"  problem: Kepler GM=1, DOPR54, "
           f"t=[0,{args.t_end}], nt={args.n_times}, "
-          f"rtol=atol={args.rtol:g}, N in {list(n_sweep)}")
+          f"rtol=atol={args.rtol:g}, potential={args.potential}, N in {list(n_sweep)}")
     print(f"  galpy OpenMP threads: "
           f"{os.environ.get('OMP_NUM_THREADS') or os.cpu_count()}")
     print()
 
     all_results = []
     for n in n_sweep:
-        problem = Problem(n, args.t_end, args.n_times, args.rtol, args.atol)
+        problem = Problem(n, args.t_end, args.n_times, args.rtol, args.atol,
+                          potential=args.potential)
         row = {"N": int(n), "systems": {}}
         for system in systems:
             times = _time_runs(system, problem, args.repeats, args.warmup)
@@ -406,7 +493,8 @@ def main(argv=None) -> int:
         print("accuracy probe (16 orbits, final position error vs "
               "scipy DOP853 @ 1e-12):")
         accuracy = accuracy_probe(
-            Problem(16, args.t_end, args.n_times, args.rtol, args.atol)
+            Problem(16, args.t_end, args.n_times, args.rtol, args.atol,
+                    potential=args.potential)
         )
         for system, stats in accuracy.items():
             print(f"  {system:<10s}  max {stats['max_final_pos_err']:.3e}   "
@@ -443,6 +531,7 @@ def main(argv=None) -> int:
             "n_times": args.n_times,
             "rtol": args.rtol,
             "atol": args.atol,
+            "potential": args.potential,
             "repeats": args.repeats,
             "warmup": args.warmup,
             "num_cores": omp_threads(),

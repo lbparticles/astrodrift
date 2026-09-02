@@ -5,12 +5,38 @@ use cuda_std::{kernel, thread};
 #[cfg(all(target_os = "cuda", not(feature = "cuda-oxide")))]
 use cuda_std::GpuFloat;
 
+use shared::{BovyPotential, Potential};
+
 const DIM: usize = 6;
 
 const MAX_STEPCHANGE_POWERTWO: f64 = 3.0;
 const MIN_STEPCHANGE_POWERTWO: f64 = -3.0;
 const MAX_STEPREDUCE: f64 = 10000.0;
 const MAX_DT_REDUCE: f64 = 10000.0;
+
+/// Per-launch potential context. pot_type 0 = Kepler fast path (default),
+/// 1 = MW2014 composite: bulge force LUT + Miyamoto-Nagai disk + NFW halo
+/// (all three implemented in shared::potential; the LUT pointer is device
+/// memory uploaded by the host).
+struct PotCtx {
+    pot_type: i32,
+    bovy: BovyPotential,
+}
+
+#[inline(always)]
+fn force_eval(t: f64, q: &[f64; DIM], a: &mut [f64; DIM], ctx: &PotCtx) {
+    if ctx.pot_type == 1 {
+        let (ax, ay, az) = ctx.bovy.force(t, q[0], q[1], q[2]);
+        a[0] = q[3];
+        a[1] = q[4];
+        a[2] = q[5];
+        a[3] = ax;
+        a[4] = ay;
+        a[5] = az;
+    } else {
+        kepler_rhs(t, q, a);
+    }
+}
 
 #[inline(always)]
 fn rk4_onestep(
@@ -20,30 +46,31 @@ fn rk4_onestep(
     yn1: &mut [f64; DIM],
     ynk: &mut [f64; DIM],
     a: &mut [f64; DIM],
+    ctx: &PotCtx,
 ) {
     // k1
-    kepler_rhs(tn, yn, a);
+    force_eval(tn, yn, a, ctx);
     for i in 0..DIM {
         yn1[i] += dt * a[i] / 6.0;
         ynk[i] = yn[i] + dt * a[i] / 2.0;
     }
 
     // k2
-    kepler_rhs(tn + dt / 2.0, ynk, a);
+    force_eval(tn + dt / 2.0, ynk, a, ctx);
     for i in 0..DIM {
         yn1[i] += dt * a[i] / 3.0;
         ynk[i] = yn[i] + dt * a[i] / 2.0;
     }
 
     // k3
-    kepler_rhs(tn + dt / 2.0, ynk, a);
+    force_eval(tn + dt / 2.0, ynk, a, ctx);
     for i in 0..DIM {
         yn1[i] += dt * a[i] / 3.0;
         ynk[i] = yn[i] + dt * a[i];
     }
 
     // k4
-    kepler_rhs(tn + dt, ynk, a);
+    force_eval(tn + dt, ynk, a, ctx);
     for i in 0..DIM {
         yn1[i] += dt * a[i] / 6.0;
     }
@@ -56,6 +83,7 @@ fn rk4_estimate_step(
     t0: f64,
     rtol: f64,
     atol: f64,
+    ctx: &PotCtx,
 ) -> f64 {
     let mut err: f64 = 2.0;
 
@@ -92,17 +120,17 @@ fn rk4_estimate_step(
         }
 
         // dt
-        rk4_onestep(t0, dt, &yn, &mut y1, &mut ynk, &mut a);
+        rk4_onestep(t0, dt, &yn, &mut y1, &mut ynk, &mut a, ctx);
 
         // dt/2
-        rk4_onestep(t0, dt / 2.0, &yn, &mut y21, &mut ynk, &mut a);
+        rk4_onestep(t0, dt / 2.0, &yn, &mut y21, &mut ynk, &mut a, ctx);
 
         // copy y21 -> y2
         for i in 0..DIM {
             y2[i] = y21[i];
         }
 
-        rk4_onestep(t0 + dt / 2.0, dt / 2.0, &y21, &mut y2, &mut ynk, &mut a);
+        rk4_onestep(t0 + dt / 2.0, dt / 2.0, &y21, &mut y2, &mut ynk, &mut a, ctx);
 
         err = 0.0;
         for i in 0..DIM {
@@ -142,6 +170,7 @@ fn dopr54_actualstep(
     yerr: &mut [f64; DIM],
     ynk: &mut [f64; DIM],
     accept: u8,
+    ctx: &PotCtx,
 ) -> f64 {
     // constant
     const C2: f64 = 0.2;
@@ -198,14 +227,14 @@ fn dopr54_actualstep(
     }
 
     // calculate k2
-    kepler_rhs(*to + C2 * dt, ynk, a);
+    force_eval(*to + C2 * dt, ynk, a, ctx);
     for i in 0..DIM {
         k2[i]  = dt * a[i];
         ynk[i] = yn[i] + A31 * k1[i] + A32 * k2[i];
     }
 
     // calculate k3
-    kepler_rhs(*to + C3 * dt, ynk, a);
+    force_eval(*to + C3 * dt, ynk, a, ctx);
     for i in 0..DIM {
         k3[i]   = dt * a[i];
         yn1[i] += B3 * k3[i];
@@ -217,7 +246,7 @@ fn dopr54_actualstep(
     }
 
     // calculate k4
-    kepler_rhs(*to + C4 * dt, ynk, a);
+    force_eval(*to + C4 * dt, ynk, a, ctx);
     for i in 0..DIM {
         k4[i]   = dt * a[i];
         yn1[i] += B4 * k4[i];
@@ -230,7 +259,7 @@ fn dopr54_actualstep(
     }
 
     // calculate k5
-    kepler_rhs(*to + C5 * dt, ynk, a);
+    force_eval(*to + C5 * dt, ynk, a, ctx);
     for i in 0..DIM {
         k5[i]   = dt * a[i];
         yn1[i] += B5 * k5[i];
@@ -244,7 +273,7 @@ fn dopr54_actualstep(
     }
 
     // calculate k6
-    kepler_rhs(*to + dt, ynk, a);
+    force_eval(*to + dt, ynk, a, ctx);
     for i in 0..DIM {
         k6[i]   = dt * a[i];
         yn1[i] += B6 * k6[i];
@@ -258,7 +287,7 @@ fn dopr54_actualstep(
     }
 
     // calculate k7
-    kepler_rhs(*to + dt, ynk, a);
+    force_eval(*to + dt, ynk, a, ctx);
     for i in 0..DIM {
         yerr[i] += BE7 * dt * a[i];
     }
@@ -323,6 +352,7 @@ fn dopr54_onestep_kepler(
     yn1: &mut [f64; DIM],
     yerr: &mut [f64; DIM],
     ynk: &mut [f64; DIM],
+    ctx: &PotCtx,
 ) {
     // double init_dt_one= *dt_one;
     let init_dt_one: f64 = *dt_one;
@@ -379,6 +409,7 @@ fn dopr54_onestep_kepler(
             yerr,
             ynk,
             accept,
+            ctx,
         );
     }
 }
@@ -414,6 +445,7 @@ unsafe fn dopr54_integrate_kepler(
     state_out: *mut f64,
     n: usize,
     tid: usize,
+    ctx: &PotCtx,
 ) {
     let nt = t_grid.len() as i32;
 
@@ -439,7 +471,7 @@ unsafe fn dopr54_integrate_kepler(
     let mut dt: f64 = t_grid[1] - t_grid[0];
 
     if dt_one == -9999.99 {
-        dt_one = rk4_estimate_step(&yn, dt, t_grid[0], rtol, atol);
+        dt_one = rk4_estimate_step(&yn, dt, t_grid[0], rtol, atol, ctx);
     }
 
     // Initial state at output time 0.
@@ -449,7 +481,7 @@ unsafe fn dopr54_integrate_kepler(
     let mut to: f64 = t_grid[0];
 
     // ---- set up a1: a1 = f(to, yn) ----
-    kepler_rhs(to, &mut yn, &mut a1);
+    force_eval(to, &mut yn, &mut a1, ctx);
 
 
     let mut out_idx = 1usize;
@@ -473,6 +505,7 @@ unsafe fn dopr54_integrate_kepler(
             &mut yn1,
             &mut yerr,
             &mut ynk,
+            ctx,
         );
 
         // Write the state straight to global memory as each output time is
@@ -594,6 +627,10 @@ pub unsafe fn dopr54_cpu_port(
     rtol: f64,
     atol: f64,
     dt_one_init: f64,
+    pot_type: i32,         // 0 = Kepler fast path, 1 = MW2014 composite
+    fparams: [f64; 6],     // MW2014: [0] = bulge table r_min, [1] = dr
+    uparams: [usize; 6],   // MW2014: [0] = supertable element offset, [1] = n_ar
+    supertable: *const f64, // bulge force LUT (device memory)
 ) {
     #[cfg(feature = "cuda-oxide")]
     let tid = {
@@ -611,6 +648,28 @@ pub unsafe fn dopr54_cpu_port(
     };
 
     let t_slice = core::slice::from_raw_parts(times, nt);
+    // Resolve the launch's potential context from the recipe parameters.
+    // MW2014 composite (following the previous kernels/src/recipes pattern):
+    //   fparams[0] = bulge table r_min, fparams[1] = dr,
+    //   uparams[0] = supertable element offset, uparams[1] = n_ar,
+    //   supertable = bulge force LUT in device memory; the Miyamoto-Nagai
+    //   disk and NFW halo are analytic (baked into MW2014Potential::new).
+    let pot_ctx = if pot_type == 1 {
+        PotCtx {
+            pot_type: 1,
+            bovy: BovyPotential::new(
+                supertable.add(uparams[0]),
+                fparams[0],
+                fparams[1],
+                uparams[1],
+            ),
+        }
+    } else {
+        PotCtx {
+            pot_type: 0,
+            bovy: BovyPotential::new(core::ptr::null(), 0.0, 0.0, 0),
+        }
+    };
     let mut yo = [0.0_f64; DIM];
     let base_in = tid * DIM;
     for i in 0..DIM {
@@ -630,5 +689,6 @@ pub unsafe fn dopr54_cpu_port(
         state_out,
         n,
         tid,
+        &pot_ctx,
     );
 }

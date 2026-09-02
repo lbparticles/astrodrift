@@ -1,4 +1,4 @@
 pub mod cpu;
 pub mod gpu;
 
-pub use gpu::gpu_dispatch;
+pub use gpu::{gpu_dispatch, PotSpec};

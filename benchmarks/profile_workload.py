@@ -35,6 +35,7 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=200_000)
     ap.add_argument("--nt", type=int, default=51)
     ap.add_argument("--t-end", type=float, default=20.0)
+    ap.add_argument("--potential", default="kepler", choices=("kepler", "mw2014"))
     ap.add_argument("--rtol", type=float, default=1e-9)
     ap.add_argument("--atol", type=float, default=1e-9)
     ap.add_argument("--warmup", type=int, default=1)
@@ -47,7 +48,14 @@ def main() -> int:
     ics[:, 0] = 1.0 + 0.02 * rng.random(args.n)
     ics[:, 4] = 1.0
 
-    gal = dft.bg_feature(dft.Potential.kepler(1.0))
+    if args.potential == "mw2014":
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from throughput_comparison import build_bulge_table
+        table, r_min, dr = build_bulge_table()
+        gal = dft.bg_feature(dft.Potential.bovy(), ar_table=table.tolist(),
+                             r_min=r_min, dr=dr)
+    else:
+        gal = dft.bg_feature(dft.Potential.kepler(1.0))
     iso = dft.test_group(ics)
     sim = dft.Config(
         engine=dft.Engine("GPU"),

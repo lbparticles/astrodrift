@@ -9,7 +9,7 @@ pub use flags::ModernFlags;
 pub use model::{Model,ModelComponent};
 pub use model::{Recipe,PotentialName,KeplerRecipe,PlummerRecipe,BovyRecipe,CustomPlummerRecipe,CustomKeplerRecipe, Construct};
 pub use config::{Config,Engine,Variant,Method,Linspace,Tolerance};
-pub use potential::{Potential, PlummerPotential, PotentialEnum, KeplerPotential};
+pub use potential::{Potential, PlummerPotential, PotentialEnum, KeplerPotential, BovyPotential};
 
 pub type Index = usize;
 pub type Real = f64;

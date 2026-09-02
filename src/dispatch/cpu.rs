@@ -7,7 +7,8 @@ use crate::{dispatch::gpu::GPUDispatchError, state::{InputFrame, OutputFrame, Ou
 pub fn cpu_dispatch(
     config: Config, 
     model: Model, 
-    arrays: InputFrame
+    arrays: InputFrame,
+    _pot: Option<&super::PotSpec>,
 ) -> Result<OutputFrame, GPUDispatchError> {
 
 

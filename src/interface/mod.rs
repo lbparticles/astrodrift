@@ -19,6 +19,7 @@ pub use method::PyMethod;
 pub use recipe::PyRecipe;
 use shared::{Linspace,Tolerance,Real,Model,Config,Index};
 pub use variant::PyVariant;
+use crate::dispatch::PotSpec;
 use crate::integrators::run_integration;
 use crate::state::InputFrame;
 use crate::tree::AdjacencyMatrix;
@@ -170,13 +171,27 @@ impl PyConfig {
     -> PyResult<Bound<'py, PyList>> 
     {
         let mut containers: Vec<Box<Container>> = Vec::new();
+        let mut pot: Option<PotSpec> = None;
         for i in 0..args.len() {
             let obj = args.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
+            // First Bovy background container defines the MW2014 potential
+            // spec (bulge force LUT + geometry; see dispatch::PotSpec).
+            if pot.is_none() {
+                if let (Some(recipe), Some(table)) = (&container.recipe, &container.table) {
+                    if matches!(recipe.inner, shared::Recipe::Bovy(_)) {
+                        pot = Some(PotSpec {
+                            fparams: [table.r_min, table.dr, 0.0, 0.0, 0.0, 0.0],
+                            uparams: [0, table.values.len(), 0, 0, 0, 0],
+                            supertable: table.values.clone(),
+                        });
+                    }
+                }
+            }
             containers.push(Box::new(container.clone()));
         }
         let (meal, istates) = self.build_tree(containers);
-        let mut results = run_integration(self.inner, meal, istates).unwrap();
+        let mut results = run_integration(self.inner, meal, istates, pot.as_ref()).unwrap();
         let nt = self.inner.settings.ts.steps;
         let items: Vec<Py<PyAny>> = results
             .0

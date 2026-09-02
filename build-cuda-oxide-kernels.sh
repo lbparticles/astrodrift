@@ -86,7 +86,7 @@ edition = "2024"
 [dependencies]
 cuda-device = { path = "$oxide_repo/crates/cuda-device" }
 cuda-host = { path = "$oxide_repo/crates/cuda-host" }
-libm = "0.2.11"
+libm = "=0.2.11"
 shared = { path = "shared", features = ["cuda-oxide"] }
 
 [features]

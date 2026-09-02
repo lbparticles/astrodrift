@@ -199,6 +199,15 @@ pub enum GPUDispatchError {
     IO(#[from] io::Error),
 }
 
+/// Potential specification for recipe-driven launches (previous-method
+/// layout). `fparams[0]` = bulge table r_min, `fparams[1]` = dr,
+/// `uparams[0]` = supertable element offset, `uparams[1]` = n_ar.
+pub struct PotSpec {
+    pub fparams: [f64; 6],
+    pub uparams: [usize; 6],
+    pub supertable: Vec<Real>,
+}
+
 /// Per-slot resources for the double-buffered chunk pipeline.
 struct SlotResources {
     dev_in: DeviceBuffer<f64>,
@@ -291,6 +300,7 @@ pub fn launch_kernel(
     tolerance: Tolerance,
     linspace: Linspace,
     times: Option<Vec<Real>>,
+    pot: Option<&PotSpec>,
 ) -> Result<OutputState, GPUDispatchError> {
     launch_kernel_named(
         "dopr54_cpu_port",
@@ -300,6 +310,7 @@ pub fn launch_kernel(
         tolerance,
         linspace,
         times,
+        pot,
     )
 }
 
@@ -310,6 +321,7 @@ pub fn launch_dop853_kernel(
     tolerance: Tolerance,
     linspace: Linspace,
     times: Option<Vec<Real>>,
+    pot: Option<&PotSpec>,
 ) -> Result<OutputState, GPUDispatchError> {
     launch_kernel_named(
         "dop853_cpu_port",
@@ -319,6 +331,7 @@ pub fn launch_dop853_kernel(
         tolerance,
         linspace,
         times,
+        pot,
     )
 }
 
@@ -330,6 +343,7 @@ fn launch_kernel_named(
     tolerance: Tolerance,
     linspace: Linspace,
     times: Option<Vec<Real>>,
+    pot: Option<&PotSpec>,
 ) -> Result<OutputState, GPUDispatchError> {
     // Creating a context and loading the cubin on every call cost ~0.2 s of
     // fixed overhead per integration, which drowned out the actual
@@ -437,6 +451,19 @@ fn launch_kernel_named(
     // FIXME: hmmmm
     let dt_one_init = -9999.99f64;
 
+    // Potential specification: flattened MW2014 params + bulge force LUT
+    // ("supertable", previous-method layout). Uploaded per call; it is tiny
+    // (a few thousand doubles at most). None => Kepler fast path.
+    let (pot_type, fparams, uparams, supertable) = match pot {
+        Some(spec) => (
+            1_i32,
+            spec.fparams,
+            spec.uparams,
+            Some(DeviceBuffer::<f64>::from_host(&compute, &spec.supertable)?),
+        ),
+        None => (0_i32, [0.0; 6], [0usize; 6], None),
+    };
+
     let mut i0: usize = 0;
     let mut chunk: usize = 0;
     // (slot, particle offset, chunk size) for chunks whose D2H may still be
@@ -484,7 +511,20 @@ fn launch_kernel_named(
         let mut atol_arg = tolerance.atol;
         let mut dt_one_arg = dt_one_init;
 
-        let mut params: [*mut std::os::raw::c_void; 8] = [
+        // INTERIM: the dop853 kernel still has the original 8-parameter ABI
+        // until its replacement lands; the extended potential parameters
+        // apply to dopr54 only.
+        let mut pot_type_arg = pot_type;
+        let mut fparams_arg = fparams;
+        let mut uparams_arg = uparams;
+        // For the Kepler fast path the kernel never dereferences the
+        // supertable; pass the times buffer as a valid placeholder pointer.
+        let mut supertable_arg = match &supertable {
+            Some(buf) => buf.cu_deviceptr() as *const f64,
+            None => times_arg,
+        };
+
+        let mut params: [*mut std::os::raw::c_void; 12] = [
             (&mut state0_arg as *mut *const f64).cast(),
             (&mut times_arg as *mut *const f64).cast(),
             (&mut state_out_arg as *mut *mut f64).cast(),
@@ -493,10 +533,19 @@ fn launch_kernel_named(
             (&mut rtol_arg as *mut f64).cast(),
             (&mut atol_arg as *mut f64).cast(),
             (&mut dt_one_arg as *mut f64).cast(),
+            (&mut pot_type_arg as *mut i32).cast(),
+            (&mut fparams_arg as *mut [f64; 6]).cast(),
+            (&mut uparams_arg as *mut [usize; 6]).cast(),
+            (&mut supertable_arg as *mut *const f64).cast(),
         ];
+        let params: &mut [*mut std::os::raw::c_void] = if kernel_name == "dop853_cpu_port" {
+            &mut params[..8]
+        } else {
+            &mut params[..]
+        };
 
         unsafe {
-            launch_kernel_on_stream(&kernel, (grid, 1, 1), (block, 1, 1), 0, &compute, &mut params)?;
+            launch_kernel_on_stream(&kernel, (grid, 1, 1), (block, 1, 1), 0, &compute, params)?;
         }
         slot_res.ev_kernel.record(&compute)?;
 
@@ -550,6 +599,7 @@ pub fn gpu_dispatch(
     config: Config,
     model: Model,
     input_frame: InputFrame,
+    pot: Option<&PotSpec>,
 ) -> Result<OutputFrame, GPUDispatchError> {
     let mut output_frame = OutputFrame(core::array::from_fn(|_| None));
     for (stage, (model_component_opt, input_state_opt)) in
@@ -564,6 +614,7 @@ pub fn gpu_dispatch(
                     config.settings.tolerance,
                     config.settings.ts,
                     None,
+                    pot,
                 ),
                 Method::DOP853 => launch_dop853_kernel(
                     model_component,
@@ -572,6 +623,7 @@ pub fn gpu_dispatch(
                     config.settings.tolerance,
                     config.settings.ts,
                     None,
+                    pot,
                 ),
             }?;
             output_frame.0[stage] = Some(out_state);

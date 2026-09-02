@@ -32,12 +32,22 @@ fn release_dep_label(label: Index) {
     }
 }
 
+/// Bulge force LUT for the MW2014 composite ("previous method" layout).
+#[derive(Debug)]
+pub struct TableData {
+    pub values: Vec<Real>,
+    pub r_min: Real,
+    pub dr: Real,
+}
+
 #[pyclass]
 #[derive(Debug)]
 pub struct Container {
     pub num_particles: Option<Index>,
     pub recipe: Option<PyRecipe>,
     pub state: Option<InputState>,
+    /// Background-potential force LUT (Bovy/MW2014 recipes only).
+    pub table: Option<std::sync::Arc<TableData>>,
     pub dependency_label: Index,
     /// True only for the Python-owned original; clones made internally by
     /// `Config::run` share the label but must not release it on drop.
@@ -50,6 +60,7 @@ impl Clone for Container {
             num_particles: self.num_particles,
             recipe: self.recipe.clone(),
             state: self.state.clone(),
+            table: self.table.clone(),
             dependency_label: self.dependency_label,
             owns_label: false,
         }
@@ -72,6 +83,7 @@ fn initialize_container<'py>(_py: Python<'py>, istate: PyReadonlyArrayDyn<Real>,
         num_particles: Some(*n),
         recipe: recipe,
         state: Some(state),
+        table: None,
         dependency_label: next_dep_label(),
         owns_label: true,
     };
@@ -96,13 +108,40 @@ pub fn part_group<'py>(_py: Python<'py>, potential: PyRecipe,istate:PyReadonlyAr
     initialize_container(_py, istate, recipe)
 }
 
+/// Create a background-potential container.
+///
+/// For the MW2014 composite (`Potential.bovy()`), the bulge is integrated
+/// through a radial force LUT ("previous method"): pass the sampled table,
+/// its start radius and its uniform spacing:
+///   bg_feature(Potential.bovy(), ar_table=table, r_min=1e-3, dr=...)
 #[pyfunction]
-#[pyo3(signature = (potential))]
-pub fn bg_feature<'py>(_py: Python<'py>, potential: PyRecipe) -> Container {
+#[pyo3(signature = (potential, ar_table=None, r_min=None, dr=None))]
+pub fn bg_feature<'py>(
+    _py: Python<'py>,
+    potential: PyRecipe,
+    ar_table: Option<Vec<Real>>,
+    r_min: Option<Real>,
+    dr: Option<Real>,
+) -> Container {
+    let is_bovy = matches!(potential.inner, shared::Recipe::Bovy(_));
+    let table = match (is_bovy, ar_table, r_min, dr) {
+        (true, Some(values), Some(r_min), Some(dr)) => {
+            if values.len() < 2 {
+                panic!("bovy ar_table must contain at least two entries");
+            }
+            Some(std::sync::Arc::new(TableData { values, r_min, dr }))
+        }
+        (true, None, None, None) => panic!(
+            "bovy background requires the bulge force LUT: \
+             bg_feature(Potential.bovy(), ar_table=..., r_min=..., dr=...)"
+        ),
+        _ => None,
+    };
     Container {
         num_particles: None,
         recipe: Some(potential),
         state: None,
+        table,
         dependency_label: next_dep_label(),
         owns_label: true,
     }

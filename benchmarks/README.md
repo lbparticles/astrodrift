@@ -35,6 +35,25 @@ OMP_NUM_THREADS=1 python benchmarks/throughput_comparison.py ...      # single-t
 python benchmarks/throughput_comparison.py ... --num-cores 12         # explicit
 ```
 
+## MW2014 potential
+
+`--potential mw2014` runs the three-component Milky-Way model (previous-method
+design, constants verified against galpy 1.12's `MWPotential2014`):
+
+* **bulge** — PowerSphericalPotentialwCutoff (amp=0.029994597188218296,
+  α=1.8, rc=1.9/8) integrated through a **radial force LUT** uploaded to the
+  GPU (65536 linear points, interpolation error ~1.8e-4 over T=20)
+* **disk** — Miyamoto-Nagai, analytic
+* **halo** — NFW, analytic
+
+The bulge LUT is built in `build_bulge_table()` from the analytic enclosed
+mass (incomplete gamma, same formula as the pruned `src/tables` builder).
+Measured (N=1.2M, nt=51): drift 74k particles/s vs galpy OpenMP-24 18k
+particles/s (~4.1x); drift integrator error vs scipy DOP853 3.1e-8.
+Known limitation: the LUT uses uniform radial spacing, so interpolation
+error grows toward the center (r << 1); log-spacing is the natural
+follow-up.
+
 ### Usage
 
 ```bash
