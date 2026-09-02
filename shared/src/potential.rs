@@ -1,5 +1,3 @@
-// libm works in both host (std) and device (no_std cuda-oxide) builds.
-// The old cfg-gated `x.sqrt()` override could not compile under no_std.
 use libm::{floor, log, pow, sqrt};
 
 #[derive(Clone, Copy)]

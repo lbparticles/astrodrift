@@ -1,10 +1,5 @@
-use std::ffi::c_void;
-use std::sync::Arc;
-
-use cuda_core::{
-    launch_kernel_on_stream, CudaContext, CudaFunction, CudaModule, CudaStream, DeviceBuffer,
-    DriverError,
-};
+use cuda_core::{launch_kernel_on_stream, CudaContext, DeviceBuffer};
+// use crate::tables::build_sphericalcutoff_force_table;
 use pyo3::prelude::*;
 use shared::{
     Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance, MAX_STATES,
@@ -18,8 +13,8 @@ use thiserror::Error;
 
 use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
 
-// Modern (cuda-oxide) build: the cubin is produced by
-// ./build-cuda-oxide-kernels.sh and embedded at compile time.
+// cuda-oxide kernel image, embedded at build time from OUT_DIR (copied there
+// by build.rs; produced by ./build-cuda-oxide-kernels.sh).
 static CUBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kernels.cubin"));
 
 fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
@@ -187,7 +182,7 @@ fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
 #[derive(Debug, Error)]
 pub enum GPUDispatchError {
     #[error("CUDA error: {0:?}")]
-    Cuda(#[from] DriverError),
+    Cuda(#[from] cuda_core::DriverError),
 
     #[error("I/O error: {0}")]
     IO(#[from] io::Error),
@@ -241,6 +236,7 @@ fn launch_kernel_named(
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, GPUDispatchError> {
     let ctx = CudaContext::new(0)?;
+    let stream = ctx.default_stream();
 
     let times: Vec<Real> = times.unwrap_or_else(|| {
         (0..linspace.steps)
@@ -253,55 +249,46 @@ fn launch_kernel_named(
 
     let mut output_state = OutputState::new_zeroed();
 
-    let module: Arc<CudaModule> = ctx.load_module_from_image(CUBIN)?;
-    let stream: Arc<CudaStream> = ctx.new_stream()?;
-    let kernel: CudaFunction = module.load_function(kernel_name)?;
+    let module = ctx.load_module_from_image(CUBIN)?;
+    let kernel = module.load_function(kernel_name)?;
     let dev_state0 = DeviceBuffer::<f64>::from_host(&stream, &input_state.data)?;
     let dev_times = DeviceBuffer::<f64>::from_host(&stream, &times)?;
-    let dev_state_out = DeviceBuffer::<f64>::from_host(&stream, &output_state.data)?;
+    let dev_state_out = DeviceBuffer::<f64>::zeroed(&stream, output_state.data.len())?;
 
     let (grid, block) = grid_size(input_state.num_particles, BLOCK_SIZE);
 
     // FIXME: hmmmm
     let dt_one_init = -9999.99f64;
 
-    // Marshalled by raw pointer, exactly matching the layout the `cust`
-    // `launch!` macro produced before: three device pointers, then
-    // (num_particles: usize, steps: i32, rtol: f64, atol: f64, dt_one: f64).
-    let mut p_state0 = dev_state0.cu_deviceptr();
-    let mut p_times = dev_times.cu_deviceptr();
-    let mut p_out = dev_state_out.cu_deviceptr();
-    let num_particles = input_state.num_particles;
-    let steps = linspace.steps;
-    let rtol = tolerance.rtol;
-    let atol = tolerance.atol;
-    let mut kernel_params: [*mut c_void; 8] = [
-        &mut p_state0 as *mut _ as *mut c_void,
-        &mut p_times as *mut _ as *mut c_void,
-        &mut p_out as *mut _ as *mut c_void,
-        &mut num_particles as *mut _ as *mut c_void,
-        &mut steps as *mut _ as *mut c_void,
-        &mut rtol as *mut _ as *mut c_void,
-        &mut atol as *mut _ as *mut c_void,
-        &mut dt_one_init as *mut _ as *mut c_void,
+    // Kernel signature:
+    //   (state0: *const f64, times: *const f64, state_out: *mut f64,
+    //    n: usize, nt: usize, rtol: f64, atol: f64, dt_one_init: f64)
+    let mut state0_arg = dev_state0.cu_deviceptr() as *const f64;
+    let mut times_arg = dev_times.cu_deviceptr() as *const f64;
+    let mut state_out_arg = dev_state_out.cu_deviceptr() as *mut f64;
+    let mut n_arg = input_state.num_particles;
+    let mut nt_arg = times.len();
+    let mut rtol_arg = tolerance.rtol;
+    let mut atol_arg = tolerance.atol;
+    let mut dt_one_arg = dt_one_init;
+
+    let mut params: [*mut std::os::raw::c_void; 8] = [
+        (&mut state0_arg as *mut *const f64).cast(),
+        (&mut times_arg as *mut *const f64).cast(),
+        (&mut state_out_arg as *mut *mut f64).cast(),
+        (&mut n_arg as *mut usize).cast(),
+        (&mut nt_arg as *mut usize).cast(),
+        (&mut rtol_arg as *mut f64).cast(),
+        (&mut atol_arg as *mut f64).cast(),
+        (&mut dt_one_arg as *mut f64).cast(),
     ];
 
-    // SAFETY: `kernel` belongs to `module`, loaded in `ctx`, which owns
-    // `stream`; every param points to a value of the size/alignment the
-    // kernel signature expects, valid until launch_kernel_on_stream returns.
     unsafe {
-        launch_kernel_on_stream(
-            &kernel,
-            (grid, 1, 1),
-            (block, 1, 1),
-            0,
-            &stream,
-            &mut kernel_params,
-        )?;
+        launch_kernel_on_stream(&kernel, (grid, 1, 1), (block, 1, 1), 0, &stream, &mut params)?;
     }
     stream.synchronize()?;
 
-    dev_state_out.copy_to_host(&stream, &mut output_state.data)?;
+    output_state.data = dev_state_out.to_host_vec(&stream)?;
 
     Ok(output_state)
     // let mut f = File::create("dopr54_rust_out_gpu_yay.txt")?;

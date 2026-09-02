@@ -16,6 +16,8 @@ dependencies = [
 ]
 
 [tool.maturin]
+# The extension embeds the cuda-oxide kernels.cubin; run
+# ./build-cuda-oxide-kernels.sh before maturin/uv builds.
 features = ["pyo3/extension-module"]
 python-source = "python"
 module-name = "drift.drift_rs"

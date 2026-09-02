@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build the MODERN astrodrift wheel.
+# Build the MODERN astrodrift wheel (cuda-oxide + LLVM 21 only).
 #
-# Pipeline (feature `cuda-oxide-kernel`, default in this branch):
+# Pipeline:
 #   1. build-cuda-oxide-kernels.sh:
 #        cargo-oxide + rustc-codegen-cuda backend (needs the repo's
 #        `cargo oxide setup` artifacts) compiles kernels/ to NVVM IR,
@@ -13,9 +13,10 @@
 #      cuda-core (CudaContext / load_module_from_image / launch_kernel_on_stream)
 #   4. maturin packages the cdylib into astrodrift-0.1.0+modern-*.whl
 #
-# Dependencies: NO custom LLVM 7, NO Rust-CUDA/cust. Only the cuda-oxide
-# checkout, the CUDA toolkit, LLVM 21 (for libclang/bindgen of
-# cuda-bindings), and maturin.
+# Dependencies: NO custom LLVM 7, NO Rust-CUDA/cust. The host crate pulls
+# cuda-core from NVlabs/cuda-oxide pinned in Cargo.lock (97f8b2b7); the
+# kernel build needs a local cuda-oxide checkout (for cargo-oxide and the
+# codegen backend), located via CUDA_OXIDE_REPO or auto-detection.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,14 +24,16 @@ cd "$repo_root"
 
 : "${CUDA_HOME:=/usr/local/cuda}"
 : "${LIBCLANG_PATH:=$(dirname "$(command -v llvm-config-21 2>/dev/null)" 2>/dev/null)/../lib}"
-export CUDA_HOME LIBCLANG_PATH
+: "${CUDA_OXIDE_ARCH:=sm_80}"
+export CUDA_HOME LIBCLANG_PATH CUDA_OXIDE_ARCH
 export LD_LIBRARY_PATH="${CUDA_HOME}/nvvm/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
-# Locate the cuda-oxide checkout and expose it to cargo via a stable symlink
-# (Cargo path deps cannot use environment variables).
+# Locate the cuda-oxide checkout used for the KERNEL build (cargo-oxide +
+# codegen backend). The host-side cuda-core dependency comes from Cargo.lock,
+# so this only affects ./build-cuda-oxide-kernels.sh.
 oxide_repo="${CUDA_OXIDE_REPO:-}"
 if [[ -z "$oxide_repo" ]]; then
-    for candidate in /software/cuda-oxide /workspaces/cuda-oxide; do
+    for candidate in "$repo_root/../cuda-oxide" /software/cuda-oxide /workspaces/cuda-oxide; do
         if [[ -d "$candidate/crates/rustc-codegen-cuda" ]]; then
             oxide_repo="$candidate"
             break
@@ -41,9 +44,9 @@ if [[ -z "$oxide_repo" ]] || [[ ! -d "$oxide_repo/crates/rustc-codegen-cuda" ]];
     echo "error: no cuda-oxide checkout found; set CUDA_OXIDE_REPO." >&2
     exit 1
 fi
-mkdir -p third_party
-ln -sfn "$oxide_repo" third_party/cuda-oxide
-echo "== cuda-oxide: $oxide_repo"
+export CUDA_OXIDE_REPO="$oxide_repo"
+echo "== cuda-oxide: $oxide_repo ($(git -C "$oxide_repo" rev-parse --short HEAD 2>/dev/null || echo '?'))"
+echo "== arch: $CUDA_OXIDE_ARCH"
 
 # Sanity: the modern tree must not depend on Rust-CUDA / LLVM 7 at all.
 if grep -Eq '^(cust|blastoff|cust_raw) = ' Cargo.toml; then

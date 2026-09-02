@@ -1,0 +1,188 @@
+# NIXOS NATIVE SETUP — astrodrift
+
+How to build, test and run this project natively on a NixOS host
+**without Docker**, using `shell.nix` as a faithful port of
+`container/ubuntu24-cuda13/Dockerfile` + `.devcontainer/devcontainer.json`.
+
+The kernel path used here is **cuda-oxide** (NVlabs) — Rust → MIR → Pliron IR →
+LLVM IR → NVVM IR → cubin. The legacy Rust-CUDA `rustc_codegen_nvvm` backend
+has been removed entirely (it emitted an LLVM-7-flavoured NVVM dialect and was
+the only reason the container built LLVM 7 from source; that build is gone).
+
+---
+
+## 1. System requirements (NixOS)
+
+| Requirement | Why | Check with |
+|---|---|---|
+| NVIDIA driver (`hardware.nvidia`, `hardware.graphics.enable`) | `libcuda.so` (driver API) lives in `/run/opengl-driver/lib` | `nvidia-smi` |
+| `programs.nix-ld.enable = true` | rustup/uv-downloaded binaries (rustc nightly, python) are dynamically linked against glibc | `nix-ld --version` |
+| `nixpkgs.config.allowUnfree = true` | CUDA toolkit is CUDA-EULA (unfree) | handled inside `shell.nix` (`import <nixpkgs> { config.allowUnfree = true; }`) |
+| rustup | installs the two pinned nightlies (see below) | `rustup --version` |
+| git, network access | cargo fetches `NVlabs/cuda-oxide` + crates.io | — |
+
+Nothing else is required system-wide. Docker/Apptainer are **not** needed
+(`virtualisation.docker.enable` exists but the `docker` group is not a
+requirement for this workflow).
+
+## 2. What `shell.nix` provides (Dockerfile → nix mapping)
+
+| Dockerfile | shell.nix |
+|---|---|
+| `nvidia/cuda:13.0.0-devel-ubuntu24.04` | `cudaPackages_13_0.cudatoolkit` (nvcc 13.0, `nvvm/lib64/libnvvm.so`, `nvvm/libdevice/libdevice.10.bc`) + `cudaPackages_13_0.libnvjitlink` (`libnvJitLink.so.13`, lives in its `lib` output) |
+| apt.llvm.org llvm-21 / clang-21 / lld-21 / libclang-common-21-dev | `llvmPackages.{llvm,lld,clang,libclang}` (LLVM 21.1.8) |
+| build-essential, cmake, ninja-build, pkg-config, git, curl, wget, xz-utils, libssl-dev, zlib1g-dev, libncurses-dev, libedit-dev, libffi-dev, libxml2-dev, libgsl-dev, libfontconfig-dev, libglib2.0-0, libx11-xcb/xactor/xi/xinerama/xrandr | the same nixpkgs packages |
+| `uv`, `uv tool install maturin@… ruff@…` | nixpkgs `uv`, `maturin`, `ruff` (patch versions may differ slightly; `pyproject.toml` only requires `maturin>=1.9,<2.0`) |
+| `uv python install 3.13.15` | nixpkgs `python313` (3.13.x), pinned via `UV_PYTHON` / `UV_PYTHON_DOWNLOADS=never` |
+| rustup + nightly-2026-08-28 + pinned toolchain from `rust-toolchain.toml` | system rustup; `shellHook` runs `rustup show` in both repos so both nightlies get installed on first entry |
+| Nsight Systems CLI .deb | `cudaPackages_13_0.nsight_systems` |
+| `UV_PROJECT_ENVIRONMENT=/opt/astrodrift-venv` | not ported: the venv is the project-local `.venv/` (already git-ignored) |
+| `LLVM_CONFIG=/usr/local/bin/llvm-config-7`, `LLVM_LINK_STATIC=1` | removed — the legacy nvvm backend (and the Dockerfile's LLVM 7 build) is gone |
+| `NVIDIA_DRIVER_CAPABILITIES=all` | container-runtime-only variable, meaningless natively |
+
+Key env vars set by the shell (mirroring `containerEnv`):
+
+```
+CUDA_HOME/CUDA_PATH/CUDA_TOOLKIT_PATH = <cuda-13.0 store path>
+CUDA_OXIDE_LLC      = <llvm-21>/bin/llc          # container: /usr/bin/llc-21
+LIBCLANG_PATH       = <llvm-21 libclang>/lib
+LLVM_CONFIG_PATH    = <llvm-21>/bin/llvm-config  # container: llvm-config-21
+LIBNVJITLINK_PATH   = <libnvjitlink lib output>/lib/libnvJitLink.so
+LD_LIBRARY_PATH     = <cuda>/nvvm/lib64 : <libnvjitlink>/lib : /run/opengl-driver/lib
+LIBRARY_PATH        = /run/opengl-driver/lib     # link-time -lcuda (rust-lld)
+CUDA_OXIDE_REPO     = ../cuda-oxide (sibling of the project; override)
+CUDA_OXIDE_ARCH     = sm_86                      # container default: sm_80
+```
+
+Notes:
+* `/run/opengl-driver/lib` is where NixOS puts `libcuda.so` — needed at
+  **link time** by the cubin-builder (`-lcuda`) and at **run time** by the
+  driver API. The container gets this from the NVIDIA mount instead.
+* cuda-oxide finds `libnvvm` itself via `$CUDA_HOME/nvvm/lib64` (the nix
+  CUDA package has the same layout as `/usr/local/cuda`) and `libdevice`
+  via `$CUDA_HOME/nvvm/libdevice`. Only nvJitLink needs the explicit path.
+
+## 3. One-time setup
+
+```bash
+# 1. clone cuda-oxide as a sibling of the project checkout
+#    (this is the shell's default; set CUDA_OXIDE_REPO to relocate it)
+git clone https://github.com/NVlabs/cuda-oxide ../cuda-oxide
+
+# 2. enter the dev shell (installs both pinned nightlies on first run)
+cd /path/to/astrodrift
+nix-shell
+
+# 3. build the cuda-oxide rustc codegen backend (one-time, ~1 min)
+cd ../cuda-oxide
+cargo oxide setup          # publishes the backend to ~/.cargo/cuda-oxide/
+cd ../astrodrift
+```
+
+## 4. Daily workflow
+
+Always work inside `nix-shell`.
+
+```bash
+# rebuild the device kernels (required after changing kernels/ or shared/)
+RUSTUP_TOOLCHAIN=nightly-2026-08-28 ./build-cuda-oxide-kernels.sh
+#   -> target/cuda-oxide/kernels.cubin          (default features)
+#   -> target/cuda-oxide/<feature>/kernels.cubin (with e.g. --galpy-kepler-reference)
+
+# build the python extension (maturin, embeds the cubin) + dev deps
+uv sync
+
+# run
+uv run python tests/test.py
+```
+
+Why `RUSTUP_TOOLCHAIN=nightly-2026-08-28`: the script builds kernels in a
+scratch crate under `/tmp` which has no `rust-toolchain.toml`, so the ambient
+toolchain (stable) would be selected and `-Zcodegen-backend` would be rejected.
+The codegen backend is also built for exactly that nightly, so the kernel
+compile must use it. The main project keeps its own pin
+(`rust-toolchain.toml`, nightly-2026-04-02) — the env var applies only to the
+kernel-build invocation.
+
+GPU arch: `CUDA_OXIDE_ARCH` defaults to **sm_86** in `shell.nix` (the GPU this
+setup was written for — check yours with `nvidia-smi --query-gpu=compute_cap`).
+Unlike PTX, **cubins are not forward-compatible**, so a cubin built for the
+container default sm_80 would fail to load on an sm_86 GPU. Override to
+cross-build for another GPU, e.g. `CUDA_OXIDE_ARCH=sm_80 ./build-cuda-oxide-kernels.sh`.
+
+## 5. Tests
+
+```bash
+# python round-trip (GPU)
+uv run python tests/test.py
+
+# rust GPU integration test (dopr54 vs galpy fixtures):
+cargo test --release --features galpy-kepler-reference --test dopr54_tests
+# (the galpy-reference feature needs the galpy fixture data, as in the container,
+#  and the matching cubin: ./build-cuda-oxide-kernels.sh --galpy-kepler-reference)
+
+# long diagnostic (see Testing_Instructions.md), same feature flag + -- --ignored
+```
+
+## 6. Code changes made for this setup
+
+The project was in the "mixed state" of a cuda-oxide kernel build with a
+Rust-CUDA (`cust`) host runtime and a legacy nvvm kernel path. This was
+resolved by making cuda-oxide the single kernel path:
+
+1. **`src/dispatch/gpu.rs`** — host side migrated from `cust` to cuda-oxide's
+   `cuda-core` (`CudaContext`, `load_module_from_image`, `DeviceBuffer`,
+   `launch_kernel_on_stream`). This is the migration flagged in
+   Testing_Instructions.md TODO. The cubin is embedded via
+   `cuModuleLoadData`.
+2. **`Cargo.toml`** — dropped `cust`, `blastoff`, `cust_raw`; added
+   `cuda-core` (git, pinned in Cargo.lock). The `cuda_builder` build-dep and
+   the `nvvm-kernel`/`cuda-oxide-kernel` feature pair were removed: there is
+   exactly one kernel backend, so there is nothing to select.
+3. **`build.rs`** — unconditional: copies the prebuilt
+   `target/cuda-oxide/kernels.cubin` into `OUT_DIR` (panics with instructions
+   if it is missing).
+4. **`pyproject.toml`** — `[tool.maturin]` builds with
+   `features = ["pyo3/extension-module"]` only; the Python extension embeds
+   the cuda-oxide cubin and never needs LLVM 7.
+5. **`container/` + `.devcontainer/`** — LLVM 7 source build and env vars
+   removed from the Dockerfile; `postCreateCommand` now runs
+   `cargo oxide setup && ./build-cuda-oxide-kernels.sh` so the container
+   comes up with a cubin ready.
+6. **`shared/`** — dropped the `cust_core` dependency and the
+   `DeviceCopy` impl (unused by the device code); `potential.rs` now uses
+   `libm::sqrt` unconditionally instead of the `f64::sqrt`-based cfg wrapper
+   (core has no `f64::sqrt` in no_std). `libm::{floor,log,pow}` were already
+   unconditional, so device codegen is unaffected.
+7. **`shell.nix`** (new) — the environment described above.
+8. **`.gitignore`** — added nix `result*` symlinks.
+
+## 7. Troubleshooting
+
+* **`rust-lld: error: unable to find library -lcuda`** while running
+  `./build-cuda-oxide-kernels.sh` → not inside `nix-shell` (needs
+  `LIBRARY_PATH=/run/opengl-driver/lib`).
+* **`error: the option 'Z' is only accepted on the nightly compiler`** while
+  building kernels → you forgot `RUSTUP_TOOLCHAIN=nightly-2026-08-28`.
+* **`Unable to find libclang`** building `cust_raw`/bindgen → not inside
+  `nix-shell` (needs `LIBCLANG_PATH`). (Should no longer occur — cust was
+  removed.)
+* **`Cuda(UnknownError)` / kernel launch panics at runtime** → check
+  `nvidia-smi` works, and that the cubin arch matches the GPU
+  (`CUDA_OXIDE_ARCH`), and that `LD_LIBRARY_PATH` includes
+  `/run/opengl-driver/lib` (i.e. you are inside `nix-shell`).
+* **nix evaluation error "unfree license (CUDA EULA)"** → use the provided
+  `shell.nix` (it sets `allowUnfree` itself); don't call `nix-shell -p` with
+  cuda packages directly without `--impure` / config.
+* **LLVM version**: cuda-oxide requires llc ≥ 21 (TMA/tcgen05 intrinsics);
+  nixpkgs LLVM 21.1.8 satisfies this, and CUDA 13.0's `libnvvm` accepts the
+  NVVM IR emitted through it.
+
+## 8. Container path
+
+The devcontainer/apptainer flow remains the reference environment for the
+other developer, now on the same single cuda-oxide kernel path: the LLVM 7
+build is gone from the Dockerfile, and `postCreateCommand` runs
+`cargo oxide setup && ./build-cuda-oxide-kernels.sh` (sm_80 default) so
+`maturin develop` works out of the box. It requires docker group membership
+(or sudo); the native flow above replaces it.
