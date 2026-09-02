@@ -316,6 +316,7 @@ fn assemble_chunk(
 }
 
 pub fn launch_kernel(
+    method: Method,
     model_component: &ModelComponent,
     input_state: &InputState,
     flags: ModernFlags,
@@ -324,29 +325,12 @@ pub fn launch_kernel(
     times: Option<Vec<Real>>,
     pot: Option<&PotSpec>,
 ) -> Result<OutputState, GPUDispatchError> {
+    let kernel_name = match method {
+        Method::DOPR54 => "dopr54_cpu_port",
+        Method::DOP853 => "dop853_cpu_port",
+    };
     launch_kernel_named(
-        "dopr54_cpu_port",
-        model_component,
-        input_state,
-        flags,
-        tolerance,
-        linspace,
-        times,
-        pot,
-    )
-}
-
-pub fn launch_dop853_kernel(
-    model_component: &ModelComponent,
-    input_state: &InputState,
-    flags: ModernFlags,
-    tolerance: Tolerance,
-    linspace: Linspace,
-    times: Option<Vec<Real>>,
-    pot: Option<&PotSpec>,
-) -> Result<OutputState, GPUDispatchError> {
-    launch_kernel_named(
-        "dop853_cpu_port",
+        kernel_name,
         model_component,
         input_state,
         flags,
@@ -665,26 +649,16 @@ pub fn gpu_dispatch(
         model.into_iter().zip(input_frame.into_iter()).enumerate()
     {
         if let (Some(model_component), Some(input_state)) = (model_component_opt, input_state_opt) {
-            let out_state = match config.method {
-                Method::DOPR54 => launch_kernel(
-                    model_component,
-                    input_state,
-                    config.flags,
-                    config.settings.tolerance,
-                    config.settings.ts,
-                    None,
-                    pot,
-                ),
-                Method::DOP853 => launch_dop853_kernel(
-                    model_component,
-                    input_state,
-                    config.flags,
-                    config.settings.tolerance,
-                    config.settings.ts,
-                    None,
-                    pot,
-                ),
-            }?;
+            let out_state = launch_kernel(
+                config.method,
+                model_component,
+                input_state,
+                config.flags,
+                config.settings.tolerance,
+                config.settings.ts,
+                None,
+                pot,
+            )?;
             output_frame.0[stage] = Some(out_state);
         }
     }

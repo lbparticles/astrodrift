@@ -2,15 +2,17 @@ use std::array;
 
 use shared::{Config, Method, Model, Real};
 
-use crate::integrators::dop853_cpu::{dop853_mw2014_batch, CpuAnnulusCtx, MwCpuContext};
+use crate::integrators::dop853_cpu::{dop853_mw2014_batch, dopr54_mw2014_batch, CpuAnnulusCtx, MwCpuContext};
 use crate::state::{InputFrame, OutputFrame, OutputState};
 
 use crate::dispatch::gpu::GPUDispatchError;
 
-/// CPU batch dispatch for DOP853: integrates every particle of every model
-/// component in MW2014 (bulge LUT from the background container's
-/// supertable), rayon-parallel over particles. This is the CPU analogue of
-/// the GPU's chunked launch: one call, N particles.
+/// CPU batch dispatch: integrates every particle of every model component
+/// in MW2014 (bulge LUT from the background container's supertable),
+/// rayon-parallel over particles. Both DOPR54 and DOP853 are supported and
+/// share the identical RHS and batch contract -- only the integrator
+/// differs. This is the CPU analogue of the GPU's chunked launch: one
+/// call, N particles.
 ///
 /// Requires the Bovy/MW2014 background (`bg_feature` with the bulge LUT);
 /// the annulus perturber stack is GPU-only.
@@ -20,12 +22,10 @@ pub fn cpu_dispatch(
     input_frame: InputFrame,
     pot: Option<&super::PotSpec>,
 ) -> Result<OutputFrame, GPUDispatchError> {
-    if config.method != Method::DOP853 {
-        return Err(GPUDispatchError::Message(format!(
-            "cpu_dispatch implements Method::DOP853 only (got {:#?})",
-            config.method
-        )));
-    }
+    let batch = match config.method {
+        Method::DOP853 => dop853_mw2014_batch,
+        Method::DOPR54 => dopr54_mw2014_batch,
+    };
     let spec = pot.ok_or_else(|| {
         GPUDispatchError::Message(
             "CPU DOP853 requires a Bovy/MW2014 background (bg_feature with the bulge LUT)"
@@ -70,7 +70,7 @@ pub fn cpu_dispatch(
                 continue;
             }
             let states = &input_state.data[..n * 6];
-            let data = dop853_mw2014_batch(states, &times, rtol, atol, &ctx);
+            let data = batch(states, &times, rtol, atol, &ctx);
             output_frame.0[stage] = Some(OutputState { data });
         }
     }

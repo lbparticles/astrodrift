@@ -391,6 +391,7 @@ mod tests {
 
         let model_component = ModelComponent(core::array::from_fn(|_| None));
         let output_state = launch_kernel(
+            shared::Method::DOPR54,
             &model_component,
             &input_state,
             config.flags,

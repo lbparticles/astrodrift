@@ -95,6 +95,7 @@ mod annulus_force {
         let model_component = ModelComponent(core::array::from_fn(|_| None));
         let times = vec![t0, t0 + eps];
         let output_state: OutputState = launch_kernel(
+            shared::Method::DOPR54,
             &model_component,
             &input_state,
             config.flags,

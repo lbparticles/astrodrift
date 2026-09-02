@@ -22,6 +22,7 @@
 //! output interval; the controller adapts from there (matches the GPU
 //! kernels' behaviour; scipy would run Hairer's h0 selection).
 
+use crate::integrators::dopr54_cpu::{dopr54, potentialArg};
 use libc::{c_double, c_int, free, malloc};
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
@@ -87,6 +88,31 @@ pub extern "C" fn mw2014_cpu_rhs(
 ) {
     MW_CPU_RHS_EVALS.fetch_add(1, Ordering::Relaxed);
     let ctx = unsafe { &*(args as *const MwCpuContext) };
+    unsafe { mw2014_force(t, y, a, ctx) };
+}
+
+/// DOPR54-side RHS trampoline: the dopr54 C-ABI port carries its potential
+/// in a `*mut potentialArg` slot, so the bound `MwCpuContext` pointer is
+/// reinterpreted (set_cpu_mw_lut / the batch fns always pass it there).
+pub extern "C" fn mw2014_dopr54_rhs(
+    t: c_double,
+    y: *mut c_double,
+    a: *mut c_double,
+    _nargs: c_int,
+    args: *mut potentialArg,
+) {
+    let ctx = unsafe { &*(args as *const MwCpuContext) };
+    unsafe { mw2014_force(t, y, a, ctx) };
+}
+
+/// Shared MW2014 (+ optional annulus stack) force evaluation used by both
+/// CPU integrators. Writes (vx, vy, vz, ax, ay, az) into `a`.
+unsafe fn mw2014_force(
+    t: c_double,
+    y: *mut c_double,
+    a: *mut c_double,
+    ctx: &MwCpuContext,
+) {
     let bovy = shared::BovyPotential::new(ctx.lut.as_ptr(), ctx.r_min, ctx.dr, ctx.lut.len());
     unsafe {
         let (x, yy, z) = (*y.add(0), *y.add(1), *y.add(2));
@@ -169,6 +195,63 @@ pub fn dop853_mw2014_batch(
             }
             if err != 0 {
                 panic!("dop853 batch: particle {p} reported err={err}");
+            }
+            result
+        })
+        .collect();
+
+    // interleave (nt, n, 6)
+    let mut out = vec![0.0_f64; nt * n * 6];
+    for (p, r) in per_particle.into_iter().enumerate() {
+        for s in 0..nt {
+            for i in 0..6 {
+                out[(s * n + p) * 6 + i] = r[s * 6 + i];
+            }
+        }
+    }
+    out
+}
+
+/// Batch MW2014 DOPR54: identical contract to [`dop853_mw2014_batch`] (same
+/// states/times layout, same MW2014 + annulus RHS, rayon over particles,
+/// flat (nt, n, 6) output) -- only the integrator differs.
+pub fn dopr54_mw2014_batch(
+    states: &[f64],
+    times: &[f64],
+    rtol: f64,
+    atol: f64,
+    ctx: &MwCpuContext,
+) -> Vec<f64> {
+    let n = states.len() / 6;
+    let nt = times.len();
+
+    let per_particle: Vec<Vec<f64>> = (0..n)
+        .into_par_iter()
+        .map(|p| {
+            let times_ptr = times.as_ptr();
+            let ctx_ptr = ctx as *const MwCpuContext as *mut potentialArg;
+            let mut yo = [0.0_f64; 6];
+            yo.copy_from_slice(&states[p * 6..p * 6 + 6]);
+            let mut result = vec![0.0_f64; nt * 6];
+            let mut err: i32 = 0;
+            unsafe {
+                dopr54(
+                    Some(mw2014_dopr54_rhs),
+                    6,
+                    yo.as_mut_ptr(),
+                    nt as i32,
+                    -9999.99,
+                    times_ptr as *mut c_double,
+                    0,
+                    ctx_ptr,
+                    rtol,
+                    atol,
+                    result.as_mut_ptr(),
+                    &mut err,
+                );
+            }
+            if err != 0 {
+                panic!("dopr54 batch: particle {p} reported err={err}");
             }
             result
         })
