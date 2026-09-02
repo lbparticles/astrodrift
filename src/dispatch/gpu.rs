@@ -1,4 +1,7 @@
-use cuda_core::{launch_kernel_on_stream, CudaContext, CudaModule, DeviceBuffer};
+use cuda_core::{
+    launch_kernel_on_stream, CudaContext, CudaEvent, CudaFunction, CudaModule, CudaStream,
+    DeviceBuffer, PinnedHostBuffer,
+};
 // use crate::tables::build_sphericalcutoff_force_table;
 use pyo3::prelude::*;
 use shared::{
@@ -196,6 +199,91 @@ pub enum GPUDispatchError {
     IO(#[from] io::Error),
 }
 
+/// Per-slot resources for the double-buffered chunk pipeline.
+struct SlotResources {
+    dev_in: DeviceBuffer<f64>,
+    dev_out: DeviceBuffer<f64>,
+    pinned_out: PinnedHostBuffer<f64>,
+    ev_kernel: CudaEvent,
+    ev_copy: CudaEvent,
+}
+
+/// Persistent pipeline resources (streams, slot buffers, events). Pinned
+/// allocations are expensive (~1s per GB), so slots are reused across calls
+/// and only rebuilt when the required shape (nt, chunk capacity) changes.
+struct PipelineCache {
+    nt_len: usize,
+    chunk_n_max: usize,
+    compute: Arc<CudaStream>,
+    copy: Arc<CudaStream>,
+    slots: Vec<SlotResources>,
+}
+
+fn pipeline_slots(
+    ctx: &Arc<CudaContext>,
+    nt_len: usize,
+    chunk_n_max: usize,
+) -> std::sync::MutexGuard<'static, PipelineCache> {
+    static PIPELINE: OnceLock<std::sync::Mutex<PipelineCache>> = OnceLock::new();
+    let mutex = PIPELINE.get_or_init(|| {
+        std::sync::Mutex::new(PipelineCache {
+            nt_len: 0,
+            chunk_n_max: 0,
+            compute: ctx.new_stream().expect("compute stream"),
+            copy: ctx.new_stream().expect("copy stream"),
+            slots: Vec::new(),
+        })
+    });
+    let mut cache = mutex.lock().unwrap_or_else(|e| e.into_inner());
+    if cache.nt_len != nt_len || cache.chunk_n_max != chunk_n_max {
+        // SAFETY: dev_in is filled by copy_from_host before the kernel reads
+        // it, and dev_out is fully overwritten by the kernel (every (step,
+        // tid) output slot is written directly to global memory), so neither
+        // buffer needs a memset. The pinned host buffers are only read on
+        // the host after their copy event has synchronized.
+        let slots = (0..2)
+            .map(|_| SlotResources {
+                dev_in: unsafe {
+                    DeviceBuffer::uninitialized_async(&cache.compute, chunk_n_max * NF64)
+                        .expect("device input buffer")
+                },
+                dev_out: unsafe {
+                    DeviceBuffer::uninitialized_async(&cache.compute, nt_len * chunk_n_max * NF64)
+                        .expect("device output buffer")
+                },
+                pinned_out: PinnedHostBuffer::zeroed(ctx, nt_len * chunk_n_max * NF64)
+                    .expect("pinned output buffer"),
+                ev_kernel: ctx.new_event(None).expect("kernel event"),
+                ev_copy: ctx.new_event(None).expect("copy event"),
+            })
+            .collect();
+        cache.nt_len = nt_len;
+        cache.chunk_n_max = chunk_n_max;
+        cache.slots = slots;
+    }
+    cache
+}
+
+/// Interleave one chunk's result planes (time-major over the chunk's own
+/// particles, straight out of the pinned D2H buffer) into the global
+/// time-major output layout across all n_total particles.
+fn assemble_chunk(
+    dst: &mut [Real],
+    src: &PinnedHostBuffer<Real>,
+    nt: usize,
+    n_total: usize,
+    i0: usize,
+    n_chunk: usize,
+) {
+    let len = nt * n_chunk * NF64;
+    let src = &src.as_slice()[..len];
+    for t in 0..nt {
+        let s = t * n_chunk * NF64;
+        let d = ((t * n_total) + i0) * NF64;
+        dst[d..d + n_chunk * NF64].copy_from_slice(&src[s..s + n_chunk * NF64]);
+    }
+}
+
 pub fn launch_kernel(
     model_component: &ModelComponent,
     input_state: &InputState,
@@ -292,7 +380,29 @@ fn launch_kernel_named(
     // TEMPORARY: integrate inputs larger than one launch's output budget in
     // sequential chunked launches, concatenating outputs in particle order
     // (per-particle results are identical to an unchunked launch).
-    let kernel = module.load_function(kernel_name)?;
+    // Loading the kernel handle is cheap but not free; cache it alongside the
+    // module (CudaFunction is Send + Sync). One slot per kernel: dopr54 and
+    // dop853 both live in the cubin.
+    static CACHED_FUNC: OnceLock<CudaFunction> = OnceLock::new();
+    static CACHED_FUNC_853: OnceLock<CudaFunction> = OnceLock::new();
+    let kernel = match kernel_name {
+        "dop853_cpu_port" => match CACHED_FUNC_853.get() {
+            Some(kernel) => kernel,
+            None => {
+                let kernel = module.load_function(kernel_name)?;
+                let _ = CACHED_FUNC_853.set(kernel);
+                CACHED_FUNC_853.get().unwrap()
+            }
+        },
+        _ => match CACHED_FUNC.get() {
+            Some(kernel) => kernel,
+            None => {
+                let kernel = module.load_function(kernel_name)?;
+                let _ = CACHED_FUNC.set(kernel);
+                CACHED_FUNC.get().unwrap()
+            }
+        },
+    };
     let nt_len = times.len();
     let n_total = input_state.num_particles;
     let budget: usize = std::env::var("DRIFT_MAX_LAUNCH_BYTES")
@@ -307,32 +417,67 @@ fn launch_kernel_named(
     };
 
     let mut output_state = OutputState {
-        data: Vec::with_capacity(nt_len * n_total * NF64),
+        data: vec![0.0; nt_len * n_total * NF64],
     };
-    let dev_times = DeviceBuffer::<f64>::from_host(&stream, &times)?;
+    if nt_len == 0 || n_total == 0 {
+        return Ok(output_state);
+    }
+
+    // Two-stream double-buffered pipeline: chunk k's kernel runs on the
+    // compute stream while chunk k-1's results copy back on the copy stream
+    // (D2H into page-locked buffers), overlapping transfer with integration.
+    // Streams, slot buffers and events persist across calls (see
+    // pipeline_slots) because pinned allocations are expensive.
+    let mut pipeline = pipeline_slots(&ctx, nt_len, chunk_n_max);
+    let compute = pipeline.compute.clone();
+    let copy = pipeline.copy.clone();
+
+    let dev_times = DeviceBuffer::<f64>::from_host(&compute, &times)?;
 
     // FIXME: hmmmm
     let dt_one_init = -9999.99f64;
 
-    let mut chunks: Vec<Vec<Real>> = Vec::new();
     let mut i0: usize = 0;
-    while i0 < n_total && nt_len > 0 {
-        let n_chunk = (n_total - i0).min(chunk_n_max);
+    let mut chunk: usize = 0;
+    // (slot, particle offset, chunk size) for chunks whose D2H may still be
+    // in flight.
+    let mut inflight: Vec<(usize, usize, usize)> = Vec::new();
+    // Persistent device input buffers are sized for the max chunk, but the
+    // last chunk can be smaller; copy_from_host requires an exact length, so
+    // chunks are staged through this padded host buffer (the kernel only
+    // reads tid < n_chunk, so padding is never touched).
+    let mut staging_in: Vec<Real> = vec![0.0; chunk_n_max * NF64];
 
-        let dev_state0 = DeviceBuffer::<f64>::from_host(
-            &stream,
-            &input_state.data[i0 * NF64..(i0 + n_chunk) * NF64],
-        )?;
-        let dev_state_out = DeviceBuffer::<f64>::zeroed(&stream, nt_len * n_chunk * NF64)?;
+    while i0 < n_total {
+        let slot = chunk % 2;
+        let n_chunk = (n_total - i0).min(chunk_n_max);
+        let slot_res = &mut pipeline.slots[slot];
+
+        // Slot reuse from two iterations back: wait for its D2H, hand the
+        // finished data to the output, and order the compute stream behind
+        // the copy before refilling the device buffers.
+        if chunk >= 2 {
+            slot_res.ev_copy.synchronize()?;
+            let (slot, prev_i0, prev_n) = inflight[chunk - 2];
+            assemble_chunk(&mut output_state.data, &slot_res.pinned_out, nt_len, n_total, prev_i0, prev_n);
+            compute.wait(&slot_res.ev_copy)?;
+        }
+
+        staging_in[..n_chunk * NF64]
+            .copy_from_slice(&input_state.data[i0 * NF64..(i0 + n_chunk) * NF64]);
+        staging_in[n_chunk * NF64..].fill(0.0);
+        slot_res
+            .dev_in
+            .copy_from_host(&compute, &staging_in)?;
 
         let (grid, block) = grid_size(n_chunk, BLOCK_SIZE);
 
         // Kernel signature:
         //   (state0: *const f64, times: *const f64, state_out: *mut f64,
         //    n: usize, nt: usize, rtol: f64, atol: f64, dt_one_init: f64)
-        let mut state0_arg = dev_state0.cu_deviceptr() as *const f64;
+        let mut state0_arg = slot_res.dev_in.cu_deviceptr() as *const f64;
         let mut times_arg = dev_times.cu_deviceptr() as *const f64;
-        let mut state_out_arg = dev_state_out.cu_deviceptr() as *mut f64;
+        let mut state_out_arg = slot_res.dev_out.cu_deviceptr() as *mut f64;
         let mut n_arg = n_chunk;
         let mut nt_arg = nt_len;
         let mut rtol_arg = tolerance.rtol;
@@ -351,31 +496,29 @@ fn launch_kernel_named(
         ];
 
         unsafe {
-            launch_kernel_on_stream(&kernel, (grid, 1, 1), (block, 1, 1), 0, &stream, &mut params)?;
+            launch_kernel_on_stream(&kernel, (grid, 1, 1), (block, 1, 1), 0, &compute, &mut params)?;
         }
-        stream.synchronize()?;
+        slot_res.ev_kernel.record(&compute)?;
 
-        chunks.push(dev_state_out.to_host_vec(&stream)?);
+        copy.wait(&slot_res.ev_kernel)?;
+        unsafe {
+            slot_res
+                .dev_out
+                .copy_to_pinned_host_async(&copy, &mut slot_res.pinned_out)?;
+        }
+        slot_res.ev_copy.record(&copy)?;
+
+        inflight.push((slot, i0, n_chunk));
         i0 += n_chunk;
+        chunk += 1;
     }
 
-    // Each chunk is time-major over its own particles; interleave the chunk
-    // planes so the combined buffer is time-major over ALL n_total particles
-    // (a plain concatenation would produce a (chunk, t, p) layout that
-    // reshapes into scrambled trajectories whenever n_total > chunk_n_max).
-    if nt_len > 0 {
-        output_state.data = vec![0.0; nt_len * n_total * NF64];
-        for (c, chunk) in chunks.iter().enumerate() {
-            let n_c = chunk.len() / (nt_len * NF64);
-            if n_c == 0 {
-                continue;
-            }
-            for t in 0..nt_len {
-                let src = &chunk[t * n_c * NF64..(t + 1) * n_c * NF64];
-                let dst = ((t * n_total) + c * n_c) * NF64;
-                output_state.data[dst..dst + n_c * NF64].copy_from_slice(src);
-            }
-        }
+    // Drain the at most two chunks still in flight.
+    for k in chunk.saturating_sub(2)..chunk {
+        let (slot, i0, n_chunk) = inflight[k];
+        let slot_res = &mut pipeline.slots[slot];
+        slot_res.ev_copy.synchronize()?;
+        assemble_chunk(&mut output_state.data, &slot_res.pinned_out, nt_len, n_total, i0, n_chunk);
     }
 
     Ok(output_state)

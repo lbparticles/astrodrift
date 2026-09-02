@@ -385,14 +385,35 @@ fn dopr54_onestep_kepler(
 
 
 
+/// Write one DIM-length state to global memory.
+///
+/// Layout is (step, particle, dim): per-thread writes are 6 contiguous
+/// doubles and consecutive threads are adjacent for a fixed step, so each
+/// warp writes a dense ~1.5KB range per output time (coalesced).
 #[inline(always)]
-fn dopr54_integrate_kepler(
+unsafe fn write_state_global(
+    state_out: *mut f64,
+    tid: usize,
+    n: usize,
+    step: usize,
+    y: &[f64; DIM],
+) {
+    let base = (step * n + tid) * DIM;
+    for i in 0..DIM {
+        *state_out.add(base + i) = y[i];
+    }
+}
+
+#[inline(always)]
+unsafe fn dopr54_integrate_kepler(
     yo: &mut [f64; DIM],
     t_grid: &[f64],
     rtol: f64,
     atol: f64,
     mut dt_one: f64,
-    out_states: &mut [[f64; DIM]],
+    state_out: *mut f64,
+    n: usize,
+    tid: usize,
 ) {
     let nt = t_grid.len() as i32;
 
@@ -414,18 +435,15 @@ fn dopr54_integrate_kepler(
     #[cfg(not(feature = "cuda-oxide"))]
     yn.copy_from_slice(yo);
 
-    #[cfg(feature = "cuda-oxide")]
-    copy_state(&mut out_states[0], yo);
-    #[cfg(not(feature = "cuda-oxide"))]
-    out_states[0].copy_from_slice(yo);
-    let mut out_idx = 1usize;
-
     // Initial dt from t-grid
     let mut dt: f64 = t_grid[1] - t_grid[0];
 
     if dt_one == -9999.99 {
         dt_one = rk4_estimate_step(&yn, dt, t_grid[0], rtol, atol);
     }
+
+    // Initial state at output time 0.
+    write_state_global(state_out, tid, n, 0, &yn);
 
     // Integrate the system
     let mut to: f64 = t_grid[0];
@@ -434,6 +452,7 @@ fn dopr54_integrate_kepler(
     kepler_rhs(to, &mut yn, &mut a1);
 
 
+    let mut out_idx = 1usize;
     for _step in 0..(nt - 1) {
         // One Dormand–Prince 5(4) macro-step (possibly multiple substeps)
         dopr54_onestep_kepler(
@@ -456,10 +475,11 @@ fn dopr54_integrate_kepler(
             &mut ynk,
         );
 
-        #[cfg(feature = "cuda-oxide")]
-        copy_state(&mut out_states[out_idx], &yn);
-        #[cfg(not(feature = "cuda-oxide"))]
-        out_states[out_idx].copy_from_slice(&yn);
+        // Write the state straight to global memory as each output time is
+        // reached (no per-thread staging buffer: the previous 1024-slot
+        // local array cost 48KB/thread, spilled to local memory, capped nt,
+        // and throttled occupancy).
+        write_state_global(state_out, tid, n, out_idx, &yn);
         out_idx += 1;
     }
 
@@ -597,22 +617,18 @@ pub unsafe fn dopr54_cpu_port(
         yo[i] = *state0.add(base_in + i);
     }
 
-    let mut out_steps: [[f64; DIM]; 1024] = [[0.0; DIM]; 1024];
-
+    // Outputs are written directly to global memory as each output time is
+    // reached (layout (step, particle, dim), see write_state_global). This
+    // removes the former 48KB/thread local staging array and its nt <= 1024
+    // cap, and lets the host allocate the output buffer without a memset.
     dopr54_integrate_kepler(
         &mut yo,
         t_slice,
         rtol,
         atol,
         dt_one_init,
-        &mut out_steps[..nt],
+        state_out,
+        n,
+        tid,
     );
-
-    // Write back to global memory: layout (step, particle, dim)
-    for step in 0..nt {
-        let out_base = ((step * n) + tid) * DIM;
-        for i in 0..DIM {
-            *state_out.add(out_base + i) = out_steps[step][i];
-        }
-    }
 }

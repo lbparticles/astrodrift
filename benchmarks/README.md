@@ -67,7 +67,8 @@ Tools come from nix: `nix build nixpkgs#cudaPackages.nsight_compute` /
 `nixpkgs#cudaPackages.nsight_systems` (unfree license must be allowed).
 `ncu` additionally needs GPU perf-counter permission (ERR_NVGPUCTRPERM:
 set `NVreg_RestrictProfilingToAdminUsers=0` or run as root); `nsys` needs
-no special permission.
+no special permission and already shows the kernel/D2H split and pipeline
+overlap.
 
 ## Results
 
