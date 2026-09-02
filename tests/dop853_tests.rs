@@ -13,6 +13,18 @@ mod tests {
 
     const GALPY_NATIVE_FIXTURE_DIR: &str = "tests/fixtures/dop853_galpy_native";
 
+    /// The galpy dump files are host-local artefacts (gitignored) produced next
+    /// to a native galpy run. Tests that need them belong to the extensive
+    /// battery (`cargo test -- --ignored`) and skip themselves when absent.
+    fn dump_missing(path: &str) -> bool {
+        if Path::new(path).exists() {
+            false
+        } else {
+            eprintln!("skipping: {path} not found (host-local galpy dump, gitignored)");
+            true
+        }
+    }
+
     #[link(name = "m")]
     unsafe extern "C" {
         fn pow(x: c_double, y: c_double) -> c_double;
@@ -52,7 +64,11 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires host-local dop853_init_dump.txt; extensive battery only (--ignored)"]
     fn dop853_cpu_matches_native_galpy_dump() {
+        if dump_missing("dop853_init_dump.txt") {
+            return;
+        }
         let dump = parse_dump("dop853_init_dump.txt").expect("could not parse DOP853 dump");
         let result = integrate_cpu(&dump);
 
@@ -64,6 +80,9 @@ mod tests {
     #[test]
     #[ignore = "CUDA device math first differs from native galpy by 1 ULP at step 3, component 3"]
     fn dop853_gpu_matches_native_galpy_dump() {
+        if dump_missing("dop853_init_dump.txt") {
+            return;
+        }
         let dump = parse_dump("dop853_init_dump.txt").expect("could not parse DOP853 dump");
         let result = integrate_gpu(&dump);
 
@@ -71,7 +90,11 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires host-local dop853_init_dump.txt; extensive battery only (--ignored)"]
     fn dop853_gpu_tracks_native_galpy_dump() {
+        if dump_missing("dop853_init_dump.txt") {
+            return;
+        }
         let dump = parse_dump("dop853_init_dump.txt").expect("could not parse DOP853 dump");
         let result = integrate_gpu(&dump);
         let mut mismatched = 0;
@@ -117,6 +140,12 @@ mod tests {
     #[test]
     #[ignore = "diagnostic report for host libm versus CUDA device math drift"]
     fn dop853_gpu_native_galpy_fixture_error_summary() {
+        if !Path::new(GALPY_NATIVE_FIXTURE_DIR).exists() {
+            eprintln!(
+                "skipping summary: fixture dir {GALPY_NATIVE_FIXTURE_DIR} not found (generated locally, gitignored)"
+            );
+            return;
+        }
         let mut summary = ErrorSummary::default();
         let mut output_dump = std::env::var_os("ASTRODRIFT_DOP853_GPU_DUMP").map(|path| {
             BufWriter::new(
@@ -320,6 +349,12 @@ mod tests {
     }
 
     fn galpy_native_fixture_paths() -> Vec<PathBuf> {
+        if !Path::new(GALPY_NATIVE_FIXTURE_DIR).exists() {
+            eprintln!(
+                "skipping: fixture dir {GALPY_NATIVE_FIXTURE_DIR} not found (generated locally, gitignored)"
+            );
+            return Vec::new();
+        }
         let mut paths: Vec<_> = fs::read_dir(GALPY_NATIVE_FIXTURE_DIR)
             .unwrap_or_else(|error| panic!("could not read {GALPY_NATIVE_FIXTURE_DIR}: {error}"))
             .map(|entry| entry.unwrap().path())

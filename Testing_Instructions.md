@@ -37,3 +37,15 @@ cargo test --release \
     tests::dopr54_gpu_native_galpy_fixture_error_summary -- \
     --ignored --exact --nocapture
 ```
+
+## Extensive battery (host-local galpy dumps/fixtures)
+
+Tests that compare against native galpy dumps (`dopr54_init_dump.txt`,
+`dop853_init_dump.txt`) or the generated fixture corpus are `#[ignore]`d:
+they are excluded from the general `cargo test` battery and run only with
+`--ignored`. They skip themselves with a notice when the host-local files
+are absent (the dumps are gitignored artefacts of a native galpy run).
+
+```bash
+cargo test --release --features galpy-kepler-reference -- --ignored
+```

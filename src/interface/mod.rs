@@ -118,19 +118,21 @@ impl PyConfig {
 }
 
 
-fn vec_to_option_array_11(mut v: Vec<Box<Container>>) -> Box<[Option<Box<Container>>; 11]> {
-    if v.len() > 11 {
-        v.truncate(11);
-    }
+fn vec_to_option_array_11(v: Vec<Box<Container>>) -> Box<[Option<Box<Container>>; 11]> {
+    // Slot containers by their dependency_label: the AdjacencyMatrix is keyed
+    // by label, so run-order positioning silently mismatched labels whenever
+    // more than one Config was created in a process (the global label counter
+    // never resets) and whole integration stages were skipped.
     let mut out: Box<[Option<Box<Container>>; 11]> = Box::new([None,None,None,None,None,None,None,None,None,None,None]);
-
-    // Copy by cloning into out[i]
-    for (i, item) in v.iter().enumerate() {
-        // i is guaranteed < 11 due to truncate above
-        out[i] = Some(item.clone());
+    for item in v {
+        let label = item.dependency_label;
+        if label < 11 {
+            out[label] = Some(item);
+        } else {
+            eprintln!("Error!!!! Container label {label} out of range (max 11)")
+        }
     }
-    out 
-
+    out
 }
 
 #[pymethods]
@@ -156,7 +158,6 @@ impl PyConfig {
             ),
             adjacency_matrix: AdjacencyMatrix(0),
         };
-        println!("newpyconfig");
         thing
     }
 
@@ -175,19 +176,23 @@ impl PyConfig {
             containers.push(Box::new(container.clone()));
         }
         let (meal, istates) = self.build_tree(containers);
-        let results = run_integration(self.inner, meal, istates).unwrap();
-        let items: Vec<Py<PyAny>> = results.0
-            .iter()
-            .filter_map(|opt| opt.as_ref())
+        let mut results = run_integration(self.inner, meal, istates).unwrap();
+        let nt = self.inner.settings.ts.steps;
+        let items: Vec<Py<PyAny>> = results
+            .0
+            .iter_mut()
+            .filter_map(|opt| opt.as_mut())
             .map(|arr| {
-                // Build a Python list for each Some(...)
-                // PyList::new -> PyResult<Bound<PyList>>
-                // .into_any() -> Bound<PyAny>
-                // .unbind() -> Py<PyAny>
-                PyList::new(py, arr.data.as_slice()).map(|lst| lst.into_any().unbind())
+                // Hand results back as an (nt, n, 6) float64 array per
+                // integrated container (zero-copy from the host buffer).
+                let n_states = if nt > 0 { arr.data.len() / (nt * 6) } else { 0 };
+                let flat = PyArray1::from_vec(py, std::mem::take(&mut arr.data));
+                flat.reshape([nt, n_states, 6])
+                    .expect("reshape integration output")
+                    .into_any()
+                    .unbind()
             })
-            .collect::<PyResult<Vec<_>>>()?;
-        let items: Vec<Py<PyAny>> = Vec::new();
+            .collect::<Vec<_>>();
         PyList::new(py, items)
     }
 

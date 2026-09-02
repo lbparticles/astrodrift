@@ -264,28 +264,17 @@ fn dopr54_actualstep(
     }
     // yn1 is proposed new value
 
-    // find maximum values
-    let mut max_val: f64 = yn[0].abs().ln();
-    for i in 1..DIM {
-        let v = yn[i].abs().ln();
-        if v > max_val {
-            max_val = v;
-        }
-    }
-
-    // set up scale
-    let c = if atol > rtol + max_val {
-        atol
-    } else {
-        rtol + max_val
-    };
-
-    let s = ((atol - c).exp() + (rtol + max_val - c).exp()).ln() + c;
-
-    // Norm
+    // Error norm (Hairer/Nørsett/Wanner DOPRI5, same as galpy's C code):
+    //   sc_k = atol + rtol * max(|yn_k|, |yn1_k|)
+    //   err  = sqrt( sum_k (yerr_k / sc_k)^2 / DIM )
+    // The previous port computed the scale in log space with atol/rtol mixed
+    // into the exponents, which collapsed err to a tolerance-independent
+    // value and made every step acceptable (broken adaptivity).
     let mut err: f64 = 0.0;
     for i in 0..DIM {
-        err += (2.0 * yerr[i].abs().ln() - 2.0 * s).exp();
+        let sc = atol + rtol * yn[i].abs().max(yn1[i].abs());
+        let ratio = if sc > 0.0 { yerr[i] / sc } else { 0.0 };
+        err += ratio * ratio;
     }
     err = (err / (DIM as f64)).sqrt();
 

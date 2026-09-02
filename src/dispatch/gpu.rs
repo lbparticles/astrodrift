@@ -1,4 +1,4 @@
-use cuda_core::{launch_kernel_on_stream, CudaContext, DeviceBuffer};
+use cuda_core::{launch_kernel_on_stream, CudaContext, CudaModule, DeviceBuffer};
 // use crate::tables::build_sphericalcutoff_force_table;
 use pyo3::prelude::*;
 use shared::{
@@ -9,6 +9,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::raw::{c_double, c_int};
 use std::path::Path;
+use std::sync::{Arc, OnceLock};
 use thiserror::Error;
 
 use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
@@ -235,21 +236,55 @@ fn launch_kernel_named(
     linspace: Linspace,
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, GPUDispatchError> {
-    let ctx = CudaContext::new(0)?;
+    // Creating a context and loading the cubin on every call cost ~0.2 s of
+    // fixed overhead per integration, which drowned out the actual
+    // per-particle scaling. Cache both (the module keeps the context alive).
+    static CACHED_CTX: OnceLock<Arc<CudaContext>> = OnceLock::new();
+    static CACHED_MODULE: OnceLock<Arc<CudaModule>> = OnceLock::new();
+    let ctx = match CACHED_CTX.get() {
+        Some(ctx) => ctx.clone(),
+        None => {
+            let ctx: Arc<CudaContext> = CudaContext::new(0)?;
+            let _ = CACHED_CTX.set(ctx.clone());
+            ctx
+        }
+    };
+    ctx.bind_to_thread()?;
+    let module = match CACHED_MODULE.get() {
+        Some(module) => module.clone(),
+        None => {
+            let module = ctx.load_module_from_image(CUBIN)?;
+            let _ = CACHED_MODULE.set(module);
+            CACHED_MODULE.get().unwrap().clone()
+        }
+    };
     let stream = ctx.default_stream();
 
     let times: Vec<Real> = times.unwrap_or_else(|| {
+        // Match numpy/galpy linspace semantics: the endpoint is INCLUDED, so
+        // the divisor is steps-1 (dividing by `steps` silently compressed the
+        // whole time grid by (steps-1)/steps and desynchronised drift's time
+        // axis from galpy's).
+        let denom = if linspace.steps > 1 {
+            (linspace.steps - 1) as Real
+        } else {
+            1.0
+        };
         (0..linspace.steps)
             .map(|i| {
                 linspace.start
-                    + (linspace.end - linspace.start) * (i as Real) / (linspace.steps as Real)
+                    + (linspace.end - linspace.start) * (i as Real) / denom
             })
             .collect()
     });
 
-    let mut output_state = OutputState::new_zeroed();
+    // The kernel writes one DIM-length state per particle per output time:
+    // state_out is [nt * n * DIM], so size the buffer to match instead of the
+    // fixed OUTPUT_LENGTH cap (which caused illegal memory accesses for
+    // larger nt*n and made any N>MAX_PARTICLES run impossible).
+    let output_len = times.len() * input_state.num_particles * NF64;
+    let mut output_state = OutputState { data: vec![0.0; output_len] };
 
-    let module = ctx.load_module_from_image(CUBIN)?;
     let kernel = module.load_function(kernel_name)?;
     let dev_state0 = DeviceBuffer::<f64>::from_host(&stream, &input_state.data)?;
     let dev_times = DeviceBuffer::<f64>::from_host(&stream, &times)?;
@@ -320,9 +355,12 @@ pub fn gpu_dispatch(
     model: Model,
     input_frame: InputFrame,
 ) -> Result<OutputFrame, GPUDispatchError> {
-    for (model_component_opt, input_state_opt) in model.into_iter().zip(input_frame.into_iter()) {
+    let mut output_frame = OutputFrame(core::array::from_fn(|_| None));
+    for (stage, (model_component_opt, input_state_opt)) in
+        model.into_iter().zip(input_frame.into_iter()).enumerate()
+    {
         if let (Some(model_component), Some(input_state)) = (model_component_opt, input_state_opt) {
-            match config.method {
+            let out_state = match config.method {
                 Method::DOPR54 => launch_kernel(
                     model_component,
                     input_state,
@@ -339,11 +377,10 @@ pub fn gpu_dispatch(
                     config.settings.ts,
                     None,
                 ),
-            }
-            .expect("GPU integration failed");
+            }?;
+            output_frame.0[stage] = Some(out_state);
         }
     }
 
-    // Temp
-    Ok(OutputFrame(core::array::from_fn(|_| None)))
+    Ok(output_frame)
 }

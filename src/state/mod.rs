@@ -38,17 +38,12 @@ impl InputState {
     }
 
     pub fn from_py_array(istate: &PyReadonlyArrayDyn<Real>) -> Self {
-        let mut data = vec![0.0; INPUT_LENGTH];
-
         let istate_array = istate.as_array();
         let num_particles = istate_array.len() / INPUT_STATE_DIM;
 
-        for (i, v) in istate_array.iter().copied().enumerate() {
-            if i >= INPUT_LENGTH {
-                break;
-            }
-            data[i] = v;
-        }
+        // Keep every particle: the fixed INPUT_LENGTH cap silently truncated
+        // inputs to MAX_PARTICLES particles and broke large batched runs.
+        let data: Vec<Real> = istate_array.iter().copied().collect();
 
         InputState { num_particles, data }
     }

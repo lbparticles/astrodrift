@@ -2,12 +2,23 @@ use crate::interface::recipe::PyRecipe;
 use crate::state::InputState;
 use pyo3::prelude::*;
 use numpy::{PyReadonlyArrayDyn};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{atomic::{AtomicU64, Ordering}, Mutex};
 use shared::{CustomKeplerRecipe, CustomPlummerRecipe, Recipe, PotentialName, Index, MAX_CONTAINERS, Real};
 
 static NEXT_DEP_LABEL: AtomicU64 = AtomicU64::new(0);
 
+/// Labels of containers that have been deallocated, available for reuse.
+/// MAX_CONTAINERS bounds the number of *live* containers; without recycling,
+/// a process could only ever create 11 containers in total, which made
+/// running several simulations in one session (e.g. benchmarks) impossible.
+static FREE_LABELS: Mutex<Vec<Index>> = Mutex::new(Vec::new());
+
 fn next_dep_label() -> Index {
+    if let Ok(mut free) = FREE_LABELS.lock() {
+        if let Some(label) = free.pop() {
+            return label;
+        }
+    }
     let i: Index = NEXT_DEP_LABEL.fetch_add(1, Ordering::Relaxed) as Index;
     if i >= MAX_CONTAINERS {
         println!("Error!!!! To many containers")
@@ -15,13 +26,42 @@ fn next_dep_label() -> Index {
     i
 }
 
+fn release_dep_label(label: Index) {
+    if let Ok(mut free) = FREE_LABELS.lock() {
+        free.push(label);
+    }
+}
+
 #[pyclass]
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct Container {
     pub num_particles: Option<Index>,
     pub recipe: Option<PyRecipe>,
     pub state: Option<InputState>,
     pub dependency_label: Index,
+    /// True only for the Python-owned original; clones made internally by
+    /// `Config::run` share the label but must not release it on drop.
+    pub owns_label: bool,
+}
+
+impl Clone for Container {
+    fn clone(&self) -> Self {
+        Container {
+            num_particles: self.num_particles,
+            recipe: self.recipe.clone(),
+            state: self.state.clone(),
+            dependency_label: self.dependency_label,
+            owns_label: false,
+        }
+    }
+}
+
+impl Drop for Container {
+    fn drop(&mut self) {
+        if self.owns_label {
+            release_dep_label(self.dependency_label);
+        }
+    }
 }
 
 fn initialize_container<'py>(_py: Python<'py>, istate: PyReadonlyArrayDyn<Real>, recipe: Option<PyRecipe>) -> PyResult<Py<Container>> {
@@ -33,6 +73,7 @@ fn initialize_container<'py>(_py: Python<'py>, istate: PyReadonlyArrayDyn<Real>,
         recipe: recipe,
         state: Some(state),
         dependency_label: next_dep_label(),
+        owns_label: true,
     };
     Ok(Py::new(_py, container)?)
 }
@@ -63,5 +104,6 @@ pub fn bg_feature<'py>(_py: Python<'py>, potential: PyRecipe) -> Container {
         recipe: Some(potential),
         state: None,
         dependency_label: next_dep_label(),
+        owns_label: true,
     }
 }
