@@ -562,9 +562,6 @@ fn launch_kernel_named(
         let mut atol_arg = tolerance.atol;
         let mut dt_one_arg = dt_one_init;
 
-        // INTERIM: the dop853 kernel still has the original 8-parameter ABI
-        // until its replacement lands; the extended potential parameters
-        // apply to dopr54 only.
         let mut supertable_arg = match &supertable {
             Some(buf) => buf.cu_deviceptr() as *const f64,
             None => times_arg,
@@ -601,12 +598,7 @@ fn launch_kernel_named(
             (&mut ann_plummer_b_arg as *mut f64).cast(),
             (&mut ann_coeff_offset_arg as *mut usize).cast(),
         ];
-        let params: &mut [*mut std::os::raw::c_void] = if kernel_name == "dop853_cpu_port" {
-            // state0..dt_one_init occupy indices 1..9 of the extended layout.
-            &mut params[1..9]
-        } else {
-            &mut params[..]
-        };
+        let params: &mut [*mut std::os::raw::c_void] = &mut params[..];
 
         unsafe {
             launch_kernel_on_stream(&kernel, (grid, 1, 1), (block, 1, 1), 0, &compute, params)?;

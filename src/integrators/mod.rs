@@ -30,6 +30,11 @@ pub fn run_integration(config: Config, model: Model, input_frame: InputFrame, po
         }
         (Engine::GPU, Method::DOPR54, Variant::Compatible) => Ok(gpu_dispatch(config, model, input_frame, pot).expect("gpu_dispatch failed")),
         (Engine::CPU, Method::DOPR54, Variant::Compatible) => Ok(cpu_dispatch(config, model, input_frame, pot).expect("cpu_dispatch failed")),
+        // DOP853: the GPU dispatch selects the dop853_cpu_port kernel by
+        // method; it shares the chunk pipeline with DOPR54. The CPU engine
+        // itself remains the pre-existing stub for both methods (the CPU
+        // dop853 library fn is exercised by tests/dop853_cpu_tests.rs).
+        (Engine::GPU, Method::DOP853, Variant::Compatible) => Ok(gpu_dispatch(config, model, input_frame, pot).expect("gpu_dispatch failed")),
         _ => {
             Ok(OutputFrame(core::array::from_fn(|_| None)))
         }

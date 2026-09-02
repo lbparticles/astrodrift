@@ -18,25 +18,25 @@ const MAX_DT_REDUCE: f64 = 10000.0;
 /// 1 = MW2014 composite: bulge force LUT + Miyamoto-Nagai disk + NFW halo
 /// (all three implemented in shared::potential; the LUT pointer is device
 /// memory uploaded by the host).
-struct PotCtx {
-    pot_type: i32,
-    bovy: BovyPotential,
+pub struct PotCtx {
+    pub pot_type: i32,
+    pub bovy: BovyPotential,
     /// pot_type == 2: MW2014 background plus a stack of Plummer perturbers
     /// whose origins are quintic-interpolated in time from the coefficient
     /// supertable (see shared::QuinticOriginTable for the single-source
     /// layout/local-time convention, shared with the host mirror/tests).
-    annulus: Option<AnnulusCtx>,
+    pub annulus: Option<AnnulusCtx>,
 }
 
 /// Quintic-origin Plummer stack: the coefficient supertable lives in device
 /// memory right after the MW2014 bulge LUT.
-struct AnnulusCtx {
-    plummer: PlummerPotential,
-    origins: QuinticOriginTable,
+pub struct AnnulusCtx {
+    pub plummer: PlummerPotential,
+    pub origins: QuinticOriginTable,
 }
 
 #[inline(never)]
-fn force_eval(t: f64, q: &[f64; DIM], a: &mut [f64; DIM], ctx: &PotCtx) {
+pub fn force_eval(t: f64, q: &[f64; DIM], a: &mut [f64; DIM], ctx: &PotCtx) {
     if ctx.pot_type == 0 {
         kepler_rhs(t, q, a);
         return;
@@ -584,7 +584,7 @@ fn thread_id_limit_check(n: usize) -> Option<usize> {
     }
 }
 
-fn kepler_rhs(
+pub fn kepler_rhs(
     _t: f64,
     q: &[f64; DIM],
     a: &mut [f64; DIM],

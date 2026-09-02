@@ -4,6 +4,7 @@ mod flags;
 mod potential;
 mod config;
 mod model;
+pub mod dop853_tableau;
 
 pub use flags::ModernFlags;
 pub use model::{Model,ModelComponent};
