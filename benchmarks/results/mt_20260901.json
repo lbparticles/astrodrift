@@ -1,0 +1,141 @@
+{
+  "meta": {
+    "timestamp_utc": "2026-08-31T17:48:43.689784+00:00",
+    "cpu": "AMD Ryzen 9 5900X 12-Core Processor",
+    "gpu": "NVIDIA GeForce RTX 3070 Ti",
+    "python": "3.13.14",
+    "drift_version": "0.1.0",
+    "galpy_version": "1.12.0",
+    "t_end": 20.0,
+    "n_times": 51,
+    "rtol": 1e-09,
+    "atol": 1e-09,
+    "repeats": 2,
+    "warmup": 1,
+    "num_cores": 24,
+    "notes": [
+      "galpy's C integrator parallelises over orbits with OpenMP; threads come from OMP_NUM_THREADS (or --num-cores). Run with OMP_NUM_THREADS=1 for a single-thread galpy baseline.",
+      "drift times are one Config.run() call (CUDA context/module are cached after the first call in-process; inputs larger than one launch's output budget are integrated in sequential chunked launches)."
+    ]
+  },
+  "accuracy": {
+    "drift-gpu": {
+      "max_final_pos_err": 3.1219304216876863e-07,
+      "mean_final_pos_err": 2.612796367534181e-07
+    },
+    "galpy": {
+      "max_final_pos_err": 3.5176193561718876e-07,
+      "mean_final_pos_err": 3.1786110851934905e-07
+    }
+  },
+  "results": [
+    {
+      "N": 100000,
+      "systems": {
+        "drift-gpu": {
+          "times_s": [
+            0.5332359499298036,
+            0.5275821313261986
+          ],
+          "median_s": 0.5304090406280011,
+          "min_s": 0.5275821313261986,
+          "max_s": 0.5332359499298036,
+          "particles_per_s": 188533.73969946025,
+          "particle_outputs_per_s": 9615220.724672474
+        },
+        "galpy": {
+          "times_s": [
+            1.4981072107329965,
+            1.5075142686255276
+          ],
+          "median_s": 1.502810739679262,
+          "min_s": 1.4981072107329965,
+          "max_s": 1.5075142686255276,
+          "particles_per_s": 66541.97854704082,
+          "particle_outputs_per_s": 3393640.905899082
+        }
+      }
+    },
+    {
+      "N": 215443,
+      "systems": {
+        "drift-gpu": {
+          "times_s": [
+            1.1324272640049458,
+            1.1293938448652625
+          ],
+          "median_s": 1.1309105544351041,
+          "min_s": 1.1293938448652625,
+          "max_s": 1.1324272640049458,
+          "particles_per_s": 190504.013916127,
+          "particle_outputs_per_s": 9715704.709722478
+        },
+        "galpy": {
+          "times_s": [
+            3.2401811331510544,
+            3.231309617869556
+          ],
+          "median_s": 3.235745375510305,
+          "min_s": 3.231309617869556,
+          "max_s": 3.2401811331510544,
+          "particles_per_s": 66582.18586375103,
+          "particle_outputs_per_s": 3395691.479051302
+        }
+      }
+    },
+    {
+      "N": 464158,
+      "systems": {
+        "drift-gpu": {
+          "times_s": [
+            2.368897942826152,
+            2.370631879195571
+          ],
+          "median_s": 2.3697649110108614,
+          "min_s": 2.368897942826152,
+          "max_s": 2.370631879195571,
+          "particles_per_s": 195866.68611866902,
+          "particle_outputs_per_s": 9989200.99205212
+        },
+        "galpy": {
+          "times_s": [
+            6.9721726779825985,
+            6.989472723100334
+          ],
+          "median_s": 6.9808227005414665,
+          "min_s": 6.9721726779825985,
+          "max_s": 6.989472723100334,
+          "particles_per_s": 66490.44387905707,
+          "particle_outputs_per_s": 3391012.6378319105
+        }
+      }
+    },
+    {
+      "N": 1000000,
+      "systems": {
+        "drift-gpu": {
+          "times_s": [
+            5.1184291783720255,
+            5.121522543951869
+          ],
+          "median_s": 5.119975861161947,
+          "min_s": 5.1184291783720255,
+          "max_s": 5.121522543951869,
+          "particles_per_s": 195313.4208279365,
+          "particle_outputs_per_s": 9960984.462224761
+        },
+        "galpy": {
+          "times_s": [
+            15.163175025954843,
+            15.168357866816223
+          ],
+          "median_s": 15.165766446385533,
+          "min_s": 15.163175025954843,
+          "max_s": 15.168357866816223,
+          "particles_per_s": 65937.97969494187,
+          "particle_outputs_per_s": 3362836.9644420356
+        }
+      }
+    }
+  ]
+}

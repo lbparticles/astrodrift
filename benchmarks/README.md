@@ -40,15 +40,17 @@ python benchmarks/throughput_comparison.py ... --num-cores 12         # explicit
 ```bash
 # inside nix-shell, with the extension built (uv sync / maturin develop)
 python benchmarks/throughput_comparison.py \
-    --n-min 100 --n-max 100000 --points 7 \
-    --repeats 3 --plot bench.png --json bench.json
+    --n-min 100000 --n-max 4200000 --points 7 \
+    --repeats 2 --plot bench.png --json bench.json
 ```
 
 Useful flags: `--t-end`, `--n-times`, `--systems drift-gpu,galpy`,
 `--no-accuracy-check`.
 
 Note: the drift CPU engine (`cpu_dispatch`) is a stub and is therefore not
-benchmarked.
+benchmarked. Inputs larger than one launch's output budget (~2 GB by default,
+override with `DRIFT_MAX_LAUNCH_BYTES`) are integrated in sequential chunked
+kernel launches.
 
 ## Profiling
 
@@ -69,4 +71,12 @@ no special permission.
 
 ## Results
 
-See `results/` for sample output from this branch (RTX 3070 Ti, sm_86).
+See `results/` for sample output from this branch (RTX 3070 Ti, sm_86,
+Ryzen 9 5900X). Headline numbers (t=[0,20], nt=51, rtol=atol=1e-9):
+
+drift's GPU throughput ramps from ~45k particles/s at N~1000 to a plateau of
+~200k particles/s at N≈200k -- the GPU saturates there and stays flat through
+4.2M particles (sequential chunked launches). galpy (OpenMP, 24 threads)
+sustains ~66k particles/s up to ~1M and degrades beyond that, so drift ends
+up ~4.8x faster at 4.2M at equal accuracy (3.1e-7 vs 3.5e-7 max final
+position error vs scipy DOP853).

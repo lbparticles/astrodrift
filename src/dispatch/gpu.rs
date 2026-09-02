@@ -25,6 +25,13 @@ fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
 const BLOCK_SIZE: u32 = 128;
 const NF64: usize = 6;
 
+/// TEMPORARY: cap on the device output buffer per kernel launch. Inputs
+/// larger than one chunk are integrated in sequential launches and the
+/// outputs concatenated, so N is no longer bounded by VRAM. Replace with a
+/// persistent/resizable buffer design later. Override with
+/// DRIFT_MAX_LAUNCH_BYTES (bytes of f64 outputs per launch).
+const MAX_LAUNCH_OUTPUT_BYTES: usize = 1 << 31;
+
 fn grid_size(n: usize, block: u32) -> (u32, u32) {
     let blocks = ((n as u32) + block - 1) / block;
     (blocks, block)
@@ -282,48 +289,94 @@ fn launch_kernel_named(
     // state_out is [nt * n * DIM], so size the buffer to match instead of the
     // fixed OUTPUT_LENGTH cap (which caused illegal memory accesses for
     // larger nt*n and made any N>MAX_PARTICLES run impossible).
-    let output_len = times.len() * input_state.num_particles * NF64;
-    let mut output_state = OutputState { data: vec![0.0; output_len] };
-
+    // TEMPORARY: integrate inputs larger than one launch's output budget in
+    // sequential chunked launches, concatenating outputs in particle order
+    // (per-particle results are identical to an unchunked launch).
     let kernel = module.load_function(kernel_name)?;
-    let dev_state0 = DeviceBuffer::<f64>::from_host(&stream, &input_state.data)?;
-    let dev_times = DeviceBuffer::<f64>::from_host(&stream, &times)?;
-    let dev_state_out = DeviceBuffer::<f64>::zeroed(&stream, output_state.data.len())?;
+    let nt_len = times.len();
+    let n_total = input_state.num_particles;
+    let budget: usize = std::env::var("DRIFT_MAX_LAUNCH_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(MAX_LAUNCH_OUTPUT_BYTES);
+    let out_bytes_per_particle = nt_len * NF64 * std::mem::size_of::<Real>();
+    let chunk_n_max = if out_bytes_per_particle > 0 {
+        (budget / out_bytes_per_particle).max(1)
+    } else {
+        1
+    };
 
-    let (grid, block) = grid_size(input_state.num_particles, BLOCK_SIZE);
+    let mut output_state = OutputState {
+        data: Vec::with_capacity(nt_len * n_total * NF64),
+    };
+    let dev_times = DeviceBuffer::<f64>::from_host(&stream, &times)?;
 
     // FIXME: hmmmm
     let dt_one_init = -9999.99f64;
 
-    // Kernel signature:
-    //   (state0: *const f64, times: *const f64, state_out: *mut f64,
-    //    n: usize, nt: usize, rtol: f64, atol: f64, dt_one_init: f64)
-    let mut state0_arg = dev_state0.cu_deviceptr() as *const f64;
-    let mut times_arg = dev_times.cu_deviceptr() as *const f64;
-    let mut state_out_arg = dev_state_out.cu_deviceptr() as *mut f64;
-    let mut n_arg = input_state.num_particles;
-    let mut nt_arg = times.len();
-    let mut rtol_arg = tolerance.rtol;
-    let mut atol_arg = tolerance.atol;
-    let mut dt_one_arg = dt_one_init;
+    let mut chunks: Vec<Vec<Real>> = Vec::new();
+    let mut i0: usize = 0;
+    while i0 < n_total && nt_len > 0 {
+        let n_chunk = (n_total - i0).min(chunk_n_max);
 
-    let mut params: [*mut std::os::raw::c_void; 8] = [
-        (&mut state0_arg as *mut *const f64).cast(),
-        (&mut times_arg as *mut *const f64).cast(),
-        (&mut state_out_arg as *mut *mut f64).cast(),
-        (&mut n_arg as *mut usize).cast(),
-        (&mut nt_arg as *mut usize).cast(),
-        (&mut rtol_arg as *mut f64).cast(),
-        (&mut atol_arg as *mut f64).cast(),
-        (&mut dt_one_arg as *mut f64).cast(),
-    ];
+        let dev_state0 = DeviceBuffer::<f64>::from_host(
+            &stream,
+            &input_state.data[i0 * NF64..(i0 + n_chunk) * NF64],
+        )?;
+        let dev_state_out = DeviceBuffer::<f64>::zeroed(&stream, nt_len * n_chunk * NF64)?;
 
-    unsafe {
-        launch_kernel_on_stream(&kernel, (grid, 1, 1), (block, 1, 1), 0, &stream, &mut params)?;
+        let (grid, block) = grid_size(n_chunk, BLOCK_SIZE);
+
+        // Kernel signature:
+        //   (state0: *const f64, times: *const f64, state_out: *mut f64,
+        //    n: usize, nt: usize, rtol: f64, atol: f64, dt_one_init: f64)
+        let mut state0_arg = dev_state0.cu_deviceptr() as *const f64;
+        let mut times_arg = dev_times.cu_deviceptr() as *const f64;
+        let mut state_out_arg = dev_state_out.cu_deviceptr() as *mut f64;
+        let mut n_arg = n_chunk;
+        let mut nt_arg = nt_len;
+        let mut rtol_arg = tolerance.rtol;
+        let mut atol_arg = tolerance.atol;
+        let mut dt_one_arg = dt_one_init;
+
+        let mut params: [*mut std::os::raw::c_void; 8] = [
+            (&mut state0_arg as *mut *const f64).cast(),
+            (&mut times_arg as *mut *const f64).cast(),
+            (&mut state_out_arg as *mut *mut f64).cast(),
+            (&mut n_arg as *mut usize).cast(),
+            (&mut nt_arg as *mut usize).cast(),
+            (&mut rtol_arg as *mut f64).cast(),
+            (&mut atol_arg as *mut f64).cast(),
+            (&mut dt_one_arg as *mut f64).cast(),
+        ];
+
+        unsafe {
+            launch_kernel_on_stream(&kernel, (grid, 1, 1), (block, 1, 1), 0, &stream, &mut params)?;
+        }
+        stream.synchronize()?;
+
+        chunks.push(dev_state_out.to_host_vec(&stream)?);
+        i0 += n_chunk;
     }
-    stream.synchronize()?;
 
-    output_state.data = dev_state_out.to_host_vec(&stream)?;
+    // Each chunk is time-major over its own particles; interleave the chunk
+    // planes so the combined buffer is time-major over ALL n_total particles
+    // (a plain concatenation would produce a (chunk, t, p) layout that
+    // reshapes into scrambled trajectories whenever n_total > chunk_n_max).
+    if nt_len > 0 {
+        output_state.data = vec![0.0; nt_len * n_total * NF64];
+        for (c, chunk) in chunks.iter().enumerate() {
+            let n_c = chunk.len() / (nt_len * NF64);
+            if n_c == 0 {
+                continue;
+            }
+            for t in 0..nt_len {
+                let src = &chunk[t * n_c * NF64..(t + 1) * n_c * NF64];
+                let dst = ((t * n_total) + c * n_c) * NF64;
+                output_state.data[dst..dst + n_c * NF64].copy_from_slice(src);
+            }
+        }
+    }
 
     Ok(output_state)
     // let mut f = File::create("dopr54_rust_out_gpu_yay.txt")?;
