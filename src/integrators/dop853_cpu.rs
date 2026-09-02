@@ -23,8 +23,172 @@
 //! kernels' behaviour; scipy would run Hairer's h0 selection).
 
 use libc::{c_double, c_int, free, malloc};
+use rayon::prelude::*;
+use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 
-pub use super::dopr54_cpu::{potentialArg, FuncPtr};
+/// Quintic-interpolated Plummer stack for the CPU path (the annulus
+/// perturbers). Coefficients follow the shared::QuinticOriginTable
+/// convention (single source of truth with the GPU kernels).
+pub struct CpuAnnulusCtx {
+    pub coeffs: Vec<f64>,
+    pub n_gmc: usize,
+    pub division: usize,
+    pub final_time: f64,
+    pub amp: f64,
+    pub b: f64,
+}
+
+/// Force context for the CPU batch: MW2014 (bulge LUT + geometry) via
+/// `shared::BovyPotential`, plus the optional GMC annulus stack. The RHS
+/// uses the same force code as the GPU kernels.
+pub struct MwCpuContext {
+    pub lut: Vec<f64>,
+    pub r_min: f64,
+    pub dr: f64,
+    pub annulus: Option<CpuAnnulusCtx>,
+}
+
+static MW_CPU_CTX: AtomicPtr<MwCpuContext> = AtomicPtr::new(std::ptr::null_mut());
+static MW_CPU_RHS_EVALS: AtomicU64 = AtomicU64::new(0);
+
+/// Bind the MW2014 context for the CPU RHS. Re-binding leaks the previous
+/// context (by design: the LUT is process-constant; do not rebind while a
+/// batch is in flight).
+pub fn set_mw_cpu_context(ctx: MwCpuContext) {
+    let p = Box::into_raw(Box::new(ctx));
+    let old = MW_CPU_CTX.swap(p, Ordering::SeqCst);
+    if !old.is_null() {
+        unsafe {
+            drop(Box::from_raw(old));
+        }
+    }
+}
+
+/// RHS evaluation count since process start (diagnostics).
+pub fn mw_cpu_rhs_evals() -> u64 {
+    MW_CPU_RHS_EVALS.load(Ordering::Relaxed)
+}
+
+pub fn reset_mw_cpu_rhs_evals() {
+    MW_CPU_RHS_EVALS.store(0, Ordering::Relaxed);
+}
+
+pub fn mw_cpu_context() -> Option<&'static MwCpuContext> {
+    unsafe { MW_CPU_CTX.load(Ordering::SeqCst).as_ref() }
+}
+
+/// MW2014 RHS: bulge LUT + MN + NFW via shared::BovyPotential.
+pub extern "C" fn mw2014_cpu_rhs(
+    t: c_double,
+    y: *mut c_double,
+    a: *mut c_double,
+    _nargs: c_int,
+    args: *mut std::ffi::c_void,
+) {
+    MW_CPU_RHS_EVALS.fetch_add(1, Ordering::Relaxed);
+    let ctx = unsafe { &*(args as *const MwCpuContext) };
+    let bovy = shared::BovyPotential::new(ctx.lut.as_ptr(), ctx.r_min, ctx.dr, ctx.lut.len());
+    unsafe {
+        let (x, yy, z) = (*y.add(0), *y.add(1), *y.add(2));
+        let (vx, vy, vz) = (*y.add(3), *y.add(4), *y.add(5));
+        let (mut ax, mut ay, mut az) = shared::Potential::force(&bovy, t, x, yy, z);
+        if let Some(ann) = &ctx.annulus {
+            // GMC stack: quintic-interpolated origins (shared convention)
+            // + pow-free Plummer, summed sequentially like the GPU kernels
+            // (single-thread within a particle; the batch parallelises
+            // across particles).
+            let origins = shared::QuinticOriginTable {
+                table: ann.coeffs.as_ptr(),
+                n_objects: ann.n_gmc,
+                division: ann.division,
+                final_time: ann.final_time,
+            };
+            let plummer = shared::PlummerPotential { amp: ann.amp, b: ann.b };
+            for i in 0..ann.n_gmc {
+                let p = origins.origin(t, i);
+                let (px, py, pz) = shared::Potential::force(
+                    &plummer,
+                    t,
+                    x - p[0],
+                    yy - p[1],
+                    z - p[2],
+                );
+                ax += px;
+                ay += py;
+                az += pz;
+            }
+        }
+        *a.add(0) = vx;
+        *a.add(1) = vy;
+        *a.add(2) = vz;
+        *a.add(3) = ax;
+        *a.add(4) = ay;
+        *a.add(5) = az;
+    }
+}
+
+/// Batch MW2014 DOP853: integrates every particle (states: flat (n, 6))
+/// across the output grid `times`, rayon-parallel over particles.
+/// Returns a flat (nt, n, 6) buffer (same layout as the GPU path).
+pub fn dop853_mw2014_batch(
+    states: &[f64],
+    times: &[f64],
+    rtol: f64,
+    atol: f64,
+    ctx: &MwCpuContext,
+) -> Vec<f64> {
+    let n = states.len() / 6;
+    let nt = times.len();
+
+    let per_particle: Vec<Vec<f64>> = (0..n)
+        .into_par_iter()
+        .map(|p| {
+            // &MwCpuContext / &[f64] are Send+Sync; the raw casts happen
+            // inside the closure on each rayon worker thread.
+            let times_ptr = times.as_ptr();
+            let ctx_ptr = ctx as *const MwCpuContext as *mut std::ffi::c_void;
+            let mut yo = [0.0_f64; 6];
+            yo.copy_from_slice(&states[p * 6..p * 6 + 6]);
+            let mut result = vec![0.0_f64; nt * 6];
+            let mut err: i32 = 0;
+            unsafe {
+                dop853(
+                    Some(mw2014_cpu_rhs),
+                    6,
+                    yo.as_mut_ptr(),
+                    nt as i32,
+                    -9999.99,
+                    times_ptr as *mut c_double,
+                    0,
+                    ctx_ptr,
+                    rtol,
+                    atol,
+                    result.as_mut_ptr(),
+                    &mut err,
+                );
+            }
+            if err != 0 {
+                panic!("dop853 batch: particle {p} reported err={err}");
+            }
+            result
+        })
+        .collect();
+
+    // interleave (nt, n, 6)
+    let mut out = vec![0.0_f64; nt * n * 6];
+    for (p, r) in per_particle.into_iter().enumerate() {
+        for s in 0..nt {
+            for i in 0..6 {
+                out[(s * n + p) * 6 + i] = r[s * 6 + i];
+            }
+        }
+    }
+    out
+}
+
+/// RHS callback: f(t, y, a, nargs, args). `args` carries the caller's
+/// context pointer (e.g. `&MwCpuContext` for the MW2014 batch below).
+pub type FuncPtr = Option<extern "C" fn(c_double, *mut c_double, *mut c_double, c_int, *mut std::ffi::c_void)>;
 use shared::dop853_tableau::{A, B, C, E3, E5, K_ROWS, N_STAGES};
 
 const SAFETY: f64 = 0.9;
@@ -46,11 +210,11 @@ unsafe fn rhs_eval(
     y: *const c_double,
     out: *mut c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    args: *mut std::ffi::c_void,
 ) {
     let f = func.expect("dop853: func pointer was null");
     // The ABI passes *mut (galpy convention); the RHS must not mutate y.
-    f(t, y as *mut c_double, out, nargs, potentialArgs);
+    f(t, y as *mut c_double, out, nargs, args);
 }
 
 /// One adaptive substep. Returns the next `dt_one`; on acceptance the state
@@ -63,7 +227,7 @@ unsafe fn dop853_substep(
     to: &mut f64,
     dt_one: &mut f64,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    args: *mut std::ffi::c_void,
     rtol: f64,
     atol: f64,
     k: &mut [*mut c_double; K_ROWS],
@@ -82,7 +246,7 @@ unsafe fn dop853_substep(
             }
             *yn1.add(i) = *yn.add(i) + h * acc;
         }
-        rhs_eval(func, *to + C[s] * h, yn1, k[s], nargs, potentialArgs);
+        rhs_eval(func, *to + C[s] * h, yn1, k[s], nargs, args);
     }
 
     // 8th-order solution: yn1 = yn + h * sum_j B[j] * k[j]
@@ -95,7 +259,7 @@ unsafe fn dop853_substep(
     }
 
     // FSAL stage 12
-    rhs_eval(func, *to + h, yn1, k[12], nargs, potentialArgs);
+    rhs_eval(func, *to + h, yn1, k[12], nargs, args);
 
     // scipy Dop853 error estimate
     let mut n5 = 0.0_f64;
@@ -172,7 +336,7 @@ pub unsafe extern "C" fn dop853(
     dt_one_in: c_double,
     t: *mut c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    args: *mut std::ffi::c_void,
     rtol: c_double,
     atol: c_double,
     mut result: *mut c_double,
@@ -205,7 +369,7 @@ pub unsafe extern "C" fn dop853(
     }
 
     // initial derivative (FSAL seed for the first substep)
-    rhs_eval(func, *t, yn, k[0], nargs, potentialArgs);
+    rhs_eval(func, *t, yn, k[0], nargs, args);
 
     let dt: f64 = *t.add(1) - *t;
     let mut to: f64 = *t;
@@ -244,7 +408,7 @@ pub unsafe extern "C" fn dop853(
                 &mut to,
                 &mut dt_one,
                 nargs,
-                potentialArgs,
+                args,
                 rtol,
                 atol,
                 &mut k,

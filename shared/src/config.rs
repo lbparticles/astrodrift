@@ -81,7 +81,7 @@ pub enum Engine {
     CPU,
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
     #[default]
     DOPR54,

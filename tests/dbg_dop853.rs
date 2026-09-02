@@ -1,12 +1,13 @@
 #[cfg(test)]
 mod dbg {
-    use drift_rs::integrators::dop853_cpu::{dop853, potentialArg};
+    use drift_rs::integrators::dop853_cpu::dop853;
     use libc::{c_double, c_int};
+    use std::ffi::c_void;
     use std::ptr;
 
     extern "C" fn kepler_rhs(
         _t: c_double, q: *mut c_double, a: *mut c_double,
-        _nargs: c_int, _pot: *mut potentialArg,
+        _nargs: c_int, _pot: *mut c_void,
     ) {
         unsafe {
             let x = *q.add(0); let y = *q.add(1); let z = *q.add(2);

@@ -1,0 +1,24 @@
+{
+  "config": {
+    "n_gmc": 2000,
+    "n_test": 20,
+    "t_end": 2.0,
+    "division": 32,
+    "rtol": 1e-09,
+    "atol": 1e-09,
+    "seed": 2024,
+    "gmc_mass_msun": 100000.0,
+    "numcores": 24,
+    "out": null
+  },
+  "stage1_galpy_s": 0.0250166030600667,
+  "mop_build_s": 0.2969570690765977,
+  "galpy_s": 12.502167257014662,
+  "galpy_part_per_s": 1.599722639191096,
+  "galpy_finite": true,
+  "drift_s": 0.30936123663559556,
+  "drift_part_per_s": 64.64934074322474,
+  "drift_finite": true,
+  "max_pos_diff": 1.4005632149950051,
+  "median_pos_diff": 0.9391207625545139
+}

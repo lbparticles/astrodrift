@@ -35,6 +35,7 @@ pub fn run_integration(config: Config, model: Model, input_frame: InputFrame, po
         // itself remains the pre-existing stub for both methods (the CPU
         // dop853 library fn is exercised by tests/dop853_cpu_tests.rs).
         (Engine::GPU, Method::DOP853, Variant::Compatible) => Ok(gpu_dispatch(config, model, input_frame, pot).expect("gpu_dispatch failed")),
+        (Engine::CPU, Method::DOP853, Variant::Compatible) => Ok(cpu_dispatch(config, model, input_frame, pot).expect("cpu_dispatch failed")),
         _ => {
             Ok(OutputFrame(core::array::from_fn(|_| None)))
         }

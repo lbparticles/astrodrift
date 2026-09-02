@@ -197,6 +197,9 @@ pub enum GPUDispatchError {
 
     #[error("I/O error: {0}")]
     IO(#[from] io::Error),
+
+    #[error("{0}")]
+    Message(String),
 }
 
 /// Potential specification for recipe-driven launches (previous-method

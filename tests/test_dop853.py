@@ -214,6 +214,10 @@ def test_dop853_throughput_against_galpy(lut):
 
     print(f"\n  {'integrator':<16} {'wall s':>9} {'part/s':>10} "
           f"{'max err vs scipy':>17}")
+    print("  note: the galpy rows' ~1.9e-5 'error' is the bulge-LUT bias "
+          "(galpy evaluates\n  the exact bulge; drift+scipy share the LUT) "
+          "-- NOT an integrator difference.\n  See "
+          "benchmarks/dop853_cpu_bench.py for the exact-bulge decomposition.")
     print(f"  {'galpy dopr54_c':<16} {t_galpy54:9.2f} {n/t_galpy54:10.1f} "
           f"{e('galpy dopr54_c'):17.3e}")
     print(f"  {'galpy dop853_c':<16} {t_galpy853:9.2f} {n/t_galpy853:10.1f} "
@@ -242,6 +246,45 @@ def drift_run_batch(method, state, times, table, r_min, dr):
     sim.dependency(iso, gal)
     out = np.asarray(sim.run(gal, iso)[0])  # (nt, n, 6)
     return out.transpose(1, 0, 2)  # (n, nt, 6)
+
+
+def test_cpu_batch_engine_end_to_end(lut):
+    """Engine("CPU") + Method("DOP853") end-to-end through Config.run, plus
+    batch-vs-galpy wall-clock on the CPU."""
+    table, r_min, dr = lut
+    dft.set_cpu_mw_lut(table.tolist(), r_min, dr)
+
+    n = 2000
+    state, _ = ics(n)
+    times = np.linspace(0.0, T_END, NT)
+
+    gal = dft.bg_feature(dft.Potential.bovy(), ar_table=table.tolist(),
+                         r_min=R_MIN, dr=DR)
+    iso = dft.test_group(state)
+    sim = dft.Config(engine=dft.Engine("CPU"), method=dft.Method("DOP853"),
+                     variant=dft.Variant("Compatible"),
+                     ts=(0.0, T_END, NT), tolerance=(RTOL, RTOL))
+    sim.dependency(iso, gal)
+
+    t0 = time.perf_counter()
+    out = np.asarray(sim.run(gal, iso)[0])
+    wall = time.perf_counter() - t0
+    assert np.isfinite(out).all()
+    print(f"\n  CPU batch (rayon): {wall:.2f} s for {n} particles "
+          f"-> {n / wall:.0f} part/s")
+
+    # accuracy vs scipy on a sample
+    for j in (0, 999, 1999):
+        ref = scipy_reference(state[j], times, table, r_min, dr)
+        got = out[:, j, :]
+        err = np.abs(got - ref).max()
+        assert err < 1e-6, f"CPU engine particle {j}: err {err:.3e}"
+
+    # batch consistency: the dedicated batch entry must agree with the
+    # engine path exactly (same code path underneath)
+    batch = dft.dop853_mw2014_cpu_batch(state, times, RTOL, RTOL)
+    batch = np.asarray(batch).reshape(NT, n, 6)
+    assert np.array_equal(batch, out), "batch entry != CPU engine output"
 
 
 if __name__ == "__main__":
