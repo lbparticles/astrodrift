@@ -10,7 +10,10 @@
 pre-commit:
   parallel: true
   commands:
-    # Rule 10: zero warnings at the highest warning level (pedantic, denied).
+    # Rule 10: zero warnings at the strictest settings. clippy::pedantic is
+    # enabled in [workspace.lints.clippy], so -D warnings fails the commit on
+    # ANY rustc or pedantic warning that is not in the curated allowance list
+    # (tools/JPL10.md). Verified: an injected pedantic violation fails here.
     jpl-rule-10-zero-warnings:
       glob: "*.rs"
       run: cargo clippy --workspace --all-targets -- -D warnings
