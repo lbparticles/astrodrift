@@ -212,6 +212,9 @@ pub enum GPUDispatchError {
 
     #[error("too many output steps: {requested} requested, {max} supported by the kernel")]
     TooManySteps { requested: usize, max: usize },
+
+    #[error("unknown device ordinal {ordinal}: {count} device(s) visible")]
+    UnknownDevice { ordinal: usize, count: usize },
 }
 
 pub fn launch_kernel(

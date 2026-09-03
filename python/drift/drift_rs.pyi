@@ -103,6 +103,18 @@ def part_group(
 def bg_feature(potential: Potential) -> Container: ...
 
 
+# GPU introspection and analytic throughput estimation
+def device_count() -> int: ...
+def device_info(ordinal: int) -> dict[str, int | str]: ...
+def list_devices() -> list[dict[str, int | str]]: ...
+def estimate_throughput(
+    method: str = "DOPR54",
+    particles: int = 100000,
+    steps: int = 1000,
+    devices: Sequence[int] | None = ...,
+) -> dict[str, int | float | str]: ...
+
+
 # Optional: minimal numpy typing without hard dependency
 # If you prefer to avoid importing numpy.typing at runtime, alias a Protocol
 
@@ -120,4 +132,8 @@ __all__ = [
     "test_group",
     "part_group",
     "bg_feature",
+    "device_count",
+    "device_info",
+    "list_devices",
+    "estimate_throughput",
 ]

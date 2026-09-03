@@ -8,6 +8,7 @@ use pyo3::types::{PyAny, PyDict, PyList, PyModule, PyTuple};
 mod container;
 mod engine;
 mod flag;
+mod info;
 mod method;
 mod recipe;
 mod variant;
@@ -240,6 +241,10 @@ fn drift_rs(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PyRecipe>()?;
     m.add_class::<Modern>()?;
     m.add_class::<Container>()?;
+    m.add_function(wrap_pyfunction!(info::device_count, m)?)?;
+    m.add_function(wrap_pyfunction!(info::device_info, m)?)?;
+    m.add_function(wrap_pyfunction!(info::list_devices, m)?)?;
+    m.add_function(wrap_pyfunction!(info::estimate_throughput, m)?)?;
     m.add_function(wrap_pyfunction!(container::test_group, m)?)?;
     m.add_function(wrap_pyfunction!(container::part_group, m)?)?;
     m.add_function(wrap_pyfunction!(container::bg_feature, m)?)?;
