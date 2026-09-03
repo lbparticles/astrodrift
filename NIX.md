@@ -51,7 +51,7 @@ LIBNVJITLINK_PATH   = <libnvjitlink lib output>/lib/libnvJitLink.so
 LD_LIBRARY_PATH     = <cuda>/nvvm/lib64 : <libnvjitlink>/lib : /run/opengl-driver/lib
 LIBRARY_PATH        = /run/opengl-driver/lib     # link-time -lcuda (rust-lld)
 CUDA_OXIDE_REPO     = ../cuda-oxide (sibling of the project; override)
-CUDA_OXIDE_ARCH     = sm_86                      # container default: sm_80
+CUDA_OXIDE_ARCH     = sm_80                      # project default (container + shell.nix)
 ```
 
 Notes:
@@ -104,11 +104,11 @@ compile must use it. The main project keeps its own pin
 (`rust-toolchain.toml`, nightly-2026-04-02) — the env var applies only to the
 kernel-build invocation.
 
-GPU arch: `CUDA_OXIDE_ARCH` defaults to **sm_86** in `shell.nix` (the GPU this
-setup was written for — check yours with `nvidia-smi --query-gpu=compute_cap`).
-Unlike PTX, **cubins are not forward-compatible**, so a cubin built for the
-container default sm_80 would fail to load on an sm_86 GPU. Override to
-cross-build for another GPU, e.g. `CUDA_OXIDE_ARCH=sm_80 ./build-cuda-oxide-kernels.sh`.
+GPU arch: `CUDA_OXIDE_ARCH` defaults to **sm_80** everywhere (container,
+`shell.nix`, build scripts) — check yours with
+`nvidia-smi --query-gpu=compute_cap`. Unlike PTX, **cubins are not
+forward-compatible across major architectures**, so override when building
+for a different GPU, e.g. `CUDA_OXIDE_ARCH=sm_86 ./build-cuda-oxide-kernels.sh`.
 
 ## 5. Tests
 

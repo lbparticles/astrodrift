@@ -13,9 +13,16 @@ use thiserror::Error;
 
 use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
 
-// cuda-oxide kernel image, embedded at build time from OUT_DIR (copied there
-// by build.rs; produced by ./build-cuda-oxide-kernels.sh).
-static CUBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kernels.cubin"));
+// Kernel image embedded at build time, selected by feature:
+// - default (modern): cuda-oxide cubin from ./build-cuda-oxide-kernels.sh
+// - legacy: PTX compiled by cuda_builder/rustc_codegen_nvvm (needs LLVM 7)
+// Both are loaded through cuda-core's CudaContext::load_module_from_image:
+// cuModuleLoadData accepts PTX text and cubin ELF alike, so the dispatch
+// code below is identical for the two flavors.
+#[cfg(feature = "legacy")]
+static KERNEL_IMAGE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
+#[cfg(not(feature = "legacy"))]
+static KERNEL_IMAGE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kernels.cubin"));
 
 fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
     res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
@@ -249,7 +256,7 @@ fn launch_kernel_named(
 
     let mut output_state = OutputState::new_zeroed();
 
-    let module = ctx.load_module_from_image(CUBIN)?;
+    let module = ctx.load_module_from_image(KERNEL_IMAGE)?;
     let kernel = module.load_function(kernel_name)?;
     let dev_state0 = DeviceBuffer::<f64>::from_host(&stream, &input_state.data)?;
     let dev_times = DeviceBuffer::<f64>::from_host(&stream, &times)?;

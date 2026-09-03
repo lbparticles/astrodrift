@@ -1,9 +1,15 @@
 [package]
 name = "drift"
-# Local version segment tags this wheel build as the modern (cuda-oxide +
-# LLVM 21 only) release: wheel filename becomes
-# astrodrift-0.1.0+modern-<pytag>-<abitag>-<plattag>.whl
-version = "0.1.0+modern"
+# Wheel versions select the release flavor (maturin reads this via
+# dynamic = ["version"] in pyproject.toml):
+#   default build (--features default, i.e. plain `maturin develop`) -> modern
+#     cuda-oxide + LLVM 21 only, wheel version 0.1.0
+#   `--features legacy` -> legacy Rust-CUDA nvvm pipeline (needs the custom
+#     LLVM 7; see container/ubuntu24-cuda13/Dockerfile and
+#     scripts/build-legacy.sh, which toggles this version to 0.1.0+legacy)
+# Cargo cannot vary [package] version by feature, so the legacy wrapper
+# flips this line around the build and restores it afterwards.
+version = "0.1.0"
 edition = "2024"
 
 [lib]
@@ -26,9 +32,12 @@ numpy = "0.28.0"
 libc = "0.2.177"
 thiserror = "2.0.17"
 
-# NOTE: no [build-dependencies] on purpose. The legacy LLVM 7 pipeline
-# (cuda_builder + rustc_codegen_nvvm) is gone; kernels arrive as a
-# prebuilt cubin produced by build-cuda-oxide-kernels.sh (LLVM 21 stack).
+# Optional legacy kernel builder: compiles kernels/ to PTX at build time via
+# rustc_codegen_nvvm. Requires the custom LLVM 7 build (LLVM_CONFIG,
+# LLVM_LINK_STATIC=1). Only activated by `--features legacy`; the default
+# modern build embeds the cubin from ./build-cuda-oxide-kernels.sh instead.
+[build-dependencies]
+cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_builder", branch = "main", features = ["rustc_codegen_nvvm"], optional = true }
 
 
 [package.metadata.maturin]
@@ -38,9 +47,12 @@ name = "drift"
 members = ["shared", "."]
 
 [features]
-# Single kernel path: the cuda-oxide cubin is always used; there is no
-# legacy feature to select anymore.
+# default = modern: cuda-oxide cubin (LLVM 21 only), wheel version 0.1.0
 default = []
+# legacy: kernels compiled to PTX by rustc_codegen_nvvm (custom LLVM 7);
+# wheel version 0.1.0+legacy via scripts/build-legacy.sh. Host dispatch is
+# cuda-core in both flavors (cuModuleLoadData accepts PTX and cubin).
+legacy = ["dep:cuda_builder"]
 extension-module = ["pyo3/extension-module"]
 galpy-kepler-reference = []
 

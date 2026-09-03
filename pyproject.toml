@@ -16,9 +16,14 @@ dependencies = [
 ]
 
 [tool.maturin]
-# The extension embeds the cuda-oxide kernels.cubin; run
+# No `features` here on purpose, so the CLI flag is authoritative:
+#   maturin develop                     -> default features  = modern (0.1.0)
+#   maturin develop --features legacy   -> legacy flavor     (0.1.0+legacy,
+#                                          via scripts/build-legacy.sh)
+# pyo3/extension-module is enabled unconditionally on unix via
+# [target.'cfg(unix)'.dependencies].
+# The modern extension embeds the cuda-oxide kernels.cubin; run
 # ./build-cuda-oxide-kernels.sh before maturin/uv builds.
-features = ["pyo3/extension-module"]
 python-source = "python"
 module-name = "drift.drift_rs"
 

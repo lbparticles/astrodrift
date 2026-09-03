@@ -48,15 +48,15 @@ export CUDA_OXIDE_REPO="$oxide_repo"
 echo "== cuda-oxide: $oxide_repo ($(git -C "$oxide_repo" rev-parse --short HEAD 2>/dev/null || echo '?'))"
 echo "== arch: $CUDA_OXIDE_ARCH"
 
-# Sanity: the modern tree must not depend on Rust-CUDA / LLVM 7 at all.
-if grep -Eq '^(cust|blastoff|cust_raw) = ' Cargo.toml; then
-    echo "error: Rust-CUDA dependencies present in Cargo.toml; not a modern tree?" >&2
-    exit 1
-fi
-if grep -Eq '^cuda_builder[[:space:]]*=' Cargo.toml || grep -q '^\[build-dependencies\]' Cargo.toml; then
-    echo "error: cuda_builder build-dependency present; not a modern tree?" >&2
-    exit 1
-fi
+# Sanity: the modern build must not silently activate the legacy backend.
+# (The cuda_builder optional declaration may exist in Cargo.toml; activating
+# it is the --features legacy build, handled by scripts/build-legacy.sh.)
+for arg in "$@"; do
+    if [[ "$arg" == *legacy* ]]; then
+        echo "error: pass legacy builds through scripts/build-legacy.sh (LLVM 7 env + 0.1.0+legacy version)" >&2
+        exit 1
+    fi
+done
 
 # 1. Kernels -> cubin (LLVM 21 + CUDA libnvvm/nvJitLink).
 ./build-cuda-oxide-kernels.sh
