@@ -8,14 +8,20 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
-use super::super::dispatch::gpu::GPUDispatchError;
+use super::{Container, PyConfig};
+use crate::dispatch::gpu::GPUDispatchError;
 use cuda_core::{sys, IntoResult};
+use pyo3::types::PyTuple;
 
 use shared::MAX_PARTICLES;
 
 /// Hard on-stack trajectory limit inside the device kernels (must match
 /// `MAX_KERNEL_STEPS` in src/dispatch/gpu.rs).
 const MAX_KERNEL_STEPS: usize = 1024;
+
+/// STUB placeholder: 1e9 particles/s per device (calibration pending via
+/// tsuchiya-benchmark).
+const STUB_PARTICLES_PER_SECOND_PER_DEVICE: f64 = 1_000_000_000.0;
 
 /// Stages per integration step (Dormand-Prince pair sizes).
 fn stages_per_step(method: &str) -> Option<usize> {
@@ -219,54 +225,74 @@ pub fn list_devices(py: Python<'_>) -> PyResult<Bound<'_, PyList>> {
     Ok(list)
 }
 
-/// STUB throughput estimate for one integrator over a device list.
+/// STUB throughput estimate for a full simulation setup.
+///
+/// Mirrors `Config.run`: pass the `Config` plus the same containers in the
+/// same order. Every piece of context the setup carries (method, variant,
+/// steps, tolerance, devices, per-component particle counts) is available
+/// here, and the returned dict reports it alongside the estimate.
 ///
 /// The real numbers will come from the `tsuchiya-benchmark` suite
 /// (`tsuchiya_benchmark.bench.throughput` writes per-`(backend, N)`
 /// throughput tables; see the sibling checkout). Until that calibration
 /// is wired in, this returns a fixed placeholder of 1e9 particles/s per
-/// device so callers can be written against the final shape. The
-/// signature and return keys are stable; only the numbers will change.
-/// STUB placeholder: 1e9 particles/s per device (calibration pending).
-const STUB_PARTICLES_PER_SECOND_PER_DEVICE: f64 = 1_000_000_000.0;
-
-#[pyfunction(signature = (method = "DOPR54", particles = 100000, steps = 1000, devices = None))]
-#[allow(clippy::needless_pass_by_value)] // pyo3 extracts the sequence into an owned Vec
+/// device. The signature and return keys are stable; only the numbers
+/// (and the "source" tag) will change.
+#[pyfunction(signature = (sim, *args))]
+#[allow(clippy::needless_pass_by_value)] // pyo3 borrows the pyclass; the tuple is the variadic
 pub fn estimate_throughput<'py>(
     py: Python<'py>,
-    method: &str,
-    particles: usize,
-    steps: usize,
-    devices: Option<Vec<usize>>,
+    sim: &PyConfig,
+    args: &Bound<'py, PyTuple>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let Some(stages) = stages_per_step(method) else {
+    let method = format!("{:?}", sim.inner.method);
+    let steps = sim.inner.settings.ts.steps;
+    let Some(stages) = stages_per_step(&method) else {
         return Err(PyValueError::new_err(format!(
-            "unknown method {method:?}: use \"DOPR54\" or \"DOP853\""
+            "method {method:?} has no throughput model: use \"DOPR54\" or \"DOP853\""
         )));
     };
-    if particles == 0 || steps == 0 {
+
+    // Particle workload: only containers that carry an integration state
+    // are dispatched on the GPU (background potentials are not).
+    let mut components_integrated = 0usize;
+    let mut particles_total = 0usize;
+    let mut particles_max_component = 0usize;
+    for i in 0..args.len() {
+        let obj = args.get_item(i)?;
+        let container = obj.extract::<pyo3::PyRef<Container>>()?;
+        // The launch path integrates `InputState::num_particles` particles
+        // (not Container::num_particles, which stores the raw element count).
+        if let Some(state) = container.state.as_ref() {
+            let n = state.num_particles;
+            components_integrated += 1;
+            particles_total += n;
+            particles_max_component = particles_max_component.max(n);
+        }
+    }
+    if particles_total == 0 {
         return Err(PyValueError::new_err(
-            "particles and steps must both be at least 1",
+            "no containers with particle states: nothing to estimate",
         ));
     }
 
-    let ordinals: &[usize] = devices.as_deref().unwrap_or(&[0]);
-    if ordinals.is_empty() {
-        return Err(PyValueError::new_err(
-            "devices must contain at least one GPU ordinal",
-        ));
-    }
+    let devices = sim.inner.devices_slice();
 
     let estimated_particles_per_second =
-        STUB_PARTICLES_PER_SECOND_PER_DEVICE * ordinals.len() as f64;
-    let estimated_wall_time_seconds = particles as f64 / estimated_particles_per_second;
+        STUB_PARTICLES_PER_SECOND_PER_DEVICE * devices.len() as f64;
+    let estimated_wall_time_seconds = particles_total as f64 / estimated_particles_per_second;
 
     let dict = PyDict::new(py);
-    dict.set_item("method", method)?;
-    dict.set_item("particles", particles)?;
+    dict.set_item("method", &method)?;
+    dict.set_item("variant", format!("{:?}", sim.inner.variant))?;
     dict.set_item("steps", steps)?;
+    dict.set_item("rtol", sim.inner.settings.tolerance.rtol)?;
+    dict.set_item("atol", sim.inner.settings.tolerance.atol)?;
+    dict.set_item("devices", devices)?;
+    dict.set_item("components_integrated", components_integrated)?;
+    dict.set_item("particles_total", particles_total)?;
+    dict.set_item("particles_max_component", particles_max_component)?;
     dict.set_item("stages_per_step", stages)?;
-    dict.set_item("devices", ordinals)?;
     dict.set_item("estimated_particles_per_second", estimated_particles_per_second)?;
     dict.set_item("estimated_wall_time_seconds", estimated_wall_time_seconds)?;
     dict.set_item("source", "stub")?;
