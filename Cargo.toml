@@ -5,8 +5,7 @@ name = "drift"
 #   default build (--features default, i.e. plain `maturin develop`) -> modern
 #     cuda-oxide + LLVM 21 only, wheel version 0.1.0
 #   `--features legacy` -> legacy Rust-CUDA nvvm pipeline (needs the custom
-#     LLVM 7; see container/ubuntu24-cuda13/Dockerfile and
-#     scripts/build-legacy.sh, which toggles this version to 0.1.0+legacy)
+#     LLVM 7; see env/shell-legacy.nix and scripts/build-legacy.sh)
 # Cargo cannot vary [package] version by feature, so the legacy wrapper
 # flips this line around the build and restores it afterwards.
 version = "0.1.0"

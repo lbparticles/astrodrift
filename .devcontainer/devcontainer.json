@@ -1,7 +1,7 @@
 {
   "name": "astrodrift-cuda",
   "build": {
-    "dockerfile": "../container/ubuntu24-cuda13/Dockerfile",
+    "dockerfile": "../env/Dockerfile.modern",
     "context": ".."
   },
   "runArgs": [

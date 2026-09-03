@@ -1,3 +1,17 @@
+# astrodrift MODERN environment (default release flavor).
+#
+# Builds the modern wheel (astrodrift-0.1.0, cuda-oxide + LLVM 21 only).
+# Kernels are compiled ahead of time by ./build-cuda-oxide-kernels.sh
+# (cargo-oxide + rustc-codegen-cuda backend, LLVM 21 tools, CUDA 13
+# libnvvm/nvJitLink); the extension dispatches via cuda-core. There is
+# deliberately NO LLVM 7 here. For the legacy flavor (rustc_codegen_nvvm
+# PTX pipeline, astrodrift-0.1.0+legacy) use env/shell-legacy.nix and
+# scripts/build-legacy.sh instead.
+#
+# Build (from the repo root):
+#   docker build -f env/Dockerfile.modern -t astrodrift-modern .
+# The devcontainer (.devcontainer/devcontainer.json) references this file.
+
 FROM nvidia/cuda:13.0.0-devel-ubuntu24.04
 
 ARG DEBIAN_FRONTEND=noninteractive

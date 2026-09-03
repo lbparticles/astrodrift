@@ -38,7 +38,7 @@ export LD_LIBRARY_PATH="${CUDA_HOME}/nvvm/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_
 if [[ ! -x "$LLVM_CONFIG" ]]; then
     echo "error: LLVM 7 llvm-config not found at $LLVM_CONFIG" >&2
     echo "       set LLVM_CONFIG to the custom LLVM 7 build (see" >&2
-    echo "       container/ubuntu24-cuda13/Dockerfile, /opt/llvm-7)." >&2
+    echo "       env/shell-legacy.nix (nix) or the legacy container image (/opt/llvm-7)." >&2
     exit 1
 fi
 if [[ "$("$LLVM_CONFIG" --targets-built)" != *NVPTX* ]]; then

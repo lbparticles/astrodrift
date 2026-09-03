@@ -1,13 +1,23 @@
 # NIXOS NATIVE SETUP — astrodrift
 
 How to build, test and run this project natively on a NixOS host
-**without Docker**, using `shell.nix` as a faithful port of
-`container/ubuntu24-cuda13/Dockerfile` + `.devcontainer/devcontainer.json`.
+**without Docker**, using `env/shell.nix` (repo-root `shell.nix` is a thin
+wrapper importing it) as a faithful port of `env/Dockerfile.modern` +
+`.devcontainer/devcontainer.json`.
 
-The kernel path used here is **cuda-oxide** (NVlabs) — Rust → MIR → Pliron IR →
-LLVM IR → NVVM IR → cubin. The legacy Rust-CUDA `rustc_codegen_nvvm` backend
-has been removed entirely (it emitted an LLVM-7-flavoured NVVM dialect and was
-the only reason the container built LLVM 7 from source; that build is gone).
+The default (modern) kernel path is **cuda-oxide** (NVlabs) — Rust → MIR →
+Pliron IR → LLVM IR → NVVM IR → cubin, wheel version `0.1.0`. The legacy
+Rust-CUDA `rustc_codegen_nvvm` backend (LLVM-7-flavoured NVVM dialect) is
+still available as the `legacy` release flavor (`astrodrift-0.1.0+legacy`):
+see `env/shell-legacy.nix` and `scripts/build-legacy.sh` — that shell
+re-creates the LLVM 7 from-source build the container used to have.
+All environment definitions live in `env/`:
+
+| file | flavor |
+|---|---|
+| `env/Dockerfile.modern` | container, modern (default) |
+| `env/shell.nix` | nix, modern (default; root `./shell.nix` wraps it) |
+| `env/shell-legacy.nix` | nix, legacy (`--features legacy`) |
 
 ---
 
@@ -25,7 +35,12 @@ Nothing else is required system-wide. Docker/Apptainer are **not** needed
 (`virtualisation.docker.enable` exists but the `docker` group is not a
 requirement for this workflow).
 
-## 2. What `shell.nix` provides (Dockerfile → nix mapping)
+## 2. What `env/shell.nix` provides (Dockerfile → nix mapping)
+
+For `env/shell-legacy.nix`, the mapping is the same plus the old container's
+LLVM 7 stage: `llvm-7.1.0.src (X86+NVPTX, dylib)` → a from-source
+`llvm-7-nvvm` derivation exposing `bin/llvm-config`, wired as `LLVM_CONFIG`
+with `LLVM_LINK_STATIC=1`.
 
 | Dockerfile | shell.nix |
 |---|---|
