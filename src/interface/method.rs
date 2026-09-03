@@ -1,4 +1,11 @@
 use pyo3::prelude::*;
+
+use crate::methods::registry;
+
+/// Python-facing wrapper around `shared::Method`. Accepts every upstream
+/// spelling (galpy `dopr54_c`, scipy `RK45`, REBOUND `IAS15`, gala
+/// `Ruth4Integrator`, ...) via the registry parser; see
+/// [`registry::parse_name`].
 #[pyclass(name = "Method", from_py_object)]
 #[derive(Default, Clone)]
 pub struct PyMethod {
@@ -8,11 +15,20 @@ pub struct PyMethod {
 impl PyMethod {
     #[new]
     fn new(name: &str) -> PyResult<Self> {
-        let inner = match name {
-            "DOP853" => shared::Method::DOP853,
-            "DOPR54" => shared::Method::DOPR54,
-            _ => return Err(pyo3::exceptions::PyValueError::new_err("Invalid Method")),
-        };
-        Ok(Self { inner })
+        match registry::parse_name(name) {
+            Some(inner) => Ok(Self { inner }),
+            None => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Invalid Method {name:?}; accepted spellings include: {} \
+                 (galpy, scipy, REBOUND and gala names are also accepted)",
+                registry::accepted_names()
+            ))),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Method({})",
+            registry::spec(self.inner).method.canonical_name()
+        )
     }
 }

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use drift_rs::dispatch::gpu::launch_dop853_kernel;
-    use drift_rs::integrators::dop853_cpu::{dop853, potentialArg};
+    use drift_rs::methods::rk::dop853::{dop853, potentialArg};
     use drift_rs::state::InputState;
     use libc::{c_double, c_int};
     use shared::{Config, Index, ModelComponent, Tolerance};

@@ -10,6 +10,7 @@ use pyo3::types::{PyDict, PyList};
 
 use super::{Container, PyConfig};
 use crate::dispatch::gpu::GPUDispatchError;
+use crate::methods::registry;
 use cuda_core::{sys, IntoResult};
 use pyo3::types::PyTuple;
 
@@ -22,15 +23,6 @@ const MAX_KERNEL_STEPS: usize = 1024;
 /// STUB placeholder: 1e9 particles/s per device (calibration pending via
 /// tsuchiya-benchmark).
 const STUB_PARTICLES_PER_SECOND_PER_DEVICE: f64 = 1_000_000_000.0;
-
-/// Stages per integration step (Dormand-Prince pair sizes).
-fn stages_per_step(method: &str) -> Option<usize> {
-    match method {
-        "DOPR54" => Some(6),
-        "DOP853" => Some(12),
-        _ => None,
-    }
-}
 
 /// CUDA cores per streaming multiprocessor, by compute capability, from
 /// NVIDIA's occupancy tables. Unknown capabilities fall back to 64 (the
@@ -245,11 +237,12 @@ pub fn estimate_throughput<'py>(
     sim: &PyConfig,
     args: &Bound<'py, PyTuple>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let method = format!("{:?}", sim.inner.method);
+    let spec = registry::spec(sim.inner.method);
     let steps = sim.inner.settings.ts.steps;
-    let Some(stages) = stages_per_step(&method) else {
+    let Some(stages) = spec.stages else {
         return Err(PyValueError::new_err(format!(
-            "method {method:?} has no throughput model: use \"DOPR54\" or \"DOP853\""
+            "method {} has no throughput model yet (stub); available: DOPR54, DOP853",
+            spec.method.canonical_name()
         )));
     };
 
@@ -283,7 +276,7 @@ pub fn estimate_throughput<'py>(
     let estimated_wall_time_seconds = particles_total as f64 / estimated_particles_per_second;
 
     let dict = PyDict::new(py);
-    dict.set_item("method", &method)?;
+    dict.set_item("method", spec.method.canonical_name())?;
     dict.set_item("variant", format!("{:?}", sim.inner.variant))?;
     dict.set_item("steps", steps)?;
     dict.set_item("rtol", sim.inner.settings.tolerance.rtol)?;

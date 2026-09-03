@@ -1,6 +1,6 @@
 mod interface;
 mod tree;
-pub mod integrators;
+pub mod methods;
 pub mod dispatch;
 pub mod state;
 

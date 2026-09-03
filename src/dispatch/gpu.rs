@@ -215,6 +215,12 @@ pub enum GPUDispatchError {
 
     #[error("unknown device ordinal {ordinal}: {count} device(s) visible")]
     UnknownDevice { ordinal: usize, count: usize },
+
+    #[error(
+        "method {method} is a registered stub: dispatch is wired but the \
+         integration loop is not implemented yet (see src/methods/registry.rs)"
+    )]
+    NotImplemented { method: &'static str },
 }
 
 pub fn launch_kernel(
@@ -523,6 +529,14 @@ pub fn gpu_dispatch(
                     None,
                     config.devices_slice(),
                 ),
+                // Defensive guard: `run_integration` only routes DOPR54/DOP853
+                // here. Every other method is a stub mirror and reports as
+                // such instead of launching a kernel.
+                other => {
+                    return Err(GPUDispatchError::NotImplemented {
+                        method: other.canonical_name(),
+                    });
+                }
             }?;
         }
     }

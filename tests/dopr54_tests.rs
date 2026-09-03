@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use drift_rs::dispatch::gpu::launch_kernel;
-    use drift_rs::integrators::dopr54_cpu::*;
+    use drift_rs::methods::rk::dopr54::*;
     use drift_rs::state::InputState;
     use libc::{self, c_double, c_int};
     use libm::sqrt;

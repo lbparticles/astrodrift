@@ -117,14 +117,107 @@ pub enum Engine {
     CPU,
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+/// Integration method selector.
+///
+/// Variant spellings are the canonical drift names; the catalog in
+/// `src/methods/registry.rs` maps every method to the upstream libraries it
+/// mirrors (galpy, scipy, REBOUND, gala) and its implementation status.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
+    // -- explicit Runge-Kutta family (src/methods/rk/) --------------------
     #[default]
     DOPR54,
     DOP853,
+    RK23,
+    RK4,
+    RK5,
+    RK6,
+    // -- symplectic splitting family (src/methods/symplectic/) ------------
+    LEAPFROG,
+    SYMPLEC4,
+    SYMPLEC6,
+    WHFAST,
+    WHFAST512,
+    SEI,
+    SABA,
+    EOS,
+    // -- implicit and adaptive non-symplectic family
+    //    (src/methods/implicit/) -----------------------------------------
+    IAS15,
+    JANUS,
+    RADAU,
+    BDF,
+    LSODA,
+    VODE,
+    BS,
+    // -- hybrid splitting family (src/methods/hybrid/) --------------------
+    MERCURIUS,
+    TRACE,
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+impl Method {
+    /// Every method known to the dispatcher, in catalog order. The method
+    /// registry (`src/methods/registry.rs`) carries one spec row per entry;
+    /// the two arrays are kept aligned by test.
+    pub const ALL: [Method; 23] = [
+        Method::DOPR54,
+        Method::DOP853,
+        Method::RK23,
+        Method::RK4,
+        Method::RK5,
+        Method::RK6,
+        Method::LEAPFROG,
+        Method::SYMPLEC4,
+        Method::SYMPLEC6,
+        Method::WHFAST,
+        Method::WHFAST512,
+        Method::SEI,
+        Method::SABA,
+        Method::EOS,
+        Method::IAS15,
+        Method::JANUS,
+        Method::RADAU,
+        Method::BDF,
+        Method::LSODA,
+        Method::VODE,
+        Method::BS,
+        Method::MERCURIUS,
+        Method::TRACE,
+    ];
+
+    /// Canonical drift spelling of this method (the Python-facing name and
+    /// the registry/catalog key).
+    #[must_use]
+    pub const fn canonical_name(self) -> &'static str {
+        match self {
+            Method::DOPR54 => "DOPR54",
+            Method::DOP853 => "DOP853",
+            Method::RK23 => "RK23",
+            Method::RK4 => "RK4",
+            Method::RK5 => "RK5",
+            Method::RK6 => "RK6",
+            Method::LEAPFROG => "LEAPFROG",
+            Method::SYMPLEC4 => "SYMPLEC4",
+            Method::SYMPLEC6 => "SYMPLEC6",
+            Method::WHFAST => "WHFAST",
+            Method::WHFAST512 => "WHFAST512",
+            Method::SEI => "SEI",
+            Method::SABA => "SABA",
+            Method::EOS => "EOS",
+            Method::IAS15 => "IAS15",
+            Method::JANUS => "JANUS",
+            Method::RADAU => "RADAU",
+            Method::BDF => "BDF",
+            Method::LSODA => "LSODA",
+            Method::VODE => "VODE",
+            Method::BS => "BS",
+            Method::MERCURIUS => "MERCURIUS",
+            Method::TRACE => "TRACE",
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Variant {
     Compatible,
     #[default]

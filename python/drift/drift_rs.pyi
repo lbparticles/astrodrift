@@ -18,9 +18,33 @@ class Engine:
 
 
 class Method:
+    """Integration method selector.
+
+    Accepts the canonical drift names (``DOPR54``, ``DOP853``, ``RK23``,
+    ``RK4``, ``RK5``, ``RK6``, ``LEAPFROG``, ``SYMPLEC4``, ``SYMPLEC6``,
+    ``WHFAST``, ``WHFAST512``, ``SEI``, ``SABA``, ``EOS``, ``IAS15``,
+    ``JANUS``, ``RADAU``, ``BDF``, ``LSODA``, ``VODE``, ``BS``,
+    ``MERCURIUS``, ``TRACE``; any case), plus the upstream spellings each
+    drift method mirrors:
+
+    - galpy: ``dopr54_c``, ``dop853``/``dop853_c``, ``rk4_c``, ``rk6_c``,
+      ``leapfrog``/``leapfrog_c``, ``symplec4_c``, ``symplec6_c``,
+      ``ias15_c``, ``odeint``
+    - scipy: ``RK23``, ``RK45``, ``DOP853``, ``Radau``, ``BDF``, ``LSODA``,
+      ``vode``
+    - REBOUND: ``IAS15``, ``WHFast``, ``WHFast512``, ``SEI``, ``LEAPFROG``,
+      ``JANUS``, ``MERCURIUS``/``HERMES``, ``SABA``, ``EOS``, ``BS``,
+      ``TRACE``
+    - gala: ``DOPRI853Integrator``, ``LeapfrogIntegrator``,
+      ``Ruth4Integrator``, ``RK5Integrator``
+
+    See ``method_catalog()`` for the full mapping and implementation status.
+    """
+
     def __init__(self, name: str) -> None: ...
 
-    # "DOP853" | "DOPR54"
+    @override
+    def __repr__(self) -> str: ...
 
 
 class Variant:
@@ -109,6 +133,10 @@ def device_info(ordinal: int) -> dict[str, int | str]: ...
 def list_devices() -> list[dict[str, int | str]]: ...
 def estimate_throughput(sim: Config, *containers: Container) -> dict[str, int | float | str]: ...
 
+# Method registry introspection (static data, mirrors src/methods/registry.rs)
+def method_catalog() -> list[dict[str, object]]: ...
+def method_info(name: str) -> dict[str, object]: ...
+
 
 # Optional: minimal numpy typing without hard dependency
 # If you prefer to avoid importing numpy.typing at runtime, alias a Protocol
@@ -131,4 +159,6 @@ __all__ = [
     "device_info",
     "list_devices",
     "estimate_throughput",
+    "method_catalog",
+    "method_info",
 ]
