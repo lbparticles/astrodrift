@@ -1,12 +1,6 @@
-#[cfg(not(feature = "cuda-oxide"))]
-use libm::sqrt;
-use libm::{floor, log, pow};
-
-#[cfg(feature = "cuda-oxide")]
-#[inline(always)]
-fn sqrt(x: f64) -> f64 {
-    x.sqrt()
-}
+// libm works in both host (std) and device (no_std cuda-oxide) builds.
+// The old cfg-gated `x.sqrt()` override could not compile under no_std.
+use libm::{floor, log, pow, sqrt};
 
 #[derive(Clone, Copy)]
 pub enum PotentialEnum {

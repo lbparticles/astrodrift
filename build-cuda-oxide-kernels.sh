@@ -3,8 +3,18 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 arch="${CUDA_OXIDE_ARCH:-sm_80}"
-oxide_repo="${CUDA_OXIDE_REPO:-/workspaces/cuda-oxide}"
+oxide_repo="${CUDA_OXIDE_REPO:-}"
 kernel_features="cuda-oxide"
+
+# Auto-detect a cuda-oxide checkout unless CUDA_OXIDE_REPO is set.
+if [[ -z "$oxide_repo" ]]; then
+    for candidate in "$repo_root/third_party/cuda-oxide" /software/cuda-oxide /workspaces/cuda-oxide; do
+        if [[ -d "$candidate/crates/rustc-codegen-cuda" ]]; then
+            oxide_repo="$candidate"
+            break
+        fi
+    done
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -31,9 +41,10 @@ if [[ "${ASTRODRIFT_GALPY_KEPLER_REFERENCE:-0}" == "1" ]]; then
     kernel_features="$kernel_features galpy-kepler-reference"
 fi
 
-if [[ ! -d "$oxide_repo/crates/rustc-codegen-cuda" ]]; then
-    echo "cuda-oxide is not mounted at $oxide_repo." >&2
-    echo "Run this script inside the devcontainer." >&2
+if [[ -z "${oxide_repo:-}" ]] || [[ ! -d "$oxide_repo/crates/rustc-codegen-cuda" ]]; then
+    echo "cuda-oxide checkout not found." >&2
+    echo "Set CUDA_OXIDE_REPO to a cuda-oxide checkout (scripts/build-wheel.sh" >&2
+    echo "symlinks one into third_party/cuda-oxide automatically)." >&2
     exit 1
 fi
 
@@ -111,6 +122,16 @@ cuda-host = { path = "$oxide_repo/crates/cuda-host" }
 
 [workspace]
 EOF
+
+# The scratch workspaces must build with the exact nightly the codegen
+# backend was compiled against (cuda-oxide's own pin); otherwise rustup
+# falls back to e.g. stable and the -Zcodegen-backend invocation fails.
+if [[ ! -f "$oxide_repo/rust-toolchain.toml" ]]; then
+    echo "cuda-oxide checkout is missing rust-toolchain.toml" >&2
+    exit 1
+fi
+cp "$oxide_repo/rust-toolchain.toml" "$workdir/rust-toolchain.toml"
+cp "$oxide_repo/rust-toolchain.toml" "$workdir/cubin-builder/rust-toolchain.toml"
 
 cat > "$workdir/cubin-builder/src/main.rs" <<'EOF'
 use std::path::Path;

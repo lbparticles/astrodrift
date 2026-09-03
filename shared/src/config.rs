@@ -1,4 +1,3 @@
-use cust_core::DeviceCopy;
 use core::f64::consts::PI;
 use core::array;
 
@@ -7,7 +6,10 @@ use crate::{MAX_STATES,MIN_RTOL,MIN_ATOL,Real,Index};
 use crate::potential::Potential;
 
 
-unsafe impl DeviceCopy for Settings {}
+// NOTE (modern branch): no `unsafe impl DeviceCopy for Settings {}` here.
+// The legacy pipeline required cust_core's DeviceCopy for host-side
+// marshalling; the cuda-core host path only launches flat f64 buffers and
+// scalars, so shared types no longer need the trait.
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Config {

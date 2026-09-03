@@ -1,6 +1,9 @@
 [package]
 name = "drift"
-version = "0.1.0"
+# Local version segment tags this wheel build as the modern (cuda-oxide +
+# LLVM 21 only) release: wheel filename becomes
+# astrodrift-0.1.0+modern-<pytag>-<abitag>-<plattag>.whl
+version = "0.1.0+modern"
 edition = "2024"
 
 [lib]
@@ -10,9 +13,10 @@ crate-type = ["rlib", "cdylib"]
 [dependencies]
 shared = { path = "shared"}
 pyo3 = "0.28.3"
-blastoff = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "blastoff", branch = "main" }
-cust = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust", branch = "main" }
-cust_raw = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust_raw", branch = "main", features = ["driver"] }
+# Host-side CUDA driver wrappers from cuda-oxide (no LLVM 7, no Rust-CUDA).
+# `third_party/cuda-oxide` is a symlink to a cuda-oxide checkout, created by
+# scripts/build-wheel.sh (or point it at your checkout manually).
+cuda-core = { path = "third_party/cuda-oxide/crates/cuda-core" }
 ndarray-rand = "0.16.0"
 rand = "0.10.1"
 rayon = "1.11.0"
@@ -22,8 +26,9 @@ numpy = "0.28.0"
 libc = "0.2.177"
 thiserror = "2.0.17"
 
-[build-dependencies]
-cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_builder", branch = "main", features = ["rustc_codegen_nvvm"] }
+# NOTE: no [build-dependencies] on purpose. The legacy LLVM 7 pipeline
+# (cuda_builder + rustc_codegen_nvvm) is gone; kernels arrive as a
+# prebuilt cubin produced by build-cuda-oxide-kernels.sh (LLVM 21 stack).
 
 [package.metadata.maturin]
 name = "drift"
@@ -32,7 +37,8 @@ name = "drift"
 members = ["shared", "."]
 
 [features]
-default = []
+# The cuda-oxide cubin path is the only supported one in this branch.
+default = ["cuda-oxide-kernel"]
 extension-module = ["pyo3/extension-module"]
 cuda-oxide-kernel = []
 galpy-kepler-reference = []
