@@ -204,6 +204,9 @@ impl AdjacencyMatrix {
 
         let mut order: [usize; 11] = [0; 11];
         let split = with_deps.len();
+        // `with_deps` and `zeros` partition 0..11, so every index below is
+        // in range by construction (documented invariant, JPL rule 5).
+        debug_assert_eq!(split + zeros.len(), 11);
         for (i, v) in with_deps.into_iter().enumerate() {
             order[i] = v;
         }

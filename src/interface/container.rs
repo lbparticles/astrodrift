@@ -1,5 +1,6 @@
 use crate::interface::recipe::PyRecipe;
 use crate::state::InputState;
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use numpy::{PyReadonlyArrayDyn};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -7,12 +8,17 @@ use shared::{CustomKeplerRecipe, CustomPlummerRecipe, Recipe, PotentialName, Ind
 
 static NEXT_DEP_LABEL: AtomicU64 = AtomicU64::new(0);
 
-fn next_dep_label() -> Index {
+/// Allocates the next container label. Overflow of the fixed-size
+/// model slots is a hard failure and is propagated to Python instead of
+/// being printed and ignored.
+fn next_dep_label() -> PyResult<Index> {
     let i: Index = NEXT_DEP_LABEL.fetch_add(1, Ordering::Relaxed) as Index;
     if i >= MAX_CONTAINERS {
-        println!("Error!!!! To many containers");
+        return Err(PyRuntimeError::new_err(format!(
+            "too many containers: model supports at most {MAX_CONTAINERS}"
+        )));
     }
-    i
+    Ok(i)
 }
 
 #[pyclass(from_py_object)]
@@ -32,7 +38,7 @@ fn initialize_container(py: Python<'_>, istate: &PyReadonlyArrayDyn<Real>, recip
         num_particles: Some(n),
         recipe,
         state: Some(state),
-        dependency_label: next_dep_label(),
+        dependency_label: next_dep_label()?,
     };
     Py::new(py, container)
 }
@@ -59,11 +65,11 @@ pub fn part_group(py: Python<'_>, potential: PyRecipe,istate:PyReadonlyArrayDyn<
 
 #[pyfunction]
 #[pyo3(signature = (potential))]
-pub fn bg_feature(potential: PyRecipe) -> Container {
-    Container {
+pub fn bg_feature(potential: PyRecipe) -> PyResult<Container> {
+    Ok(Container {
         num_particles: None,
         recipe: Some(potential),
         state: None,
-        dependency_label: next_dep_label(),
-    }
+        dependency_label: next_dep_label()?,
+    })
 }

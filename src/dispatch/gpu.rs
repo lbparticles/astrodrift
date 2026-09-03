@@ -95,6 +95,14 @@ struct DumpData {
     args: Vec<c_double>, // may be empty
 }
 
+/// Parses `raw` as a dump field value, mapping malformed text to an
+/// `InvalidData` I/O error instead of panicking (failure modes propagate).
+#[allow(dead_code)]
+fn parse_field<T: std::str::FromStr>(raw: &str) -> io::Result<T> {
+    raw.parse()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, format!("malformed dump field {raw:?}")))
+}
+
 /// See [`DumpData`].
 #[allow(dead_code)]
 fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
@@ -118,47 +126,47 @@ fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
         match key {
             "dim" => {
                 if let Some(v) = parts.next() {
-                    dim = Some(v.parse().unwrap());
+                    dim = Some(parse_field(v)?);
                 }
             }
             "nt" => {
                 if let Some(v) = parts.next() {
-                    nt = Some(v.parse().unwrap());
+                    nt = Some(parse_field(v)?);
                 }
             }
             "dt_one" => {
                 if let Some(v) = parts.next() {
-                    dt_one = Some(v.parse().unwrap());
+                    dt_one = Some(parse_field(v)?);
                 }
             }
             "rtol" => {
                 if let Some(v) = parts.next() {
-                    rtol = Some(v.parse().unwrap());
+                    rtol = Some(parse_field(v)?);
                 }
             }
             "atol" => {
                 if let Some(v) = parts.next() {
-                    atol = Some(v.parse().unwrap());
+                    atol = Some(parse_field(v)?);
                 }
             }
             "t" => {
                 for v in parts {
-                    t.push(v.parse().unwrap());
+                    t.push(parse_field(v)?);
                 }
             }
             "yo" => {
                 for v in parts {
-                    yo.push(v.parse().unwrap());
+                    yo.push(parse_field(v)?);
                 }
             }
             "nargs" => {
                 if let Some(v) = parts.next() {
-                    nargs = v.parse().unwrap();
+                    nargs = parse_field(v)?;
                 }
             }
             "args" => {
                 for v in parts {
-                    args.push(v.parse().unwrap());
+                    args.push(parse_field(v)?);
                 }
             }
             _ => {
@@ -167,12 +175,15 @@ fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
         }
     }
 
+    let missing = |field: &str| {
+        io::Error::new(io::ErrorKind::InvalidData, format!("{field} missing in dump"))
+    };
     Ok(DumpData {
-        dim: dim.expect("dim missing in dump"),
-        nt: nt.expect("nt missing in dump"),
+        dim: dim.ok_or_else(|| missing("dim"))?,
+        nt: nt.ok_or_else(|| missing("nt"))?,
         dt_one: dt_one.unwrap_or(-9999.99), // match typical galpy default
-        rtol: rtol.expect("rtol missing in dump"),
-        atol: atol.expect("atol missing in dump"),
+        rtol: rtol.ok_or_else(|| missing("rtol"))?,
+        atol: atol.ok_or_else(|| missing("atol"))?,
         t,
         yo,
         nargs,
@@ -340,8 +351,7 @@ pub fn gpu_dispatch(
                     config.settings.ts,
                     None,
                 ),
-            }
-            .expect("GPU integration failed");
+            }?;
         }
     }
 

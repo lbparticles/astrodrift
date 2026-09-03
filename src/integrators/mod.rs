@@ -1,10 +1,19 @@
 use shared::{Config, Engine, Model, Method, Variant};
-use crate::{dispatch::{cpu::cpu_dispatch, gpu_dispatch}, state::{InputFrame, OutputFrame}};
+use crate::{
+    dispatch::{cpu::cpu_dispatch, gpu::GPUDispatchError, gpu_dispatch},
+    state::{InputFrame, OutputFrame},
+};
 
 pub mod dop853_cpu;
 pub mod dopr54_cpu;
 
-pub fn run_integration(config: &Config, model: &Model, input_frame: &InputFrame) -> OutputFrame {
+/// Dispatch one integration to the selected engine. Every failure mode is
+/// propagated to the caller as `GPUDispatchError` (never panicked).
+pub fn run_integration(
+    config: &Config,
+    model: &Model,
+    input_frame: &InputFrame,
+) -> Result<OutputFrame, GPUDispatchError> {
     // println!("{}",recipes);
     // println!("{:?}",arrays);
     // let ptr = core::ptr::null();
@@ -22,19 +31,19 @@ pub fn run_integration(config: &Config, model: &Model, input_frame: &InputFrame)
     // }
     match (config.engine, config.method, config.variant) {
         (Engine::GPU, Method::DOPR54, Variant::Modern) => {
-            OutputFrame(core::array::from_fn(|_| None))
+            Ok(OutputFrame(core::array::from_fn(|_| None)))
         }
         (Engine::CPU, Method::DOPR54, Variant::Modern) => {
-            OutputFrame(core::array::from_fn(|_| None))
+            Ok(OutputFrame(core::array::from_fn(|_| None)))
         }
         (Engine::GPU, Method::DOPR54, Variant::Compatible) => {
-            gpu_dispatch(config, model, input_frame).expect("gpu_dispatch failed")
+            gpu_dispatch(config, model, input_frame)
         }
         (Engine::CPU, Method::DOPR54, Variant::Compatible) => {
-            cpu_dispatch(config, model, input_frame).expect("cpu_dispatch failed")
+            cpu_dispatch(config, model, input_frame)
         }
         _ => {
-            OutputFrame(core::array::from_fn(|_| None))
+            Ok(OutputFrame(core::array::from_fn(|_| None)))
         }
     }
 }

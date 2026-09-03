@@ -172,7 +172,10 @@ impl PyConfig {
             containers.push(container.clone());
         }
         let (meal, istates) = self.build_tree(containers);
-        let results = run_integration(&self.inner, &meal, &istates);
+        // Failure modes from the dispatch layer surface in Python as
+        // RuntimeError (pyo3 converts the Err into a raised exception).
+        let results = run_integration(&self.inner, &meal, &istates)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         let _items: Vec<Py<PyAny>> = results.0
             .iter()
             .filter_map(|opt| opt.as_ref())
