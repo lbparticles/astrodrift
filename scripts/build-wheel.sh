@@ -53,7 +53,7 @@ if grep -Eq '^(cust|blastoff|cust_raw) = ' Cargo.toml; then
     echo "error: Rust-CUDA dependencies present in Cargo.toml; not a modern tree?" >&2
     exit 1
 fi
-if grep -q 'cuda_builder' Cargo.toml; then
+if grep -Eq '^cuda_builder[[:space:]]*=' Cargo.toml || grep -q '^\[build-dependencies\]' Cargo.toml; then
     echo "error: cuda_builder build-dependency present; not a modern tree?" >&2
     exit 1
 fi
@@ -62,7 +62,10 @@ fi
 ./build-cuda-oxide-kernels.sh
 
 # 2. Wheel (embeds the cubin, dispatches via cuda-core).
-maturin build --release --out dist
+#    --auditwheel skip: do NOT vendor host libraries (maturin would otherwise
+#    copy the build machine's libcuda into the wheel; libcuda.so.1 must come
+#    from the target machine's NVIDIA driver at import time).
+maturin build --release --out dist --auditwheel skip
 echo
 echo "Modern wheel written to $(pwd)/dist:"
 ls -1 dist/*.whl

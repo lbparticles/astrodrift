@@ -38,8 +38,9 @@ name = "drift"
 members = ["shared", "."]
 
 [features]
-# The cuda-oxide cubin path is the only supported one in this branch.
-default = ["cuda-oxide-kernel"]
+# Single kernel path: the cuda-oxide cubin is always used; there is no
+# legacy feature to select anymore.
+default = []
 extension-module = ["pyo3/extension-module"]
 galpy-kepler-reference = []
 
