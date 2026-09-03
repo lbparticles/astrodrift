@@ -3,6 +3,9 @@ use core::f64::consts::PI;
 use crate::ModernFlags;
 use crate::{MIN_RTOL,MIN_ATOL,Real,Index};
 
+/// Maximum number of GPUs usable by a single dispatch. Fixed bound on
+/// purpose (JPL rule 2: every loop has a compile-time upper bound).
+pub const MAX_DEVICES: usize = 8;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Config {
@@ -11,6 +14,10 @@ pub struct Config {
     pub variant: Variant,
     pub flags: ModernFlags,
     pub settings: Settings,
+    /// GPU ordinals used by `Engine::GPU` dispatch. `num_devices == 0`
+    /// means "unset" and is treated as device 0 (backwards compatible).
+    pub devices: [usize; MAX_DEVICES],
+    pub num_devices: usize,
 }
 
 #[repr(C)]
@@ -35,10 +42,41 @@ impl Config {
             variant,
             flags,
             settings: Settings { ts, tolerance },
+            devices: [0; MAX_DEVICES],
+            num_devices: 0, // unset -> devices_slice() yields device 0
         }
     }
     pub fn settings_mut(&mut self) -> &mut Settings {
         &mut self.settings
+    }
+
+    /// Selects the GPUs used by `Engine::GPU` dispatch. Count and duplicates
+    /// are validated here; ordinal validity is checked by the driver at
+    /// context creation (failures propagate as `GPUDispatchError`).
+    pub fn set_devices(&mut self, devices: &[usize]) -> Result<(), &'static str> {
+        if devices.is_empty() {
+            return Err("devices must contain at least one GPU ordinal");
+        }
+        if devices.len() > MAX_DEVICES {
+            return Err("too many devices");
+        }
+        for (i, device) in devices.iter().enumerate() {
+            if devices[..i].contains(device) {
+                return Err("duplicate device ordinals");
+            }
+            self.devices[i] = *device;
+        }
+        self.num_devices = devices.len();
+        Ok(())
+    }
+
+    /// The effective device list (device 0 when unset).
+    pub fn devices_slice(&self) -> &[usize] {
+        if self.num_devices == 0 {
+            &[0]
+        } else {
+            &self.devices[..self.num_devices]
+        }
     }
 }
 

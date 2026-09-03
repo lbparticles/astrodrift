@@ -1,6 +1,11 @@
-use cuda_core::{launch_kernel_on_stream, CudaContext, DeviceBuffer};
+use cuda_core::{launch_kernel_on_stream, CudaContext, CudaStream, DeviceBuffer};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 // use crate::tables::build_sphericalcutoff_force_table;
-use shared::{Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance};
+use shared::{
+    Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance, INPUT_STATE_DIM,
+    MAX_PARTICLES,
+};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::os::raw::{c_double, c_int};
@@ -21,6 +26,9 @@ static KERNEL_IMAGE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kernels.p
 static KERNEL_IMAGE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kernels.cubin"));
 
 const BLOCK_SIZE: u32 = 128;
+/// Hard on-stack trajectory limit inside the device kernels
+/// (`out_steps: [[f64; DIM]; 1024]` in kernels/src/dopr54.rs).
+const MAX_KERNEL_STEPS: usize = 1024;
 
 fn grid_size(n: usize, block: u32) -> (u32, u32) {
     let blocks = n.div_ceil(block as usize);
@@ -198,6 +206,12 @@ pub enum GPUDispatchError {
 
     #[error("I/O error: {0}")]
     IO(#[from] io::Error),
+
+    #[error("too many particles: {requested} requested, {max} supported")]
+    TooManyParticles { requested: usize, max: usize },
+
+    #[error("too many output steps: {requested} requested, {max} supported by the kernel")]
+    TooManySteps { requested: usize, max: usize },
 }
 
 pub fn launch_kernel(
@@ -207,6 +221,7 @@ pub fn launch_kernel(
     tolerance: Tolerance,
     linspace: Linspace,
     times: Option<Vec<Real>>,
+    devices: &[usize],
 ) -> Result<OutputState, GPUDispatchError> {
     launch_kernel_named(
         "dopr54_cpu_port",
@@ -216,6 +231,7 @@ pub fn launch_kernel(
         tolerance,
         linspace,
         times,
+        devices,
     )
 }
 
@@ -226,6 +242,7 @@ pub fn launch_dop853_kernel(
     tolerance: Tolerance,
     linspace: Linspace,
     times: Option<Vec<Real>>,
+    devices: &[usize],
 ) -> Result<OutputState, GPUDispatchError> {
     launch_kernel_named(
         "dop853_cpu_port",
@@ -235,39 +252,86 @@ pub fn launch_dop853_kernel(
         tolerance,
         linspace,
         times,
+        devices,
     )
 }
 
-fn launch_kernel_named(
+/// One device-resident kernel execution: its stream and the buffers that
+/// must outlive the in-flight kernel (dropped only after the gather phase
+/// synchronizes every stream).
+struct ChunkJob {
+    stream: Arc<CudaStream>,
+    _dev_state0: DeviceBuffer<f64>,
+    _dev_times: DeviceBuffer<f64>,
+    /// Full trajectory: `nt * count * DIM` floats, layout (step, particle, dim).
+    dev_out: DeviceBuffer<f64>,
+    /// Slice of `OutputState::data` that receives this chunk's final states.
+    final_range: std::ops::Range<usize>,
+    /// Offset/length of the last trajectory step inside `dev_out`.
+    final_src: std::ops::Range<usize>,
+}
+
+/// Per-device context cache: repeated dispatches skip driver re-init.
+/// Dispatch is single-threaded; contexts are reference counted so cached
+/// handles stay valid for the lifetime of the process.
+fn context_for(ordinal: usize) -> Result<Arc<CudaContext>, GPUDispatchError> {
+    static CONTEXTS: OnceLock<Mutex<HashMap<usize, Arc<CudaContext>>>> = OnceLock::new();
+    let cache = CONTEXTS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(ctx) = guard.get(&ordinal) {
+        return Ok(Arc::clone(ctx));
+    }
+    let ctx = CudaContext::new(ordinal)?;
+    guard.insert(ordinal, Arc::clone(&ctx));
+    Ok(ctx)
+}
+
+/// Splits `n` particles into at most `k` contiguous, balanced chunks
+/// (within one particle). Chunk `i` runs on device `devices[i]`.
+fn balanced_chunks(n: usize, k: usize) -> Vec<(usize, usize)> {
+    let k = k.clamp(1, n);
+    let base = n / k;
+    let rem = n % k;
+    let mut chunks = Vec::with_capacity(k);
+    let mut start = 0;
+    for i in 0..k {
+        let count = base + usize::from(i < rem);
+        chunks.push((start, count));
+        start += count;
+    }
+    chunks
+}
+
+/// Loads the embedded kernel image on `device` and enqueues one chunk of
+/// `count` particles starting at particle `start`. All failures are
+/// returned; nothing panics.
+#[allow(clippy::too_many_arguments)]
+fn enqueue_chunk(
     kernel_name: &str,
-    _model_component: &ModelComponent,
-    input_state: &InputState,
-    _flags: ModernFlags,
-    tolerance: Tolerance,
-    linspace: Linspace,
-    times: Option<Vec<Real>>,
-) -> Result<OutputState, GPUDispatchError> {
-    let ctx = CudaContext::new(0)?;
-    let stream = ctx.default_stream();
-
-    let times: Vec<Real> = times.unwrap_or_else(|| {
-        (0..linspace.steps)
-            .map(|i| {
-                linspace.start
-                    + (linspace.end - linspace.start) * (i as Real) / (linspace.steps as Real)
-            })
-            .collect()
-    });
-
-    let mut output_state = OutputState::new_zeroed();
-
+    host_state: &[f64],
+    start: usize,
+    count: usize,
+    times: &[f64],
+    rtol: Real,
+    atol: Real,
+    device: usize,
+) -> Result<ChunkJob, GPUDispatchError> {
+    let ctx = context_for(device)?;
     let module = ctx.load_module_from_image(KERNEL_IMAGE)?;
     let kernel = module.load_function(kernel_name)?;
-    let dev_state0 = DeviceBuffer::<f64>::from_host(&stream, &input_state.data)?;
-    let dev_times = DeviceBuffer::<f64>::from_host(&stream, &times)?;
-    let dev_state_out = DeviceBuffer::<f64>::zeroed(&stream, output_state.data.len())?;
+    let stream: Arc<CudaStream> = ctx.new_stream()?;
 
-    let (grid, block) = grid_size(input_state.num_particles, BLOCK_SIZE);
+    let in_range = start * INPUT_STATE_DIM..(start + count) * INPUT_STATE_DIM;
+    let dev_state0 = DeviceBuffer::<f64>::from_host(&stream, &host_state[in_range.clone()])?;
+    let dev_times = DeviceBuffer::<f64>::from_host(&stream, times)?;
+    // The kernel writes the full trajectory (step, particle, dim):
+    // nt * count * DIM floats (kernels/src/dopr54.rs documents the layout).
+    let nt = times.len();
+    let dev_out = DeviceBuffer::<f64>::zeroed(&stream, nt * count * INPUT_STATE_DIM)?;
+
+    let (grid, block) = grid_size(count, BLOCK_SIZE);
 
     // FIXME: hmmmm
     let dt_one_init = -9999.99f64;
@@ -277,11 +341,11 @@ fn launch_kernel_named(
     //    n: usize, nt: usize, rtol: f64, atol: f64, dt_one_init: f64)
     let mut state0_arg = dev_state0.cu_deviceptr() as *const f64;
     let mut times_arg = dev_times.cu_deviceptr() as *const f64;
-    let mut state_out_arg = dev_state_out.cu_deviceptr() as *mut f64;
-    let mut n_arg = input_state.num_particles;
+    let mut state_out_arg = dev_out.cu_deviceptr() as *mut f64;
+    let mut n_arg = count;
     let mut nt_arg = times.len();
-    let mut rtol_arg = tolerance.rtol;
-    let mut atol_arg = tolerance.atol;
+    let mut rtol_arg = rtol;
+    let mut atol_arg = atol;
     let mut dt_one_arg = dt_one_init;
 
     let mut params: [*mut std::os::raw::c_void; 8] = [
@@ -295,14 +359,117 @@ fn launch_kernel_named(
         std::ptr::addr_of_mut!(dt_one_arg).cast(),
     ];
 
+    // SAFETY: `kernel` belongs to `module`, loaded in `ctx`, which owns
+    // `stream`; every param points to a value of the size/alignment the
+    // kernel signature expects, valid until the launch call returns.
     unsafe {
         launch_kernel_on_stream(&kernel, (grid, 1, 1), (block, 1, 1), 0, &stream, &mut params)?;
     }
-    stream.synchronize()?;
 
-    output_state.data = dev_state_out.to_host_vec(&stream)?;
+    Ok(ChunkJob {
+        stream,
+        _dev_state0: dev_state0,
+        _dev_times: dev_times,
+        dev_out,
+        final_range: in_range,
+        final_src: (nt - 1) * count * INPUT_STATE_DIM..nt * count * INPUT_STATE_DIM,
+    })
+}
 
-    Ok(output_state)
+fn launch_kernel_named(
+    kernel_name: &str,
+    _model_component: &ModelComponent,
+    input_state: &InputState,
+    _flags: ModernFlags,
+    tolerance: Tolerance,
+    linspace: Linspace,
+    times: Option<Vec<Real>>,
+    devices: &[usize],
+) -> Result<OutputState, GPUDispatchError> {
+    let times: Vec<Real> = times.unwrap_or_else(|| {
+        (0..linspace.steps)
+            .map(|i| {
+                linspace.start
+                    + (linspace.end - linspace.start) * (i as Real) / (linspace.steps as Real)
+            })
+            .collect()
+    });
+
+    let mut output_state = OutputState::new_zeroed();
+    let n_total = input_state.num_particles;
+    if n_total == 0 {
+        return Ok(output_state); // nothing to integrate; skip the driver round-trip
+    }
+    // The state buffers are sized by MAX_PARTICLES; launching more than that
+    // would read/write out of bounds on the device.
+    if n_total > MAX_PARTICLES {
+        return Err(GPUDispatchError::TooManyParticles {
+            requested: n_total,
+            max: MAX_PARTICLES,
+        });
+    }
+    // The kernel stores every step in a fixed on-stack array of 1024 entries.
+    if linspace.steps > MAX_KERNEL_STEPS {
+        return Err(GPUDispatchError::TooManySteps {
+            requested: linspace.steps,
+            max: MAX_KERNEL_STEPS,
+        });
+    }
+
+    // One chunk per device: contiguous particle ranges, balanced within one
+    // particle. Particles are non-interacting, so per-particle results are
+    // identical to the single-device run.
+    let chunks = balanced_chunks(n_total, devices.len());
+
+    // Enqueue phase: uploads serialize (from_host syncs), but the launches
+    // are asynchronous and therefore execute concurrently across devices.
+    let mut jobs: Vec<ChunkJob> = Vec::with_capacity(chunks.len());
+    let mut failure: Option<GPUDispatchError> = None;
+    for (chunk_index, &(start, count)) in chunks.iter().enumerate() {
+        let device = devices[chunk_index % devices.len()];
+        match enqueue_chunk(
+            kernel_name,
+            &input_state.data,
+            start,
+            count,
+            &times,
+            tolerance.rtol,
+            tolerance.atol,
+            device,
+        ) {
+            Ok(job) => jobs.push(job),
+            // Remember the failure but do not return yet: dropping the
+            // already-enqueued chunks while their kernels are in flight
+            // would corrupt the context (sticky "illegal memory access").
+            Err(err) => {
+                failure = Some(err);
+                break;
+            }
+        }
+    }
+
+    // Gather phase: synchronize every successfully-enqueued stream BEFORE
+    // propagating any failure (buffer lifetime), then download each chunk
+    // into its disjoint slice of the output state.
+    for job in &jobs {
+        if let Err(err) = job.stream.synchronize() {
+            failure.get_or_insert(err.into());
+        }
+    }
+    for job in &jobs {
+        match job.dev_out.to_host_vec(&job.stream) {
+            Ok(trajectory) => output_state.data[job.final_range.clone()]
+                .copy_from_slice(&trajectory[job.final_src.clone()]),
+            Err(err) => {
+                failure.get_or_insert(err.into());
+            }
+        }
+    }
+    match failure {
+        Some(err) => Err(err),
+        None => Ok(output_state),
+    }
+
     // let mut f = File::create("dopr54_rust_out_gpu_yay.txt")?;
     // let err: c_int = 0;
     // writeln!(f, "err {}", err)?;
@@ -342,6 +509,7 @@ pub fn gpu_dispatch(
                     config.settings.tolerance,
                     config.settings.ts,
                     None,
+                    config.devices_slice(),
                 ),
                 Method::DOP853 => launch_dop853_kernel(
                     model_component,
@@ -350,6 +518,7 @@ pub fn gpu_dispatch(
                     config.settings.tolerance,
                     config.settings.ts,
                     None,
+                    config.devices_slice(),
                 ),
             }?;
         }

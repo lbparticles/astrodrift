@@ -84,6 +84,7 @@ class Config:
         flags: Modern | None = ...,
         ts: tuple[float, float, int] | Sequence[float] | None = ...,
         tolerance: tuple[float, float] | float | None = ...,
+        devices: Sequence[int] | None = ...,
     ) -> None: ...
 
     # run returns a list of arrays (each element is a Python list converted from Rust result)

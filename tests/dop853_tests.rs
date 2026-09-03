@@ -224,6 +224,7 @@ mod tests {
             config.settings.tolerance,
             config.settings.ts,
             Some(dump.t.clone()),
+            &[0], // single-GPU: match the device list the dispatch layer uses
         )
         .expect("kernel launch failed");
 

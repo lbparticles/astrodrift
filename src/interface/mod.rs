@@ -133,7 +133,10 @@ fn containers_to_array(mut v: Vec<Container>) -> [Option<Container>; 11] {
 #[pymethods]
 impl PyConfig {
     #[new]
-    #[pyo3(signature = (engine=None,method=None,variant=None,flags=None,ts=None,tolerance=None))]
+    #[pyo3(signature = (engine=None,method=None,variant=None,flags=None,ts=None,tolerance=None,devices=None))]
+    // `devices` carries an allow: the owned Vec is how pyo3 extracts the
+    // Python sequence; it is only read afterwards.
+    #[allow(clippy::needless_pass_by_value)]
     fn new(
         engine: Option<PyEngine>,
         method: Option<PyMethod>,
@@ -141,20 +144,26 @@ impl PyConfig {
         flags: Option<Modern>,
         ts: Option<BoundLinspace>,
         tolerance: Option<BoundTolerance>,
-    ) -> Self {
+        devices: Option<Vec<usize>>,
+    ) -> PyResult<Self> {
+        let mut inner = Config::new(
+            engine.unwrap_or_default().inner,
+            method.unwrap_or_default().inner,
+            variant.unwrap_or_default().inner,
+            flags.unwrap_or_default().inner,
+            ts.unwrap_or_default().0,
+            tolerance.unwrap_or_default().0,
+        );
+        if let Some(devs) = &devices {
+            inner.set_devices(devs)
+                .map_err(PyValueError::new_err)?;
+        }
         let thing = Self {
-            inner: Config::new(
-                engine.unwrap_or_default().inner,
-                method.unwrap_or_default().inner,
-                variant.unwrap_or_default().inner,
-                flags.unwrap_or_default().inner,
-                ts.unwrap_or_default().0,
-                tolerance.unwrap_or_default().0,
-            ),
+            inner,
             adjacency_matrix: AdjacencyMatrix(0),
         };
         println!("newpyconfig");
-        thing
+        Ok(thing)
     }
 
     #[pyo3(signature = (*args))]
