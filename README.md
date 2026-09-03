@@ -36,6 +36,20 @@ It is recommended to use the provided devcontainer which includes CUDA, LLVM, Ru
 
 See [Testing_Instructions.md](Testing_Instructions.md)
 
+# GIT HOOKS (JPL POWER-OF-TEN)
+
+Commits are gated by [lefthook](https://github.com/evilmartians/lefthook):
+zero compiler/clippy warnings (pedantic, `-D warnings`), a 500-SLOC-per-file
+cap (`tools/check_sloc.py`, exemptions in `tools/sloc_exclusions.txt`), and
+zero basedpyright diagnostics. Set it up with:
+
+```bash
+uv tool install lefthook
+lefthook install
+```
+
+See [tools/JPL10.md](tools/JPL10.md) for the full rule-to-enforcement mapping.
+
 # CONTRIBUTORS
 
 Jack Patterson

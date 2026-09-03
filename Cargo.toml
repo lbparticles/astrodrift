@@ -80,6 +80,13 @@ missing_safety_doc = "allow"
 module_name_repetitions = "allow"
 # PyO3 method params need Python-side names but are unused on the Rust side.
 used_underscore_binding = "allow"
+# --- JPL Power-of-Ten hard denials (tools/JPL10.md) ---
+exit = "deny"                      # no silent process termination in a library
+let_underscore_must_use = "deny"   # R7: every return value is inspected
+unreachable = "deny"               # R1: no unreachable code paths
+unimplemented = "deny"             # R10: no placeholder panics
+todo = "deny"                      # R10
+infinite_loop = "deny"             # R2: loop bounds must be derivable
 
 [features]
 # default = modern: cuda-oxide cubin (LLVM 21 only), wheel version 0.1.0

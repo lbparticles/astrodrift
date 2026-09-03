@@ -1,0 +1,25 @@
+# Lefthook git-hooks: JPL Power-of-Ten enforcement (see tools/JPL10.md).
+#
+# One-time setup:   uv tool install lefthook && lefthook install
+# Run manually:     lefthook run pre-commit
+#
+# These hooks complement the in-tree lint configuration
+# ([workspace.lints.clippy] in Cargo.toml, [tool.basedpyright] in
+# pyproject.toml); the hook is the gate that keeps the tree at zero warnings.
+
+pre-commit:
+  parallel: true
+  commands:
+    # Rule 10: zero warnings at the highest warning level (pedantic, denied).
+    jpl-rule-10-zero-warnings:
+      glob: "*.rs"
+      run: cargo clippy --workspace --all-targets -- -D warnings
+    # Rule 4 companion: no source file over 500 SLOC unless exempted
+    # in tools/sloc_exclusions.txt.
+    jpl-rule-4-sloc-cap:
+      glob: "{*.rs,*.py}"
+      run: python3 tools/check_sloc.py
+    # Python surface typed against the pyo3 stubs (pyo3 linting).
+    python-basedpyright:
+      glob: "{*.py,*.pyi}"
+      run: basedpyright
