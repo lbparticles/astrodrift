@@ -17,7 +17,7 @@ pub use engine::PyEngine;
 pub use flag::Modern;
 pub use method::PyMethod;
 pub use recipe::PyRecipe;
-use shared::{Linspace,Tolerance,Real,Model,Config,Index};
+use shared::{Linspace,Tolerance,Model,Config,Index};
 pub use variant::PyVariant;
 use crate::integrators::run_integration;
 use crate::state::InputFrame;
@@ -107,10 +107,9 @@ pub struct PyConfig {
 }
 
 impl PyConfig {
-    fn build_tree(&self,
-         containers: Vec<Box<Container>>) -> (Model, InputFrame) {
-        let input = vec_to_option_array_11(containers);
-        let (x,y) = self.adjacency_matrix.build(input);
+    fn build_tree(&self, containers: Vec<Container>) -> (Model, InputFrame) {
+        let input = containers_to_array(containers);
+        let (x,y) = self.adjacency_matrix.build(&input);
         // println!("{:?}",x);
         // println!("{:?}",y);
         (x,y)
@@ -118,19 +117,17 @@ impl PyConfig {
 }
 
 
-fn vec_to_option_array_11(mut v: Vec<Box<Container>>) -> Box<[Option<Box<Container>>; 11]> {
+fn containers_to_array(mut v: Vec<Container>) -> [Option<Container>; 11] {
     if v.len() > 11 {
         v.truncate(11);
     }
-    let mut out: Box<[Option<Box<Container>>; 11]> = Box::new([None,None,None,None,None,None,None,None,None,None,None]);
+    let mut out: [Option<Container>; 11] = std::array::from_fn(|_| None);
 
-    // Copy by cloning into out[i]
-    for (i, item) in v.iter().enumerate() {
+    for (i, item) in v.into_iter().enumerate() {
         // i is guaranteed < 11 due to truncate above
-        out[i] = Some(item.clone());
+        out[i] = Some(item);
     }
-    out 
-
+    out
 }
 
 #[pymethods]
@@ -168,15 +165,15 @@ impl PyConfig {
     ) 
     -> PyResult<Bound<'py, PyList>> 
     {
-        let mut containers: Vec<Box<Container>> = Vec::new();
+        let mut containers: Vec<Container> = Vec::new();
         for i in 0..args.len() {
             let obj = args.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
-            containers.push(Box::new(container.clone()));
+            containers.push(container.clone());
         }
         let (meal, istates) = self.build_tree(containers);
-        let results = run_integration(self.inner, meal, istates).unwrap();
-        let items: Vec<Py<PyAny>> = results.0
+        let results = run_integration(&self.inner, &meal, &istates);
+        let _items: Vec<Py<PyAny>> = results.0
             .iter()
             .filter_map(|opt| opt.as_ref())
             .map(|arr| {
@@ -192,6 +189,7 @@ impl PyConfig {
     }
 
     #[pyo3(signature = (node,*args))]
+    #[allow(clippy::needless_pass_by_value)] // pyo3 extracts pyclass args by value (clone-based)
     fn dependency<'py>(
         &mut self,
         _py: Python<'py>,
@@ -205,15 +203,15 @@ impl PyConfig {
             let container: PyRef<Container> = obj.extract()?;
             dep.push(container.dependency_label);
         }
-        for x in dep.iter() {
+        for &x in &dep {
             self.adjacency_matrix
-                .set(x.clone(), node.dependency_label, true);
+                .set(x, node.dependency_label, true);
         }
         Ok(())
     }
     #[pyo3(signature = ())]
-    fn info(&self) -> () {
-        println!("{:?}", self);
+    fn info(&self) {
+        println!("{self:?}");
     }
 }
 

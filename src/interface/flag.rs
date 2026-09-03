@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Default, Clone)]
 pub struct Modern {
     pub inner: shared::ModernFlags,
@@ -21,9 +21,7 @@ impl Modern {
     }
 
     fn has(&self, value: shared::Index) -> bool {
-        shared::ModernFlags::from_bits(value)
-            .map(|f| self.inner.contains(f))
-            .unwrap_or(false)
+        shared::ModernFlags::from_bits(value).is_some_and(|f| self.inner.contains(f))
     }
 
     fn bits(&self) -> shared::Index {

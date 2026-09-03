@@ -11,6 +11,9 @@ name = "drift"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [lib]
 name = "drift_rs"
 crate-type = ["rlib", "cdylib"]
@@ -44,6 +47,39 @@ name = "drift"
 
 [workspace]
 members = ["shared", "."]
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# --- Curated allowances for this codebase (justified, not blanket silence) ---
+# Numerics fidelity: constants are transliterated verbatim from the DOPRI54 /
+# DOP853 reference sources; digit grouping / truncation churns diffs and
+# invites transcription bugs.
+unreadable_literal = "allow"
+excessive_precision = "allow"
+# Reference-style signatures: transliterated Fortran/C integrators keep their
+# pointer walks, dimensions and argument counts for reviewability.
+too_many_arguments = "allow"
+similar_names = "allow"
+many_single_char_names = "allow"
+# CUDA/PyO3 FFI: c_int dims -> usize indexing, kernel-arg arrays built from
+# borrows, and deliberate hash/address truncation.
+cast_sign_loss = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+borrow_as_ptr = "allow"
+ptr_as_ptr = "allow"
+ptr_cast_constness = "allow"
+# Device `force` hot path relies on inlining for kernel codegen.
+inline_always = "allow"
+# Doc churn on PyO3 methods / internal Result plumbing in research code.
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+missing_safety_doc = "allow"
+module_name_repetitions = "allow"
+# PyO3 method params need Python-side names but are unused on the Rust side.
+used_underscore_binding = "allow"
 
 [features]
 # default = modern: cuda-oxide cubin (LLVM 21 only), wheel version 0.1.0

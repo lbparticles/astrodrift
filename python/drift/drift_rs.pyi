@@ -1,16 +1,10 @@
 from __future__ import annotations
+
 from enum import Flag
+from typing import Sequence, override
+
+import numpy as np
 import numpy.typing as npt
-from typing import (
-    Any,
-    Iterable,
-    List,
-    Optional,
-    Sequence,
-    Tuple,
-    overload,
-    Union,
-)
 
 # Public classes exposed by m.add_class
 # Note: These are runtime-provided by the compiled extension; this is a stub only.
@@ -59,6 +53,7 @@ class Modern:
     def add(self, value: int) -> None: ...
     def has(self, value: int) -> bool: ...
     def bits(self) -> int: ...
+    @override
     def __repr__(self) -> str: ...
 
 
@@ -76,10 +71,8 @@ class ModernFlag(Flag):
 class Container:
     # Public attributes (as seen in your Rust class)
     recipe: Recipe | None
-    state: Any | None  # shared::InputState – treat as opaque
+    state: object | None  # shared::InputState – treat as opaque
     dependency_label: int  # shared::Index
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None: ...
 
 
 class Config:
@@ -101,10 +94,10 @@ class Config:
 
 
 # Module-level functions
-def test_group(istate: "npt.NDArray[Any] | Sequence[float]") -> Container: ...
+def test_group(istate: npt.NDArray[np.float64] | Sequence[float]) -> Container: ...
 def part_group(
     potential: Potential,
-    istate: "npt.NDArray[Any] | Sequence[float]",
+    istate: npt.NDArray[np.float64] | Sequence[float],
 ) -> Container: ...
 def bg_feature(potential: Potential) -> Container: ...
 

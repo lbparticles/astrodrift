@@ -1,12 +1,8 @@
 use cuda_core::{launch_kernel_on_stream, CudaContext, DeviceBuffer};
 // use crate::tables::build_sphericalcutoff_force_table;
-use pyo3::prelude::*;
-use shared::{
-    Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance, MAX_STATES,
-};
-use std::array;
+use shared::{Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance};
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader};
 use std::os::raw::{c_double, c_int};
 use std::path::Path;
 use thiserror::Error;
@@ -24,16 +20,11 @@ static KERNEL_IMAGE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kernels.p
 #[cfg(not(feature = "legacy"))]
 static KERNEL_IMAGE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kernels.cubin"));
 
-fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
-    res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
-}
-
 const BLOCK_SIZE: u32 = 128;
-const NF64: usize = 6;
 
 fn grid_size(n: usize, block: u32) -> (u32, u32) {
-    let blocks = ((n as u32) + block - 1) / block;
-    (blocks, block)
+    let blocks = n.div_ceil(block as usize);
+    (blocks as u32, block)
 }
 
 pub fn gather_states(
@@ -62,8 +53,8 @@ pub fn gather_states(
 pub fn gather_states_nested_extended(
     src: &[f64],
     indices: &[Vec<isize>],
-    n_particles: usize,
-    n_divisions: usize,
+    _n_particles: usize,
+    _n_divisions: usize,
 ) -> Vec<Vec<f64>> {
     const STATE_LEN_IN: usize = 6; // from the source
     const STATE_LEN_OUT: usize = 9; // desired output length per state
@@ -88,6 +79,10 @@ pub fn gather_states_nested_extended(
 
     all
 }
+// Diagnostics helper: parses the text dump format galpy's integrators emit
+// (used when comparing GPU results against the reference implementation).
+// Currently only referenced by debugging code kept commented out below.
+#[allow(dead_code)]
 struct DumpData {
     dim: c_int,
     nt: c_int,
@@ -100,6 +95,8 @@ struct DumpData {
     args: Vec<c_double>, // may be empty
 }
 
+/// See [`DumpData`].
+#[allow(dead_code)]
 fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
@@ -117,10 +114,7 @@ fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
     for line_res in reader.lines() {
         let line = line_res?;
         let mut parts = line.split_whitespace();
-        let key = match parts.next() {
-            Some(k) => k,
-            None => continue,
-        };
+        let Some(key) = parts.next() else { continue };
         match key {
             "dim" => {
                 if let Some(v) = parts.next() {
@@ -235,9 +229,9 @@ pub fn launch_dop853_kernel(
 
 fn launch_kernel_named(
     kernel_name: &str,
-    model_component: &ModelComponent,
+    _model_component: &ModelComponent,
     input_state: &InputState,
-    flags: ModernFlags,
+    _flags: ModernFlags,
     tolerance: Tolerance,
     linspace: Linspace,
     times: Option<Vec<Real>>,
@@ -280,14 +274,14 @@ fn launch_kernel_named(
     let mut dt_one_arg = dt_one_init;
 
     let mut params: [*mut std::os::raw::c_void; 8] = [
-        (&mut state0_arg as *mut *const f64).cast(),
-        (&mut times_arg as *mut *const f64).cast(),
-        (&mut state_out_arg as *mut *mut f64).cast(),
-        (&mut n_arg as *mut usize).cast(),
-        (&mut nt_arg as *mut usize).cast(),
-        (&mut rtol_arg as *mut f64).cast(),
-        (&mut atol_arg as *mut f64).cast(),
-        (&mut dt_one_arg as *mut f64).cast(),
+        std::ptr::addr_of_mut!(state0_arg).cast(),
+        std::ptr::addr_of_mut!(times_arg).cast(),
+        std::ptr::addr_of_mut!(state_out_arg).cast(),
+        std::ptr::addr_of_mut!(n_arg).cast(),
+        std::ptr::addr_of_mut!(nt_arg).cast(),
+        std::ptr::addr_of_mut!(rtol_arg).cast(),
+        std::ptr::addr_of_mut!(atol_arg).cast(),
+        std::ptr::addr_of_mut!(dt_one_arg).cast(),
     ];
 
     unsafe {
@@ -323,11 +317,11 @@ fn launch_kernel_named(
 }
 
 pub fn gpu_dispatch(
-    config: Config,
-    model: Model,
-    input_frame: InputFrame,
+    config: &Config,
+    model: &Model,
+    input_frame: &InputFrame,
 ) -> Result<OutputFrame, GPUDispatchError> {
-    for (model_component_opt, input_state_opt) in model.into_iter().zip(input_frame.into_iter()) {
+    for (model_component_opt, input_state_opt) in model.into_iter().zip(input_frame) {
         if let (Some(model_component), Some(input_state)) = (model_component_opt, input_state_opt) {
             match config.method {
                 Method::DOPR54 => launch_kernel(

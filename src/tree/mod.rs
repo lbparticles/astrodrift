@@ -1,7 +1,7 @@
 use core::fmt;
 
 use crate::{interface::Container, state::{InputFrame, InputState}};
-use shared::{Model,MAX_MODEL_COMPONENTS,ModelComponent,Recipe,MAX_RECIPES,MAX_STATES};
+use shared::{Model,MAX_MODEL_COMPONENTS,Recipe,MAX_RECIPES,MAX_STATES};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AdjacencyMatrix(pub u128);
@@ -55,27 +55,25 @@ impl AdjacencyMatrix {
 
     // Square over boolean semiring: C = A ⊙ A (OR/AND).
     // For each (i, j): c[i,j] = any k s.t. A[i,k] & A[k,j].
+    #[must_use]
     pub fn mul_self(&self) -> AdjacencyMatrix {
-        let n = Self::N;
-
         // Precompute row bitsets: row[i] is 11-bit word for row i
         let mut row_bits: [u16; 11] = [0; 11];
-        for i in 0..n {
-            row_bits[i] = (self.row_bits(i) as u16) & 0x7FF;
+        for (i, rb) in row_bits.iter_mut().enumerate() {
+            *rb = (self.row_bits(i) as u16) & 0x7FF;
         }
 
         // Precompute column-as-rows masks: col_rows[j] has bit k set iff A[k, j] == 1
         let mut col_rows: [u16; 11] = [0; 11];
-        for j in 0..n {
-            col_rows[j] = self.column_rows_mask(j); // 11-bit
+        for (j, cr) in col_rows.iter_mut().enumerate() {
+            *cr = self.column_rows_mask(j); // 11-bit
         }
 
         // For each pair (i, j), c[i,j] = (row_bits[i] & col_rows[j]) != 0
         let mut out: u128 = 0;
-        for i in 0..n {
-            for j in 0..n {
-                let has = (row_bits[i] & col_rows[j]) != 0;
-                if has {
+        for (i, &rb) in row_bits.iter().enumerate() {
+            for (j, &cr) in col_rows.iter().enumerate() {
+                if (rb & cr) != 0 {
                     out |= 1u128 << Self::idx(i, j);
                 }
             }
@@ -104,9 +102,8 @@ impl AdjacencyMatrix {
         }
         cnt
     }
-    pub fn last_true_column_power(&self, cap: usize) 
-    -> [u8; 11] 
-    {
+    #[must_use]
+    pub fn last_true_column_power(&self, cap: usize) -> [u8; 11] {
         // assert!(cap > 0 && cap <= 255, "cap must be in 1..=255");
         let n = Self::N;
         let mut last: [u8; 11] = [0; 11];
@@ -114,20 +111,18 @@ impl AdjacencyMatrix {
         let mut power = *self; // A^1
         for p in 1..=cap {
             // For each column j, check if any entry in column j is true in A^p
-            for j in 0..n {
+            for (j, l) in last.iter_mut().enumerate() {
                 // build a quick "any bit in column j" test
                 // We can scan rows, since n=11 this is cheap.
                 let mut any = false;
-                let mut r = 0;
-                while r < n {
+                for r in 0..n {
                     if power.get(r, j) {
                         any = true;
                         break;
                     }
-                    r += 1;
                 }
                 if any {
-                    last[j] = p as u8;
+                    *l = p as u8;
                 }
             }
 
@@ -154,25 +149,24 @@ impl AdjacencyMatrix {
     }
 
     // General boolean matrix multiply: C = A · B over OR/AND
+    #[must_use]
     pub fn mul_bool(&self, rhs: &AdjacencyMatrix) -> AdjacencyMatrix {
-        let n = Self::N;
-
         // Row i of A as 11-bit masks
         let mut a_rows: [u16; 11] = [0; 11];
-        for i in 0..n {
-            a_rows[i] = (self.row_bits(i) as u16) & 0x7FF;
+        for (i, ar) in a_rows.iter_mut().enumerate() {
+            *ar = (self.row_bits(i) as u16) & 0x7FF;
         }
 
         // For B, precompute column-as-rows masks: for each column j, bit k is B[k, j]
         let mut b_col_rows: [u16; 11] = [0; 11];
-        for j in 0..n {
-            b_col_rows[j] = rhs.column_rows_mask(j);
+        for (j, bcr) in b_col_rows.iter_mut().enumerate() {
+            *bcr = rhs.column_rows_mask(j);
         }
 
         let mut out: u128 = 0;
-        for i in 0..n {
-            for j in 0..n {
-                if (a_rows[i] & b_col_rows[j]) != 0 {
+        for (i, &ar) in a_rows.iter().enumerate() {
+            for (j, &bcr) in b_col_rows.iter().enumerate() {
+                if (ar & bcr) != 0 {
                     out |= 1u128 << Self::idx(i, j);
                 }
             }
@@ -199,17 +193,14 @@ impl AdjacencyMatrix {
         }
         true
     }
-    pub fn build(
-        &self,
-        containers: Box<[Option<Box<Container>>; 11]>,
-    ) -> (Model, InputFrame) {
+    pub fn build(&self, containers: &[Option<Container>; 11]) -> (Model, InputFrame) {
         let last = self.last_true_column_power(11);
 
         let mut with_deps: Vec<usize> = (0..11).filter(|&v| last[v] >= 1).collect();
         with_deps.sort_by_key(|&v| (last[v], v));
 
         let mut zeros: Vec<usize> = (0..11).filter(|&v| last[v] == 0).collect();
-        zeros.sort(); // stable deterministic tail
+        zeros.sort_unstable(); // deterministic tail
 
         let mut order: [usize; 11] = [0; 11];
         let split = with_deps.len();
@@ -239,21 +230,20 @@ impl AdjacencyMatrix {
 
             // Input state from v
             if let Some(c) = containers[v].as_ref() {
-                istates_by_stage[s] = c.state.clone();
+                c.state.clone_into(&mut istates_by_stage[s]);
             }
 
             // Build the per-upstream array for this stage
             let mut arr_k: [Option<Recipe>; 11] = std::array::from_fn(|_| None);
             for k in 0..11 {
-                if self.get(k, v) {
-                    if let Some(src) = containers[k].as_ref() {
-                        if let Some(py_recipe) = src.recipe.as_ref() {
-                            arr_k[k] = Some(py_recipe.inner.clone());
-                        }
-                    }
+                if self.get(k, v)
+                    && let Some(src) = containers[k].as_ref()
+                    && let Some(py_recipe) = src.recipe.as_ref()
+                {
+                    arr_k[k] = Some(py_recipe.inner);
                 }
             }
-            if arr_k.iter().any(|x| x.is_some()) {
+            if arr_k.iter().any(Option::is_some) {
                 meal_by_stage[s] = Some(arr_k);
             }
         }

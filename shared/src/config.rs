@@ -1,9 +1,7 @@
 use core::f64::consts::PI;
-use core::array;
 
-use crate::{ModernFlags,Model};
-use crate::{MAX_STATES,MIN_RTOL,MIN_ATOL,Real,Index};
-use crate::potential::Potential;
+use crate::ModernFlags;
+use crate::{MIN_RTOL,MIN_ATOL,Real,Index};
 
 
 #[derive(Debug, Clone, Copy, Default)]

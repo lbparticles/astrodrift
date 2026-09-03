@@ -1,13 +1,15 @@
-use std::array;
 
-use shared::{Config, Model, MAX_STATES};
+use shared::{Config, Model};
 
-use crate::{dispatch::gpu::GPUDispatchError, state::{InputFrame, OutputFrame, OutputState}};
+use crate::{dispatch::gpu::GPUDispatchError, state::{InputFrame, OutputFrame}};
 
+/// Placeholder CPU dispatch: mirrors [`super::gpu::gpu_dispatch`] so callers
+/// can switch engines without changing the call shape. Always succeeds.
+#[allow(clippy::unnecessary_wraps)]
 pub fn cpu_dispatch(
-    config: Config, 
-    model: Model, 
-    arrays: InputFrame
+    _config: &Config, 
+    _model: &Model, 
+    _arrays: &InputFrame
 ) -> Result<OutputFrame, GPUDispatchError> {
 
 

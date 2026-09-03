@@ -1,3 +1,6 @@
+// Transliterated from the reference DOPRI5(4) integrator; the monolithic
+// functions and pointer-walking style mirror the original 1:1 on purpose.
+#![allow(clippy::too_many_lines)]
 use libc;
 // use libm::{ceil, exp, fabs, fmax, log, pow, sqrt};
 use libc::{c_double, c_int};
@@ -32,18 +35,18 @@ pub type FuncPtr = Option<
         q: *mut c_double,
         a: *mut c_double,
         nargs: c_int,
-        potentialArgs: *mut potentialArg,
+        potential_args: *mut potentialArg,
     ),
 >;
 
 #[inline]
-unsafe fn save_rk(dim: c_int, mut yo: *mut c_double, mut result: *mut c_double) {
+unsafe fn save_rk(dim: c_int, mut yo: *mut c_double, mut result: *mut c_double) { unsafe {
     for _ in 0..dim {
         *result = *yo;
         yo = yo.add(1);
         result = result.add(1);
     }
-}
+}}
 
 unsafe fn rk4_onestep(
     func: FuncPtr,
@@ -53,16 +56,16 @@ unsafe fn rk4_onestep(
     tn: c_double,
     dt: c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    potential_args: *mut potentialArg,
     ynk: *mut c_double,
     a: *mut c_double,
-) {
+) { unsafe {
     let f = func.expect("rk4_onestep: func pointer was null");
 
     // int ii;
     // //calculate k1
-    // func(tn,yn,a,nargs,potentialArgs);
-    f(tn, yn, a, nargs, potentialArgs);
+    // func(tn,yn,a,nargs,potential_args);
+    f(tn, yn, a, nargs, potential_args);
 
     // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 6.;
     for i in 0..dim {
@@ -77,8 +80,8 @@ unsafe fn rk4_onestep(
     }
 
     // //calculate k2
-    // func(tn+dt/2.,ynk,a,nargs,potentialArgs);
-    f(tn + dt / 2.0, ynk, a, nargs, potentialArgs);
+    // func(tn+dt/2.,ynk,a,nargs,potential_args);
+    f(tn + dt / 2.0, ynk, a, nargs, potential_args);
 
     // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 3.;
     for i in 0..dim {
@@ -93,8 +96,8 @@ unsafe fn rk4_onestep(
     }
 
     // //calculate k3
-    // func(tn+dt/2.,ynk,a,nargs,potentialArgs);
-    f(tn + dt / 2.0, ynk, a, nargs, potentialArgs);
+    // func(tn+dt/2.,ynk,a,nargs,potential_args);
+    f(tn + dt / 2.0, ynk, a, nargs, potential_args);
 
     // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 3.;
     for i in 0..dim {
@@ -109,8 +112,8 @@ unsafe fn rk4_onestep(
     }
 
     // //calculate k4
-    // func(tn+dt,ynk,a,nargs,potentialArgs);
-    f(tn + dt, ynk, a, nargs, potentialArgs);
+    // func(tn+dt,ynk,a,nargs,potential_args);
+    f(tn + dt, ynk, a, nargs, potential_args);
 
     // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 6.;
     for i in 0..dim {
@@ -118,7 +121,7 @@ unsafe fn rk4_onestep(
         *yn1.add(idx) += dt * *a.add(idx) / 6.0;
     }
     // yn1 is new value
-}
+}}
 
 unsafe fn rk4_estimate_step(
     func: FuncPtr,
@@ -127,10 +130,10 @@ unsafe fn rk4_estimate_step(
     mut dt: c_double,
     t: *mut c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    potential_args: *mut potentialArg,
     rtol: c_double,
     atol: c_double,
-) -> c_double {
+) -> c_double { unsafe {
     // //return dt;
 
     // //scalars
@@ -151,7 +154,7 @@ unsafe fn rk4_estimate_step(
     let a = libc::malloc(sz) as *mut c_double;
     let scale = libc::malloc(sz) as *mut c_double;
 
-    let mut ii: c_int;
+    let _ii: c_int;
 
     // //find maximum values
     // max_val= log(fabs(*yo));
@@ -199,11 +202,11 @@ unsafe fn rk4_estimate_step(
 
         // //do one step with step dt, and one with step dt/2.
         // //dt
-        // rk4_onestep(func,dim,yn,y1,to,dt,nargs,potentialArgs,ynk,a);
-        rk4_onestep(func, dim, yn, y1, to, dt, nargs, potentialArgs, ynk, a);
+        // rk4_onestep(func,dim,yn,y1,to,dt,nargs,potential_args,ynk,a);
+        rk4_onestep(func, dim, yn, y1, to, dt, nargs, potential_args, ynk, a);
 
         // //dt/2
-        // rk4_onestep(func,dim,yn,y21,to,dt/2.,nargs,potentialArgs,ynk,a);
+        // rk4_onestep(func,dim,yn,y21,to,dt/2.,nargs,potential_args,ynk,a);
         rk4_onestep(
             func,
             dim,
@@ -212,7 +215,7 @@ unsafe fn rk4_estimate_step(
             to,
             dt / 2.0,
             nargs,
-            potentialArgs,
+            potential_args,
             ynk,
             a,
         );
@@ -222,7 +225,7 @@ unsafe fn rk4_estimate_step(
             *y2.add(i as usize) = *y21.add(i as usize);
         }
 
-        // rk4_onestep(func,dim,y21,y2,to+dt/2.,dt/2.,nargs,potentialArgs,ynk,a);
+        // rk4_onestep(func,dim,y21,y2,to+dt/2.,dt/2.,nargs,potential_args,ynk,a);
         rk4_onestep(
             func,
             dim,
@@ -231,7 +234,7 @@ unsafe fn rk4_estimate_step(
             to + dt / 2.0,
             dt / 2.0,
             nargs,
-            potentialArgs,
+            potential_args,
             ynk,
             a,
         );
@@ -250,7 +253,7 @@ unsafe fn rk4_estimate_step(
         }
 
         // err= sqrt(err/dim);
-        err = sqrt(err / (dim as c_double));
+        err = sqrt(err / f64::from(dim));
 
         // if ( ceil(pow(err,1./5.)) > 1.
         //      && init_dt / dt * ceil(pow(err,1./5.)) < _MAX_DT_REDUCE)
@@ -278,7 +281,7 @@ unsafe fn rk4_estimate_step(
     // //printf("%f\n",dt);
     // //fflush(stdout);
     dt
-}
+}}
 
 unsafe fn dopr54_onestep(
     func: FuncPtr,
@@ -288,7 +291,7 @@ unsafe fn dopr54_onestep(
     to: *mut c_double,
     dt_one: *mut c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    potential_args: *mut potentialArg,
     rtol: c_double,
     atol: c_double,
     a1: *mut c_double,
@@ -303,7 +306,7 @@ unsafe fn dopr54_onestep(
     yerr: *mut c_double,
     ynk: *mut c_double,
     err: *mut c_int,
-) {
+) { unsafe {
     // double init_dt_one= *dt_one;
     let init_dt_one: c_double = *dt_one;
     // double init_to= *to;
@@ -313,6 +316,9 @@ unsafe fn dopr54_onestep(
 
     // while ( ( dt >= 0. && *to < (init_to+dt))
     //         || ( dt < 0. && *to > (init_to+dt)) ) {
+    // `*to` is reassigned through the raw pointer inside the loop body; the
+    // literal transliteration of the reference loop trips clippy's static view.
+    #[allow(clippy::while_immutable_condition)]
     while (dt >= 0.0 && *to < init_to + dt) || (dt < 0.0 && *to > init_to + dt) {
         // accept= 0;
         accept = 0;
@@ -342,7 +348,7 @@ unsafe fn dopr54_onestep(
             *dt_one = init_to + dt - *to;
         }
 
-        // *dt_one= dopr54_actualstep(func,dim,yo,*dt_one,to,nargs,potentialArgs,
+        // *dt_one= dopr54_actualstep(func,dim,yo,*dt_one,to,nargs,potential_args,
         //                                 rtol,atol,
         //                                 a1,a,k1,k2,k3,k4,k5,k6,yn1,yerr,ynk,
         //                                 accept);
@@ -353,7 +359,7 @@ unsafe fn dopr54_onestep(
             *dt_one,
             to,
             nargs,
-            potentialArgs,
+            potential_args,
             rtol,
             atol,
             a1,
@@ -370,7 +376,7 @@ unsafe fn dopr54_onestep(
             accept,
         );
     }
-}
+}}
 
 unsafe fn dopr54_actualstep(
     func: FuncPtr,
@@ -379,7 +385,7 @@ unsafe fn dopr54_actualstep(
     dt: c_double,
     to: *mut c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    potential_args: *mut potentialArg,
     rtol: c_double,
     atol: c_double,
     a1: *mut c_double,
@@ -394,7 +400,7 @@ unsafe fn dopr54_actualstep(
     yerr: *mut c_double,
     ynk: *mut c_double,
     accept: u8,
-) -> c_double {
+) -> c_double { unsafe {
     // constant
     const C2: c_double = 0.2;
     const C3: c_double = 0.3;
@@ -455,7 +461,7 @@ unsafe fn dopr54_actualstep(
     }
 
     // calculate k2
-    f(*to + C2 * dt, ynk, a, nargs, potentialArgs);
+    f(*to + C2 * dt, ynk, a, nargs, potential_args);
     for i in 0..dim {
         let idx = i as usize;
         *k2.add(idx) = dt * *a.add(idx);
@@ -463,7 +469,7 @@ unsafe fn dopr54_actualstep(
     }
 
     // calculate k3
-    f(*to + C3 * dt, ynk, a, nargs, potentialArgs);
+    f(*to + C3 * dt, ynk, a, nargs, potential_args);
     for i in 0..dim {
         let idx = i as usize;
         *k3.add(idx) = dt * *a.add(idx);
@@ -473,7 +479,7 @@ unsafe fn dopr54_actualstep(
     }
 
     // calculate k4
-    f(*to + C4 * dt, ynk, a, nargs, potentialArgs);
+    f(*to + C4 * dt, ynk, a, nargs, potential_args);
     for i in 0..dim {
         let idx = i as usize;
         *k4.add(idx) = dt * *a.add(idx);
@@ -487,7 +493,7 @@ unsafe fn dopr54_actualstep(
     }
 
     // calculate k5
-    f(*to + C5 * dt, ynk, a, nargs, potentialArgs);
+    f(*to + C5 * dt, ynk, a, nargs, potential_args);
     for i in 0..dim {
         let idx = i as usize;
         *k5.add(idx) = dt * *a.add(idx);
@@ -502,7 +508,7 @@ unsafe fn dopr54_actualstep(
     }
 
     // calculate k6
-    f(*to + dt, ynk, a, nargs, potentialArgs);
+    f(*to + dt, ynk, a, nargs, potential_args);
     for i in 0..dim {
         let idx = i as usize;
         *k6.add(idx) = dt * *a.add(idx);
@@ -517,7 +523,7 @@ unsafe fn dopr54_actualstep(
     }
 
     // calculate k7
-    f(*to + dt, ynk, a, nargs, potentialArgs);
+    f(*to + dt, ynk, a, nargs, potential_args);
     for i in 0..dim {
         let idx = i as usize;
         *yerr.add(idx) += BE7 * dt * *a.add(idx);
@@ -543,20 +549,14 @@ unsafe fn dopr54_actualstep(
         let idx = i as usize;
         err += exp(2.0 * log(fabs(*yerr.add(idx))) - 2.0 * s);
     }
-    err = sqrt(err / (dim as c_double));
+    err = sqrt(err / f64::from(dim));
 
     let corr: c_double = 0.85 * pow(err, -0.2);
 
     // Round to the nearest power of two
-    let mut powertwo: c_double = round(log(corr) / log(2.0));
-    if powertwo > MAX_STEPCHANGE_POWERTWO {
-        powertwo = MAX_STEPCHANGE_POWERTWO;
-    } else if powertwo < MIN_STEPCHANGE_POWERTWO {
-        powertwo = MIN_STEPCHANGE_POWERTWO;
-    }
+    let powertwo: c_double = round(log(corr) / log(2.0)).clamp(MIN_STEPCHANGE_POWERTWO, MAX_STEPCHANGE_POWERTWO);
 
     // accept or reject
-    let dt_one: c_double;
     if powertwo >= 0.0 || accept != 0 {
         // accept, if the step is the smallest possible, always accept
         for i in 0..dim {
@@ -567,9 +567,8 @@ unsafe fn dopr54_actualstep(
         *to += dt;
     }
 
-    dt_one = dt * pow(2.0, powertwo);
-    dt_one
-}
+    dt * pow(2.0, powertwo)
+}}
 
 // #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dopr54(
@@ -580,12 +579,12 @@ pub unsafe extern "C" fn dopr54(
     dt_one: c_double,
     t: *mut c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    potential_args: *mut potentialArg,
     rtol: c_double,
     atol: c_double,
     result: *mut c_double,
     err: *mut c_int,
-) {
+) { unsafe {
     // //Declare and initialize
     let dim_usize = dim as usize;
     let sz = dim_usize * std::mem::size_of::<c_double>();
@@ -603,7 +602,7 @@ pub unsafe extern "C" fn dopr54(
     let yerr = libc::malloc(sz) as *mut c_double;
     let ynk = libc::malloc(sz) as *mut c_double;
 
-    let mut ii: c_int;
+    let _ii: c_int;
 
     save_rk(dim, yo, result);
 
@@ -615,10 +614,13 @@ pub unsafe extern "C" fn dopr54(
         *yn.add(i as usize) = *yo.add(i as usize);
     }
 
-    let mut dt: c_double = *t.add(1) - *t;
+    let dt: c_double = *t.add(1) - *t;
     let mut dt_one = dt_one;
+    // Exact comparison intentional: -9999.99 is the galpy sentinel for
+    // "no initial step size provided", not a numeric equality test.
+    #[allow(clippy::float_cmp)]
     if dt_one == -9999.99 {
-        dt_one = rk4_estimate_step(func, dim, yo, dt, t, nargs, potentialArgs, rtol, atol);
+        dt_one = rk4_estimate_step(func, dim, yo, dt, t, nargs, potential_args, rtol, atol);
     }
 
     // //Integrate the system
@@ -626,15 +628,15 @@ pub unsafe extern "C" fn dopr54(
     let mut to: c_double = *t;
 
     // //set up a1
-    // func(to,yn,a1,nargs,potentialArgs);
+    // func(to,yn,a1,nargs,potential_args);
     let f = func.expect("dopr54: func pointer was null");
-    f(to, yn, a1, nargs, potentialArgs);
+    f(to, yn, a1, nargs, potential_args);
 
     for _ii in 0..(nt - 1) {
         // if ( interrupted ) { ... }  // not yet ported; see note above
 
         // dopr54_onestep(func,dim,yn,dt,&to,&dt_one,
-        //                     nargs,potentialArgs,rtol,atol,
+        //                     nargs,potential_args,rtol,atol,
         //                     a1,a,k1,k2,k3,k4,k5,k6,yn1,yerr,ynk,err);
         dopr54_onestep(
             func,
@@ -644,7 +646,7 @@ pub unsafe extern "C" fn dopr54(
             &mut to,
             &mut dt_one,
             nargs,
-            potentialArgs,
+            potential_args,
             rtol,
             atol,
             a1,
@@ -680,4 +682,4 @@ pub unsafe extern "C" fn dopr54(
     libc::free(yn1 as *mut libc::c_void);
     libc::free(yerr as *mut libc::c_void);
     libc::free(ynk as *mut libc::c_void);
-}
+}}

@@ -302,6 +302,8 @@ mod tests {
         t: Vec<c_double>,
         yo: Vec<c_double>,
         nargs: c_int,
+        // Only asserted by the galpy-kepler-reference fixture suite.
+        #[cfg_attr(not(feature = "galpy-kepler-reference"), allow(dead_code))]
         expected_state_bits: Vec<u64>,
     }
 
@@ -381,12 +383,12 @@ mod tests {
 
             assert_eq!(
                 actual_bits, expected_bits,
-                "{case_name}: mismatch in tail element {i}: got 0x{:016x}, expected 0x{:016x}",
-                actual_bits, expected_bits
+                "{case_name}: mismatch in tail element {i}: got 0x{actual_bits:016x}, expected 0x{expected_bits:016x}"
             );
         }
     }
 
+    #[cfg_attr(not(feature = "galpy-kepler-reference"), allow(dead_code))]
     fn assert_all_state_bits(case_name: &str, result: &[c_double], init: &DumpData) {
         assert_eq!(
             init.expected_state_bits.len(),
@@ -419,6 +421,7 @@ mod tests {
         parse_dopr54_dump_text(&text)
     }
 
+    #[allow(clippy::unnecessary_wraps)] // io::Result kept for parity with parse_dopr54_dump
     fn parse_dopr54_dump_text(text: &str) -> io::Result<DumpData> {
         let mut dim: Option<c_int> = None;
         let mut nt: Option<c_int> = None;
@@ -433,10 +436,7 @@ mod tests {
 
         for line in text.lines() {
             let mut parts = line.split_whitespace();
-            let key = match parts.next() {
-                Some(k) => k,
-                None => continue,
-            };
+            let Some(key) = parts.next() else { continue };
             match key {
                 "dim" => {
                     if let Some(v) = parts.next() {
@@ -496,7 +496,6 @@ mod tests {
                         expected_state_bits.push(parse_hex_bits(v));
                     }
                 }
-                "states_hex" => {}
                 _ => {}
             }
         }
@@ -516,6 +515,6 @@ mod tests {
 
     fn parse_hex_bits(s: &str) -> u64 {
         u64::from_str_radix(s, 16)
-            .unwrap_or_else(|e| panic!("failed to parse hex f64 '{}': {}", s, e))
+            .unwrap_or_else(|e| panic!("failed to parse hex f64 '{s}': {e}"))
     }
 }

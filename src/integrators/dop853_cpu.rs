@@ -1,3 +1,6 @@
+// Transliterated from the reference DOP853 integrator; the monolithic
+// functions mirror the original control flow 1:1 on purpose.
+#![allow(clippy::too_many_lines)]
 use libc::{c_double, c_int};
 
 #[repr(C)]
@@ -479,7 +482,7 @@ pub unsafe fn dop853(
 
         t_old_older = t_old;
         t_old = t_current;
-        t_current = t_current + h;
+        t_current += h;
 
         f(
             t_current,

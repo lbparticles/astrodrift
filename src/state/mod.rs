@@ -20,6 +20,12 @@ pub struct OutputState{
 #[derive(Debug,Clone)]
 pub struct OutputFrame(pub [Option<OutputState>; MAX_STATES]);
 
+impl InputFrame {
+    pub fn iter(&self) -> slice::Iter<'_, Option<InputState>> {
+        self.0.iter()
+    }
+}
+
 impl<'a> IntoIterator for &'a InputFrame {
     type Item = &'a Option<InputState>;
     type IntoIter = slice::Iter<'a, Option<InputState>>;

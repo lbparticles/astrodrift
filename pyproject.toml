@@ -34,6 +34,17 @@ dev = [
     "pytest>=8.3.5",
     "pytest-cov>=5.0.0",
 ]
+[tool.basedpyright]
+# Type-check the Python surface against the pyo3-generated drift_rs.pyi stubs.
+include = ["python", "tests"]
+typeCheckingMode = "recommended"
+pythonVersion = "3.13"
+venvPath = "."
+venv = ".venv"
+# Resolve `import drift` in tests/ against the in-repo package (with its pyi)
+# rather than whichever wheel happens to be installed in the venv.
+extraPaths = ["python"]
+
 [tool.pytest.ini_options]
 addopts = "--maxfail=1 --cov=drift --cov-report=term-missing"
 

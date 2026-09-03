@@ -14,7 +14,7 @@
 //! where
 //! - A      : amplitude (mass or GM scaling)
 //! - b      : scale length (softening radius)
-//! - r_vec  : position vector in Cartesian coordinates
+//! - `r_vec` : position vector in Cartesian coordinates
 //! - r      : magnitude of position vector = sqrt(x^2 + y^2 + z^2)
 //!
 //! The force is finite at the origin, centrally directed, and asymptotically

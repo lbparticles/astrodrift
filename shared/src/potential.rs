@@ -110,11 +110,7 @@ impl BovyPotential {
             amp: 4.852230533528,
             a: 16.0 / 8.0,
         };
-        Self {
-            bulge: bulge,
-            disk: disk,
-            halo: halo,
-        }
+        Self { bulge, disk, halo }
     }
 }
 
@@ -194,7 +190,7 @@ impl SphericalcutoffPotential {
         let f = t - i as f64;
 
         // linear interpolation
-        let i0 = i.min((self.n_ar - 2) as usize);
+        let i0 = i.min(self.n_ar - 2);
         let (ar0, ar1) = unsafe { (*self.ar_table.add(i0), *self.ar_table.add(i0 + 1)) };
         (1.0 - f) * ar0 + f * ar1
     }
@@ -284,7 +280,7 @@ struct QuinticCoeff {
     f: f64,
 }
 
-fn quintic_interp(t: f64, coeff: QuinticCoeff) -> f64 {
+fn quintic_interp(t: f64, coeff: &QuinticCoeff) -> f64 {
     let t2 = t * t;
     let t3 = t * t2;
     let t4 = t * t3;
@@ -294,7 +290,7 @@ fn quintic_interp(t: f64, coeff: QuinticCoeff) -> f64 {
 impl<P: Potential + Copy> CustomOrigin<P> {
     fn origins(&self, t: f64, i: usize) -> [f64; 3] {
         let dt = self.final_time / (self.division as f64);
-        let n = (self.length / self.division) as usize;
+        let n = self.length / self.division;
         let t0 = floor(t / dt) as usize;
         let p0: usize = 18 * (i * n + t0);
         let x_coeff = unsafe {
@@ -328,9 +324,9 @@ impl<P: Potential + Copy> CustomOrigin<P> {
             }
         };
         [
-            quintic_interp(t - (t0 as f64), x_coeff),
-            quintic_interp(t - (t0 as f64), y_coeff),
-            quintic_interp(t - (t0 as f64), z_coeff),
+            quintic_interp(t - (t0 as f64), &x_coeff),
+            quintic_interp(t - (t0 as f64), &y_coeff),
+            quintic_interp(t - (t0 as f64), &z_coeff),
         ]
     }
 }
@@ -347,7 +343,7 @@ impl<P: Potential + Copy> Potential for CustomOrigin<P> {
     #[inline(always)]
     fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         let mut total_force = (0.0_f64, 0.0_f64, 0.0_f64);
-        let n = (self.length / self.division) as usize;
+        let n = self.length / self.division;
         for i in 0..n {
             let p = self.origins(t, i);
             let (f1, f2, f3) = self.potential.force(t, x - p[0], y - p[1], z - p[2]);
