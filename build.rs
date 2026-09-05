@@ -35,6 +35,8 @@ fn main() {
         .release(true)
         .use_constant_memory_space(false);
 
+    // FIXME: select the galpy Kepler reference through explicit kernel/test
+    // configuration rather than a compile-time Cargo feature.
     let kernel_features = if cfg!(feature = "galpy-kepler-reference") {
         "rust-cuda,galpy-kepler-reference"
     } else {
