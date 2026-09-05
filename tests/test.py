@@ -12,7 +12,7 @@ def main():
     sim = dft.Config(variant=dft.Variant.Compatible)
     sim.dependency(gmc, gal)  # deprecated; use sim.add(gmc, gal)
     sim.add(iso, gmc, gal)
-    out = sim.run(gal, gmc, iso)
+    out = sim.run(gal, gmc, iso)  # or just sim.run(): every added container
     print(out)
     print("finished")
 
