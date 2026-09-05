@@ -34,7 +34,7 @@ It is recommended to use the provided devcontainer which includes CUDA, LLVM, Ru
 
 # Testing Instructions
 
-See [Testing_Instructions.md](Testing_Instructions.md)
+See [Testing_Instructions.md](docs/Testing_Instructions.md)
 
 # CONTRIBUTORS
 
