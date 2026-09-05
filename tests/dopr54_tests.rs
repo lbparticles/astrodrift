@@ -309,6 +309,7 @@ mod tests {
         t: Vec<c_double>,
         yo: Vec<c_double>,
         nargs: c_int,
+        #[cfg_attr(not(feature = "galpy-kepler-reference"), allow(dead_code))]
         expected_state_bits: Vec<u64>,
     }
 
@@ -394,6 +395,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(not(feature = "galpy-kepler-reference"), allow(dead_code))]
     fn assert_all_state_bits(case_name: &str, result: &[c_double], init: &DumpData) {
         assert_eq!(
             init.expected_state_bits.len(),
