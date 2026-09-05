@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
-#[pyclass(name = "Potential", subclass)]
-#[derive(Default, Debug, Clone, Copy)]
+#[pyclass(name = "Potential", subclass, from_py_object)]
+#[derive(Default, Debug, Clone)]
 pub struct PyRecipe {
     pub inner: shared::Recipe,
 }
