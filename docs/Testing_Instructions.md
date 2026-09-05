@@ -80,6 +80,31 @@ cargo +nightly-2026-04-02 test \
     --release --no-default-features --features rust-cuda --tests
 ```
 
+## Linting
+
+Check the default cuda-oxide configuration with:
+
+```bash
+cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --features galpy-kepler-reference -- -D warnings
+```
+
+Check the Rust-CUDA configuration with:
+
+```bash
+cargo +nightly-2026-04-02 clippy \
+    --workspace --all-targets --no-default-features \
+    --features rust-cuda -- \
+    -D warnings -A clippy::duplicated-attributes -A unused-attributes
+cargo +nightly-2026-04-02 clippy \
+    --workspace --all-targets --no-default-features \
+    --features rust-cuda,galpy-kepler-reference -- \
+    -D warnings -A clippy::duplicated-attributes -A unused-attributes
+```
+
+The two Rust-CUDA allowances cover `cuda_builder` injecting `no_std` into the
+already-`no_std` shared crate. All other warnings remain errors.
+
 ## Local cuda-oxide Development
 
 To test changes from the sibling checkout, create an uncommitted `.cargo/config.toml`:
