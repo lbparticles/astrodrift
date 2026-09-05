@@ -1,7 +1,5 @@
 use crate::Real;
-use crate::potential::{
-    BovyPotential, CustomOrigin, KeplerPotential, PlummerPotential, PotentialEnum,
-};
+use crate::potential::{BovyPotential, KeplerPotential, PlummerPotential, PotentialEnum};
 use crate::{MAX_MODEL_COMPONENTS, MAX_RECIPES};
 use core::array;
 use core::fmt::{self, Display, Formatter};
@@ -10,11 +8,23 @@ use core::slice;
 pub struct ModelComponent(pub [Option<Recipe>; MAX_RECIPES]);
 pub struct Model(pub [Option<ModelComponent>; MAX_MODEL_COMPONENTS]);
 
+impl ModelComponent {
+    pub fn iter(&self) -> slice::Iter<'_, Option<Recipe>> {
+        self.0.iter()
+    }
+}
+
 impl<'a> IntoIterator for &'a ModelComponent {
     type Item = &'a Option<Recipe>;
     type IntoIter = slice::Iter<'a, Option<Recipe>>;
 
     fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl Model {
+    pub fn iter(&self) -> slice::Iter<'_, Option<ModelComponent>> {
         self.0.iter()
     }
 }
@@ -84,7 +94,7 @@ impl Display for Model {
 
         let mut first_outer = true;
 
-        for outer_opt in self.0.iter() {
+        for outer_opt in &self.0 {
             let Some(inner_arr) = outer_opt else { continue };
 
             // Filter only present recipes
@@ -107,7 +117,7 @@ impl Display for Model {
                     write!(f, ", ")?;
                 }
                 first_inner = false;
-                write!(f, "{:?}", recipe)?;
+                write!(f, "{recipe:?}")?;
             }
             write!(f, "]")?;
         }
@@ -119,10 +129,8 @@ impl Display for Model {
 impl From<[Option<[Option<Recipe>; 11]>; 11]> for Model {
     fn from(arr: [Option<[Option<Recipe>; 11]>; 11]) -> Self {
         // Map Option<[Option<Recipe>; 11]> -> Option<Course>
-        let model_components: [Option<ModelComponent>; 11] = array::from_fn(|i| match arr[i] {
-            Some(inner) => Some(ModelComponent(inner)),
-            None => None,
-        });
+        let model_components: [Option<ModelComponent>; 11] =
+            array::from_fn(|i| arr[i].map(ModelComponent));
 
         Model(model_components)
     }

@@ -29,6 +29,7 @@ impl ModernFlags {
     pub const DEBUG_SUITE: Self = Self(Self::DEBUG.0 | Self::HEX_RESULT.0 | Self::ERROR.0);
     pub const ALL: Self = Self((1 << MAX_DISTINCT_FLAGS) - 1);
 
+    #[must_use]
     pub fn from_bits(bits: Index) -> Option<Self> {
         let all_bits = Self::ALL.0;
         if bits & !all_bits == 0 {
@@ -38,6 +39,7 @@ impl ModernFlags {
         }
     }
 
+    #[must_use]
     pub fn contains(&self, flag: Self) -> bool {
         (self.0 & flag.0) == flag.0
     }
@@ -50,6 +52,7 @@ impl ModernFlags {
         self.0 &= !flag.0;
     }
 
+    #[must_use]
     pub fn bits(&self) -> Index {
         self.0
     }

@@ -1,5 +1,13 @@
 #[cfg(test)]
 mod tests {
+    // This harness talks to the C-ABI integrator directly (`c_int` indices) and
+    // uses Hairer-style short names; several `clippy::pedantic` lints are
+    // therefore relaxed.
+    #![allow(
+        clippy::cast_sign_loss, // C `c_int` loop/index variables
+        clippy::many_single_char_names // (x, y, z) coordinates
+    )]
+
     use drift_rs::dispatch::gpu::launch_dop853_kernel;
     use drift_rs::integrators::dop853_cpu::{dop853, potentialArg};
     use drift_rs::state::InputState;
@@ -193,7 +201,7 @@ mod tests {
                 dump.rtol,
                 dump.atol,
                 result.as_mut_ptr(),
-                &mut err,
+                &raw mut err,
             );
         }
         assert_eq!(err, 0, "dop853 returned err={err}");

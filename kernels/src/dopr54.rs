@@ -1,7 +1,21 @@
+// GPU device code: the steppers are `#[inline(always)]` so they end up inlined
+// into the generated NVVM/PTX kernels (no device-call overhead), and the
+// argument lists mirror the reference stepper. Several `clippy::pedantic`
+// lints are therefore relaxed for the whole module.
+#![allow(
+    clippy::inline_always,
+    clippy::too_many_arguments, // stage buffers are threaded through explicitly
+    clippy::too_many_lines, // steppers mirror the reference implementation
+    clippy::large_stack_arrays // out_steps holds one particle's trajectory
+)]
+
 #[cfg(all(target_os = "cuda", feature = "rust-cuda"))]
 use cuda_std::GpuFloat;
 
 const DIM: usize = 6;
+
+#[allow(clippy::cast_precision_loss)] // DIM is a tiny compile-time constant
+const DIM_F64: f64 = DIM as f64;
 
 const MAX_STEPCHANGE_POWERTWO: f64 = 3.0;
 const MIN_STEPCHANGE_POWERTWO: f64 = -3.0;
@@ -55,12 +69,11 @@ fn rk4_estimate_step(yo: &[f64; DIM], mut dt: f64, t0: f64, rtol: f64, atol: f64
     let mut y2 = [0.0_f64; DIM];
     let mut ynk = [0.0_f64; DIM];
     let mut a = [0.0_f64; DIM];
-    let mut scale = [0.0_f64; DIM];
 
     // max log(|y|)
     let mut max_val = yo[0].abs().ln();
-    for i in 1..DIM {
-        let v = yo[i].abs().ln();
+    for &yi in yo.iter().skip(1) {
+        let v = yi.abs().ln();
         if v > max_val {
             max_val = v;
         }
@@ -68,18 +81,14 @@ fn rk4_estimate_step(yo: &[f64; DIM], mut dt: f64, t0: f64, rtol: f64, atol: f64
 
     let c = atol.max(rtol + max_val);
     let s = ((atol - c).exp() + (rtol + max_val - c).exp()).ln() + c;
-    for i in 0..DIM {
-        scale[i] = s;
-    }
+    let scale = [s; DIM];
 
     let init_dt = dt;
 
     while err > 1.0 {
-        for i in 0..DIM {
-            yn[i] = yo[i];
-            y1[i] = yo[i];
-            y21[i] = yo[i];
-        }
+        yn.copy_from_slice(yo);
+        y1.copy_from_slice(yo);
+        y21.copy_from_slice(yo);
 
         // dt
         rk4_onestep(t0, dt, &yn, &mut y1, &mut ynk, &mut a);
@@ -88,9 +97,7 @@ fn rk4_estimate_step(yo: &[f64; DIM], mut dt: f64, t0: f64, rtol: f64, atol: f64
         rk4_onestep(t0, dt / 2.0, &yn, &mut y21, &mut ynk, &mut a);
 
         // copy y21 -> y2
-        for i in 0..DIM {
-            y2[i] = y21[i];
-        }
+        y2.copy_from_slice(&y21);
 
         rk4_onestep(t0 + dt / 2.0, dt / 2.0, &y21, &mut y2, &mut ynk, &mut a);
 
@@ -100,7 +107,7 @@ fn rk4_estimate_step(yo: &[f64; DIM], mut dt: f64, t0: f64, rtol: f64, atol: f64
             let term = (2.0 * (diff.abs().ln()) - 2.0 * scale[i]).exp();
             err += term;
         }
-        err = (err / (DIM as f64)).sqrt();
+        err = (err / DIM_F64).sqrt();
 
         let factor = err.powf(1.0 / 5.0).ceil();
         if factor > 1.0 && init_dt / dt * factor < MAX_DT_REDUCE {
@@ -167,19 +174,15 @@ fn dopr54_actualstep(
     const BE1: f64 = B1 - 5179.0 / 57600.0;
     const BE3: f64 = B3 - 7571.0 / 16695.0;
     const BE4: f64 = B4 - 393.0 / 640.0;
-    const BE5: f64 = B5 + 92097.0 / 339200.0;
+    const BE5: f64 = B5 + 92097.0 / 339_200.0;
     const BE6: f64 = B6 - 187.0 / 2100.0;
     const BE7: f64 = -1.0 / 40.0;
 
     // setup yn1: yn1[i] = yn[i]
-    for i in 0..DIM {
-        yn1[i] = yn[i];
-    }
+    yn1.copy_from_slice(yn);
 
     // calculate k1
-    for i in 0..DIM {
-        a[i] = a1[i];
-    }
+    a.copy_from_slice(a1);
     for i in 0..DIM {
         k1[i] = dt * a[i];
         yn1[i] += B1 * k1[i];
@@ -244,8 +247,8 @@ fn dopr54_actualstep(
 
     // find maximum values
     let mut max_val: f64 = yn[0].abs().ln();
-    for i in 1..DIM {
-        let v = yn[i].abs().ln();
+    for &yi in yn.iter().skip(1) {
+        let v = yi.abs().ln();
         if v > max_val {
             max_val = v;
         }
@@ -262,33 +265,28 @@ fn dopr54_actualstep(
 
     // Norm
     let mut err: f64 = 0.0;
-    for i in 0..DIM {
-        err += (2.0 * yerr[i].abs().ln() - 2.0 * s).exp();
+    for &ye in yerr.iter() {
+        err += (2.0 * ye.abs().ln() - 2.0 * s).exp();
     }
-    err = (err / (DIM as f64)).sqrt();
+    err = (err / DIM_F64).sqrt();
 
     let corr: f64 = 0.85 * err.powf(-0.2);
 
     // Round to the nearest power of two
-    let mut powertwo: f64 = (corr.ln() / 2.0f64.ln()).round();
-    if powertwo > MAX_STEPCHANGE_POWERTWO {
-        powertwo = MAX_STEPCHANGE_POWERTWO;
-    } else if powertwo < MIN_STEPCHANGE_POWERTWO {
-        powertwo = MIN_STEPCHANGE_POWERTWO;
-    }
+    let powertwo: f64 = (corr.ln() / 2.0f64.ln())
+        .round()
+        .clamp(MIN_STEPCHANGE_POWERTWO, MAX_STEPCHANGE_POWERTWO);
 
     // accept or reject
-    let dt_one: f64;
+
     if powertwo >= 0.0 || accept != 0 {
         // accept, if the step is the smallest possible, always accept
-        for i in 0..DIM {
-            a1[i] = a[i];
-            yn[i] = yn1[i];
-        }
+        a1.copy_from_slice(a);
+        yn.copy_from_slice(yn1);
         *to += dt;
     }
 
-    dt_one = dt * (2.0f64).powf(powertwo);
+    let dt_one: f64 = dt * (2.0f64).powf(powertwo);
     dt_one
 }
 
@@ -356,6 +354,9 @@ fn dopr54_onestep_kepler(
 }
 
 #[inline(always)]
+// -9999.99 is galpy's exact "choose the timestep automatically" sentinel,
+// never a computed value, so its bit-exact comparison is intentional.
+#[allow(clippy::float_cmp)]
 fn dopr54_integrate_kepler(
     yo: &mut [f64; DIM],
     t_grid: &[f64],
@@ -364,7 +365,7 @@ fn dopr54_integrate_kepler(
     mut dt_one: f64,
     out_states: &mut [[f64; DIM]],
 ) {
-    let nt = t_grid.len() as i32;
+    let nt = t_grid.len();
 
     let mut a = [0.0_f64; DIM];
     let mut a1 = [0.0_f64; DIM];
@@ -388,10 +389,9 @@ fn dopr54_integrate_kepler(
     copy_state(&mut out_states[0], yo);
     #[cfg(feature = "rust-cuda")]
     out_states[0].copy_from_slice(yo);
-    let mut out_idx = 1usize;
 
     // Initial dt from t-grid
-    let mut dt: f64 = t_grid[1] - t_grid[0];
+    let dt: f64 = t_grid[1] - t_grid[0];
 
     if dt_one == -9999.99 {
         dt_one = rk4_estimate_step(&yn, dt, t_grid[0], rtol, atol);
@@ -401,9 +401,10 @@ fn dopr54_integrate_kepler(
     let mut to: f64 = t_grid[0];
 
     // ---- set up a1: a1 = f(to, yn) ----
-    kepler_rhs(to, &mut yn, &mut a1);
+    kepler_rhs(to, &yn, &mut a1);
 
-    for _step in 0..(nt - 1) {
+    // out_states[0] already holds the initial state
+    for out_state in &mut out_states[1..nt] {
         // One Dormand–Prince 5(4) macro-step (possibly multiple substeps)
         dopr54_onestep_kepler(
             &mut yn,
@@ -426,10 +427,9 @@ fn dopr54_integrate_kepler(
         );
 
         #[cfg(feature = "cuda-oxide")]
-        copy_state(&mut out_states[out_idx], &yn);
+        copy_state(out_state, &yn);
         #[cfg(feature = "rust-cuda")]
-        out_states[out_idx].copy_from_slice(&yn);
-        out_idx += 1;
+        out_state.copy_from_slice(&yn);
     }
 
     *yo = yn;
@@ -438,9 +438,7 @@ fn dopr54_integrate_kepler(
 #[cfg(feature = "cuda-oxide")]
 #[inline(always)]
 fn copy_state(dst: &mut [f64; DIM], src: &[f64; DIM]) {
-    for i in 0..DIM {
-        dst[i] = src[i];
-    }
+    dst.copy_from_slice(src);
 }
 
 fn kepler_rhs(_t: f64, q: &[f64; DIM], a: &mut [f64; DIM]) {
@@ -536,9 +534,7 @@ pub(crate) unsafe fn integrate_particle(
     let t_slice = &times[..nt];
     let mut yo = [0.0_f64; DIM];
     let base_in = tid * DIM;
-    for i in 0..DIM {
-        yo[i] = state0[base_in + i];
-    }
+    yo.copy_from_slice(&state0[base_in..base_in + DIM]);
 
     let mut out_steps: [[f64; DIM]; 1024] = [[0.0; DIM]; 1024];
 
@@ -552,7 +548,7 @@ pub(crate) unsafe fn integrate_particle(
     );
 
     // Write back to global memory: layout (step, particle, dim)
-    for step in 0..nt {
-        unsafe { crate::write_time_major_state(state_out, step, n, tid, &out_steps[step]) };
+    for (step, out_step) in out_steps.iter().enumerate().take(nt) {
+        unsafe { crate::write_time_major_state(state_out, step, n, tid, out_step) };
     }
 }

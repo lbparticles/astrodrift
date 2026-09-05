@@ -20,6 +20,12 @@ pub struct OutputState {
 #[derive(Debug, Clone)]
 pub struct OutputFrame(pub [Option<OutputState>; MAX_STATES]);
 
+impl InputFrame {
+    pub fn iter(&self) -> slice::Iter<'_, Option<InputState>> {
+        self.0.iter()
+    }
+}
+
 impl<'a> IntoIterator for &'a InputFrame {
     type Item = &'a Option<InputState>;
     type IntoIter = slice::Iter<'a, Option<InputState>>;
@@ -30,6 +36,7 @@ impl<'a> IntoIterator for &'a InputFrame {
 }
 
 impl InputState {
+    #[must_use]
     pub fn new_zeroed() -> Self {
         InputState {
             num_particles: 0,
@@ -37,6 +44,7 @@ impl InputState {
         }
     }
 
+    #[must_use]
     pub fn from_py_array(istate: &PyReadonlyArrayDyn<Real>) -> Self {
         let mut data = vec![0.0; INPUT_LENGTH];
 
@@ -57,6 +65,7 @@ impl InputState {
     }
 
     #[inline]
+    #[must_use]
     pub fn as_slice(&self) -> &[Real] {
         &self.data
     }
@@ -68,12 +77,14 @@ impl InputState {
 }
 
 impl OutputState {
+    #[must_use]
     pub fn new_zeroed() -> Self {
         OutputState {
             data: vec![0.0; OUTPUT_LENGTH],
         }
     }
 
+    #[must_use]
     pub fn from_py_array(istate: &PyReadonlyArrayDyn<Real>) -> Self {
         let mut data = vec![0.0; OUTPUT_LENGTH];
 
@@ -88,6 +99,7 @@ impl OutputState {
     }
 
     #[inline]
+    #[must_use]
     pub fn as_slice(&self) -> &[Real] {
         &self.data
     }

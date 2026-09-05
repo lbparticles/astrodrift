@@ -1,5 +1,14 @@
 #[cfg(test)]
 mod tests {
+    // This harness talks to the C-ABI integrator directly (`c_int` indices) and
+    // cross-checks galpy fixture dumps, whose hex bit patterns must stay
+    // copy-pasteable; several `clippy::pedantic` lints are therefore relaxed.
+    #![allow(
+        clippy::cast_sign_loss, // C `c_int` loop/index variables
+        clippy::unreadable_literal, // exact f64 bit patterns from the dumps
+        clippy::many_single_char_names // (x, y, z) coordinates
+    )]
+
     use drift_rs::dispatch::gpu::launch_kernel;
     use drift_rs::integrators::dopr54_cpu::*;
     use drift_rs::state::InputState;
@@ -309,6 +318,8 @@ mod tests {
         t: Vec<c_double>,
         yo: Vec<c_double>,
         nargs: c_int,
+        // Parsed but only used by the manual cross-check helper below.
+        #[allow(dead_code)]
         expected_state_bits: Vec<u64>,
     }
 
@@ -338,7 +349,7 @@ mod tests {
                 init.rtol,
                 init.atol,
                 result.as_mut_ptr(),
-                &mut err,
+                &raw mut err,
             );
         }
         assert_eq!(err, 0, "dopr54 returned err={err}");
@@ -388,12 +399,14 @@ mod tests {
 
             assert_eq!(
                 actual_bits, expected_bits,
-                "{case_name}: mismatch in tail element {i}: got 0x{:016x}, expected 0x{:016x}",
-                actual_bits, expected_bits
+                "{case_name}: mismatch in tail element {i}: got 0x{actual_bits:016x}, expected 0x{expected_bits:016x}"
             );
         }
     }
 
+    // Kept for manual cross-checking of galpy fixture dumps against the
+    // bit-exact reference states.
+    #[allow(dead_code)]
     fn assert_all_state_bits(case_name: &str, result: &[c_double], init: &DumpData) {
         assert_eq!(
             init.expected_state_bits.len(),
@@ -423,10 +436,10 @@ mod tests {
     fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
         let mut text = String::new();
         File::open(path)?.read_to_string(&mut text)?;
-        parse_dopr54_dump_text(&text)
+        Ok(parse_dopr54_dump_text(&text))
     }
 
-    fn parse_dopr54_dump_text(text: &str) -> io::Result<DumpData> {
+    fn parse_dopr54_dump_text(text: &str) -> DumpData {
         let mut dim: Option<c_int> = None;
         let mut nt: Option<c_int> = None;
         let mut dt_one: Option<c_double> = None;
@@ -440,9 +453,8 @@ mod tests {
 
         for line in text.lines() {
             let mut parts = line.split_whitespace();
-            let key = match parts.next() {
-                Some(k) => k,
-                None => continue,
+            let Some(key) = parts.next() else {
+                continue;
             };
             match key {
                 "dim" => {
@@ -503,12 +515,11 @@ mod tests {
                         expected_state_bits.push(parse_hex_bits(v));
                     }
                 }
-                "states_hex" => {}
-                _ => {}
+                _ => {} // ignore unknown lines (e.g. "states_hex")
             }
         }
 
-        Ok(DumpData {
+        DumpData {
             dim: dim.expect("dim missing in dump"),
             nt: nt.expect("nt missing in dump"),
             dt_one: dt_one.unwrap_or(-9999.99),
@@ -518,11 +529,10 @@ mod tests {
             yo,
             nargs,
             expected_state_bits,
-        })
+        }
     }
 
     fn parse_hex_bits(s: &str) -> u64 {
-        u64::from_str_radix(s, 16)
-            .unwrap_or_else(|e| panic!("failed to parse hex f64 '{}': {}", s, e))
+        u64::from_str_radix(s, 16).unwrap_or_else(|e| panic!("failed to parse hex f64 '{s}': {e}"))
     }
 }

@@ -20,3 +20,6 @@ galpy-kepler-reference = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true

@@ -10,6 +10,8 @@ compile_error!("enable exactly one CUDA backend feature: `rust-cuda` or `cuda-ox
 const STATE_DIM: usize = 6;
 
 /// Writes one particle state into the `(time, particle, component)` output.
+// Inlined so the strided store loop folds into the calling kernel body.
+#[allow(clippy::inline_always)]
 #[inline(always)]
 pub(crate) unsafe fn write_time_major_state(
     state_out: *mut f64,
@@ -21,8 +23,8 @@ pub(crate) unsafe fn write_time_major_state(
     // FIXME: replace this raw strided write with a proof-carrying cuda-device view
     // once one can represent a runtime-sized time-major trajectory without padding.
     let out_base = ((step * n) + tid) * STATE_DIM;
-    for component in 0..STATE_DIM {
-        unsafe { *state_out.add(out_base + component) = state[component] };
+    for (component, &value) in state.iter().enumerate() {
+        unsafe { *state_out.add(out_base + component) = value };
     }
 }
 
@@ -36,6 +38,14 @@ fn rust_cuda_thread_id(n: usize) -> Option<usize> {
 }
 
 #[cfg(feature = "rust-cuda")]
+/// Integrates one particle's trajectory with the DOPR54 kernel.
+///
+/// # Safety
+///
+/// The Rust-CUDA launch boundary requires `state0` to contain at least
+/// `n * STATE_DIM` values, `times` at least `nt` values, and `state_out` at
+/// least `nt * n * STATE_DIM` writable values; each thread must use a distinct
+/// `tid < n`.
 #[cuda_std::kernel]
 pub unsafe fn dopr54_cpu_port(
     state0: *const f64,
@@ -66,11 +76,19 @@ pub unsafe fn dopr54_cpu_port(
             rtol,
             atol,
             dt_one_init,
-        )
-    };
+        );
+    }
 }
 
 #[cfg(feature = "rust-cuda")]
+/// Integrates one particle's trajectory with the DOP853 kernel.
+///
+/// # Safety
+///
+/// The Rust-CUDA launch boundary requires `state0` to contain at least
+/// `n * STATE_DIM` values, `times` at least `nt` values, and `state_out` at
+/// least `nt * n * STATE_DIM` writable values; each thread must use a distinct
+/// `tid < n`.
 #[cuda_std::kernel]
 pub unsafe fn dop853_cpu_port(
     state0: *const f64,
@@ -93,11 +111,18 @@ pub unsafe fn dop853_cpu_port(
     unsafe { dop853::integrate_particle(tid, n, nt, state0, times, state_out, rtol, atol) };
 }
 
+// The `#[kernel]` macros generate launcher code that forwards every kernel
+// parameter; clippy attributes those uses to the original parameter spans,
+// which only a container-wide allow can reach reliably.
+#[allow(clippy::used_underscore_binding)]
 #[cfg(feature = "cuda-oxide")]
 #[cuda_host::cuda_module]
 pub mod oxide {
     use cuda_device::{DisjointSlice, Uniform, kernel, launch_contract, thread};
 
+    // The `#[kernel]` macro applies `#[no_mangle]` itself and fixes the kernel
+    // signature, so the ABI/arity lints cannot be acted on here.
+    #[allow(clippy::no_mangle_with_rust_abi, clippy::too_many_arguments)]
     #[kernel]
     #[launch_contract(
         domain = 1,
@@ -139,10 +164,13 @@ pub mod oxide {
                 rtol,
                 atol,
                 dt_one_init,
-            )
+            );
         }
     }
 
+    // The `#[kernel]` macro applies `#[no_mangle]` itself and fixes the kernel
+    // signature, so the ABI/arity lints cannot be acted on here.
+    #[allow(clippy::no_mangle_with_rust_abi, clippy::too_many_arguments)]
     #[kernel]
     #[launch_contract(
         domain = 1,
@@ -156,6 +184,8 @@ pub mod oxide {
             state_out.len() >= nt * n * 6
         )
     )]
+    // The dop853 kernel intentionally ignores the initial timestep, but the
+    // parameter is kept so both kernels share one launch signature.
     pub fn dop853_cpu_port(
         state0: &[f64],
         times: &[f64],
@@ -183,7 +213,7 @@ pub mod oxide {
                 state_out.as_mut_ptr(),
                 rtol,
                 atol,
-            )
+            );
         }
     }
 }

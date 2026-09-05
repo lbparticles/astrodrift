@@ -1,10 +1,7 @@
 use pyo3::prelude::*;
-use shared::{
-    Config, Linspace, MAX_STATES, Method, Model, ModelComponent, ModernFlags, Real, Tolerance,
-};
-use std::array;
+use shared::{Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance};
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader};
 use std::os::raw::{c_double, c_int};
 use std::path::Path;
 #[cfg(feature = "cuda-oxide")]
@@ -23,6 +20,9 @@ use cuda_oxide as backend;
 #[cfg(feature = "rust-cuda")]
 use rust_cuda as backend;
 
+// GPU dump debugging helpers kept for manual bring-up/CI debugging; the
+// automated tests carry their own parsers, so these are currently unreferenced.
+#[allow(dead_code)]
 fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
     res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
@@ -30,10 +30,11 @@ fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
 const BLOCK_SIZE: u32 = 128;
 
 fn grid_size(n: usize) -> (u32, u32) {
-    let blocks = ((n as u32) + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    let blocks = u32::try_from(n).unwrap_or(u32::MAX).div_ceil(BLOCK_SIZE);
     (blocks, BLOCK_SIZE)
 }
 
+#[must_use]
 pub fn gather_states(
     src: &[f64],
     indices: &[usize],
@@ -57,11 +58,18 @@ pub fn gather_states(
     dst
 }
 
+/// Gathers states for every particle in `indices`, padding each 6-float state
+/// to 9 floats with zero placeholders.
+///
+/// # Panics
+///
+/// Panics if any index in `indices` is out of bounds for `src`.
+#[must_use]
 pub fn gather_states_nested_extended(
     src: &[f64],
     indices: &[Vec<isize>],
-    n_particles: usize,
-    n_divisions: usize,
+    _n_particles: usize,
+    _n_divisions: usize,
 ) -> Vec<Vec<f64>> {
     const STATE_LEN_IN: usize = 6; // from the source
     const STATE_LEN_OUT: usize = 9; // desired output length per state
@@ -72,7 +80,7 @@ pub fn gather_states_nested_extended(
         let mut states = Vec::with_capacity(particle_indices.len() * STATE_LEN_OUT);
 
         for &i in particle_indices {
-            let idx = i as usize;
+            let idx = usize::try_from(i).expect("negative particle index");
 
             // Copy the 6 source floats
             states.extend_from_slice(&src[idx * STATE_LEN_IN..idx * STATE_LEN_IN + STATE_LEN_IN]);
@@ -86,6 +94,9 @@ pub fn gather_states_nested_extended(
 
     all
 }
+// GPU dump debugging helpers kept for manual bring-up/CI debugging; the
+// automated tests carry their own parsers, so these are currently unreferenced.
+#[allow(dead_code)]
 struct DumpData {
     dim: c_int,
     nt: c_int,
@@ -98,6 +109,7 @@ struct DumpData {
     args: Vec<c_double>, // may be empty
 }
 
+#[allow(dead_code)]
 fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
@@ -115,9 +127,8 @@ fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
     for line_res in reader.lines() {
         let line = line_res?;
         let mut parts = line.split_whitespace();
-        let key = match parts.next() {
-            Some(k) => k,
-            None => continue,
+        let Some(key) = parts.next() else {
+            continue;
         };
         match key {
             "dim" => {
@@ -232,6 +243,12 @@ pub(super) enum Kernel {
     Dop853,
 }
 
+/// Integrates `input_state` with the DOPR54 kernel.
+///
+/// # Errors
+///
+/// Returns [`GPUDispatchError`] if the CUDA backend fails to launch or execute
+/// the kernel.
 pub fn launch_kernel(
     model_component: &ModelComponent,
     input_state: &InputState,
@@ -251,6 +268,12 @@ pub fn launch_kernel(
     )
 }
 
+/// Integrates `input_state` with the DOP853 kernel.
+///
+/// # Errors
+///
+/// Returns [`GPUDispatchError`] if the CUDA backend fails to launch or execute
+/// the kernel.
 pub fn launch_dop853_kernel(
     model_component: &ModelComponent,
     input_state: &InputState,
@@ -272,9 +295,9 @@ pub fn launch_dop853_kernel(
 
 fn launch_kernel_named(
     kernel: Kernel,
-    model_component: &ModelComponent,
+    _model_component: &ModelComponent,
     input_state: &InputState,
-    flags: ModernFlags,
+    _flags: ModernFlags,
     tolerance: Tolerance,
     linspace: Linspace,
     times: Option<Vec<Real>>,
@@ -282,8 +305,10 @@ fn launch_kernel_named(
     let times: Vec<Real> = times.unwrap_or_else(|| {
         (0..linspace.steps)
             .map(|i| {
-                linspace.start
-                    + (linspace.end - linspace.start) * (i as Real) / (linspace.steps as Real)
+                #[allow(clippy::cast_precision_loss)]
+                // step counts are tiny; the division must happen in `Real`
+                let frac = (i as Real) / (linspace.steps as Real);
+                linspace.start + (linspace.end - linspace.start) * frac
             })
             .collect()
     });
@@ -316,12 +341,24 @@ fn launch_kernel_named(
     // }
 }
 
+/// Runs the configured integrator over every (model component, input state)
+/// pair and collects the results.
+///
+/// # Errors
+///
+/// Returns [`GPUDispatchError`] if the CUDA backend fails to launch or execute
+/// the kernel.
+///
+/// # Panics
+///
+/// Panics if a kernel launch returns an error (via `expect` on the per-component
+/// dispatch result).
 pub fn gpu_dispatch(
-    config: Config,
-    model: Model,
-    input_frame: InputFrame,
+    config: &Config,
+    model: &Model,
+    input_frame: &InputFrame,
 ) -> Result<OutputFrame, GPUDispatchError> {
-    for (model_component_opt, input_state_opt) in model.into_iter().zip(input_frame.into_iter()) {
+    for (model_component_opt, input_state_opt) in model.into_iter().zip(input_frame) {
         if let (Some(model_component), Some(input_state)) = (model_component_opt, input_state_opt) {
             match config.method {
                 Method::DOPR54 => launch_kernel(

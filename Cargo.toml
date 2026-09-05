@@ -3,6 +3,9 @@ name = "drift"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [lib]
 name = "drift_rs"
 crate-type = ["rlib", "cdylib"]
@@ -31,6 +34,11 @@ name = "drift"
 
 [workspace]
 members = ["shared", "kernels", "."]
+
+[workspace.lints.clippy]
+# clippy::pedantic is the project baseline; every remaining warning is either
+# fixed or suppressed by a commented, targeted `#[allow]`.
+pedantic = { level = "warn", priority = -1 }
 
 [features]
 default = ["cuda-oxide"]

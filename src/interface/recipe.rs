@@ -1,5 +1,12 @@
+// This module only wraps the `Copy` `shared::Recipe` for Python. The
+// `from_py_object` opt-in makes pyo3's macro generate a `FromPyObject` impl
+// that clones the (trivially copyable) pyclass, and the generated `clone_on_copy`
+// warning can only be silenced module-wide.
+#![allow(clippy::clone_on_copy)]
+
 use pyo3::prelude::*;
-#[pyclass(name = "Potential", subclass)]
+
+#[pyclass(name = "Potential", subclass, from_py_object)]
 #[derive(Default, Debug, Clone, Copy)]
 pub struct PyRecipe {
     pub inner: shared::Recipe,

@@ -1,3 +1,14 @@
+// This module is a line-by-line port of galpy's C `dop54.c` integrator. It keeps
+// the C ABI (`c_int`/`c_double`, raw pointers) and the original control flow so
+// results stay directly comparable with the reference implementation; several
+// `clippy::pedantic` lints are therefore relaxed for the whole module.
+#![allow(
+    clippy::cast_sign_loss, // loop indices come from the C `c_int dim`
+    clippy::too_many_arguments, // argument lists are fixed by the C ABI
+    clippy::too_many_lines, // steppers mirror the C reference one-to-one
+    clippy::similar_names // yn/yn1/ynk/y1/y2 stage buffers, as in the C source
+)]
+
 use libc;
 // use libm::{ceil, exp, fabs, fmax, log, pow, sqrt};
 use libc::{c_double, c_int};
@@ -31,16 +42,18 @@ pub type FuncPtr = Option<
         q: *mut c_double,
         a: *mut c_double,
         nargs: c_int,
-        potentialArgs: *mut potentialArg,
+        potential_args: *mut potentialArg,
     ),
 >;
 
 #[inline]
 unsafe fn save_rk(dim: c_int, mut yo: *mut c_double, mut result: *mut c_double) {
-    for _ in 0..dim {
-        *result = *yo;
-        yo = yo.add(1);
-        result = result.add(1);
+    unsafe {
+        for _ in 0..dim {
+            *result = *yo;
+            yo = yo.add(1);
+            result = result.add(1);
+        }
     }
 }
 
@@ -52,71 +65,73 @@ unsafe fn rk4_onestep(
     tn: c_double,
     dt: c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    potential_args: *mut potentialArg,
     ynk: *mut c_double,
     a: *mut c_double,
 ) {
-    let f = func.expect("rk4_onestep: func pointer was null");
+    unsafe {
+        let f = func.expect("rk4_onestep: func pointer was null");
 
-    // int ii;
-    // //calculate k1
-    // func(tn,yn,a,nargs,potentialArgs);
-    f(tn, yn, a, nargs, potentialArgs);
+        // int ii;
+        // //calculate k1
+        // func(tn,yn,a,nargs,potential_args);
+        f(tn, yn, a, nargs, potential_args);
 
-    // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 6.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *yn1.add(idx) += dt * *a.add(idx) / 6.0;
+        // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 6.;
+        for i in 0..dim {
+            let idx = i as usize;
+            *yn1.add(idx) += dt * *a.add(idx) / 6.0;
+        }
+
+        // for (ii=0; ii < dim; ii++) *(ynk+ii)= *(yn+ii) + dt * *(a+ii) / 2.;
+        for i in 0..dim {
+            let idx = i as usize;
+            *ynk.add(idx) = *yn.add(idx) + dt * *a.add(idx) / 2.0;
+        }
+
+        // //calculate k2
+        // func(tn+dt/2.,ynk,a,nargs,potential_args);
+        f(tn + dt / 2.0, ynk, a, nargs, potential_args);
+
+        // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 3.;
+        for i in 0..dim {
+            let idx = i as usize;
+            *yn1.add(idx) += dt * *a.add(idx) / 3.0;
+        }
+
+        // for (ii=0; ii < dim; ii++) *(ynk+ii)= *(yn+ii) + dt * *(a+ii) / 2.;
+        for i in 0..dim {
+            let idx = i as usize;
+            *ynk.add(idx) = *yn.add(idx) + dt * *a.add(idx) / 2.0;
+        }
+
+        // //calculate k3
+        // func(tn+dt/2.,ynk,a,nargs,potential_args);
+        f(tn + dt / 2.0, ynk, a, nargs, potential_args);
+
+        // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 3.;
+        for i in 0..dim {
+            let idx = i as usize;
+            *yn1.add(idx) += dt * *a.add(idx) / 3.0;
+        }
+
+        // for (ii=0; ii < dim; ii++) *(ynk+ii)= *(yn+ii) + dt * *(a+ii);
+        for i in 0..dim {
+            let idx = i as usize;
+            *ynk.add(idx) = *yn.add(idx) + dt * *a.add(idx);
+        }
+
+        // //calculate k4
+        // func(tn+dt,ynk,a,nargs,potential_args);
+        f(tn + dt, ynk, a, nargs, potential_args);
+
+        // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 6.;
+        for i in 0..dim {
+            let idx = i as usize;
+            *yn1.add(idx) += dt * *a.add(idx) / 6.0;
+        }
+        // yn1 is new value
     }
-
-    // for (ii=0; ii < dim; ii++) *(ynk+ii)= *(yn+ii) + dt * *(a+ii) / 2.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *ynk.add(idx) = *yn.add(idx) + dt * *a.add(idx) / 2.0;
-    }
-
-    // //calculate k2
-    // func(tn+dt/2.,ynk,a,nargs,potentialArgs);
-    f(tn + dt / 2.0, ynk, a, nargs, potentialArgs);
-
-    // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 3.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *yn1.add(idx) += dt * *a.add(idx) / 3.0;
-    }
-
-    // for (ii=0; ii < dim; ii++) *(ynk+ii)= *(yn+ii) + dt * *(a+ii) / 2.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *ynk.add(idx) = *yn.add(idx) + dt * *a.add(idx) / 2.0;
-    }
-
-    // //calculate k3
-    // func(tn+dt/2.,ynk,a,nargs,potentialArgs);
-    f(tn + dt / 2.0, ynk, a, nargs, potentialArgs);
-
-    // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 3.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *yn1.add(idx) += dt * *a.add(idx) / 3.0;
-    }
-
-    // for (ii=0; ii < dim; ii++) *(ynk+ii)= *(yn+ii) + dt * *(a+ii);
-    for i in 0..dim {
-        let idx = i as usize;
-        *ynk.add(idx) = *yn.add(idx) + dt * *a.add(idx);
-    }
-
-    // //calculate k4
-    // func(tn+dt,ynk,a,nargs,potentialArgs);
-    f(tn + dt, ynk, a, nargs, potentialArgs);
-
-    // for (ii=0; ii < dim; ii++) *(yn1+ii) += dt * *(a+ii) / 6.;
-    for i in 0..dim {
-        let idx = i as usize;
-        *yn1.add(idx) += dt * *a.add(idx) / 6.0;
-    }
-    // yn1 is new value
 }
 
 unsafe fn rk4_estimate_step(
@@ -126,157 +141,159 @@ unsafe fn rk4_estimate_step(
     mut dt: c_double,
     t: *mut c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    potential_args: *mut potentialArg,
     rtol: c_double,
     atol: c_double,
 ) -> c_double {
-    // //return dt;
+    unsafe {
+        // //return dt;
 
-    // //scalars
-    let mut err: c_double = 2.0;
-    let mut max_val: c_double;
-    let to: c_double = *t;
-    let init_dt: c_double = dt;
+        // //scalars
+        let mut err: c_double = 2.0;
+        let mut max_val: c_double;
+        let to: c_double = *t;
+        let init_dt: c_double = dt;
 
-    let dim_usize = dim as usize;
-    let sz = dim_usize * std::mem::size_of::<c_double>();
+        let dim_usize = dim as usize;
+        let sz = dim_usize * std::mem::size_of::<c_double>();
 
-    // double *yn= (double *) malloc ( dim * sizeof(double) );
-    let yn = libc::malloc(sz) as *mut c_double;
-    let y1 = libc::malloc(sz) as *mut c_double;
-    let y21 = libc::malloc(sz) as *mut c_double;
-    let y2 = libc::malloc(sz) as *mut c_double;
-    let ynk = libc::malloc(sz) as *mut c_double;
-    let a = libc::malloc(sz) as *mut c_double;
-    let scale = libc::malloc(sz) as *mut c_double;
+        // double *yn= (double *) malloc ( dim * sizeof(double) );
+        let yn = libc::malloc(sz).cast::<c_double>();
+        let y1 = libc::malloc(sz).cast::<c_double>();
+        let y21 = libc::malloc(sz).cast::<c_double>();
+        let y2 = libc::malloc(sz).cast::<c_double>();
+        let ynk = libc::malloc(sz).cast::<c_double>();
+        let a = libc::malloc(sz).cast::<c_double>();
+        let scale = libc::malloc(sz).cast::<c_double>();
 
-    let mut ii: c_int;
+        let _ii: c_int;
 
-    // //find maximum values
-    // max_val= log(fabs(*yo));
-    max_val = log(fabs(*yo));
+        // //find maximum values
+        // max_val= log(fabs(*yo));
+        max_val = log(fabs(*yo));
 
-    // for (ii=1; ii < dim; ii++)
-    //   if ( log(fabs(*(yo+ii))) > max_val )
-    //     max_val= log(fabs(*(yo+ii)));
-    for i in 1..dim {
-        let v = log(fabs(*yo.add(i as usize)));
-        if v > max_val {
-            max_val = v;
+        // for (ii=1; ii < dim; ii++)
+        //   if ( log(fabs(*(yo+ii))) > max_val )
+        //     max_val= log(fabs(*(yo+ii)));
+        for i in 1..dim {
+            let v = log(fabs(*yo.add(i as usize)));
+            if v > max_val {
+                max_val = v;
+            }
         }
+
+        // //set up scale
+        // double c= fmax(atol, rtol + max_val);
+        let c = fmax(atol, rtol + max_val);
+
+        // double s= log(exp(atol-c)+exp(rtol + max_val-c))+c;
+        let s = log(exp(atol - c) + exp(rtol + max_val - c)) + c;
+
+        // for (ii=0; ii < dim; ii++) *(scale+ii)= s;
+        for i in 0..dim {
+            *scale.add(i as usize) = s;
+        }
+
+        // //find good dt
+        // //dt*= 2.;
+        while err > 1.0 {
+            // //dt/= 2.;
+            // //copy initial condition
+            // for (ii=0; ii < dim; ii++) *(yn+ii)= *(yo+ii);
+            for i in 0..dim {
+                *yn.add(i as usize) = *yo.add(i as usize);
+            }
+            // for (ii=0; ii < dim; ii++) *(y1+ii)= *(yo+ii);
+            for i in 0..dim {
+                *y1.add(i as usize) = *yo.add(i as usize);
+            }
+            // for (ii=0; ii < dim; ii++) *(y21+ii)= *(yo+ii);
+            for i in 0..dim {
+                *y21.add(i as usize) = *yo.add(i as usize);
+            }
+
+            // //do one step with step dt, and one with step dt/2.
+            // //dt
+            // rk4_onestep(func,dim,yn,y1,to,dt,nargs,potential_args,ynk,a);
+            rk4_onestep(func, dim, yn, y1, to, dt, nargs, potential_args, ynk, a);
+
+            // //dt/2
+            // rk4_onestep(func,dim,yn,y21,to,dt/2.,nargs,potential_args,ynk,a);
+            rk4_onestep(
+                func,
+                dim,
+                yn,
+                y21,
+                to,
+                dt / 2.0,
+                nargs,
+                potential_args,
+                ynk,
+                a,
+            );
+
+            // for (ii=0; ii < dim; ii++) *(y2+ii)= *(y21+ii);
+            for i in 0..dim {
+                *y2.add(i as usize) = *y21.add(i as usize);
+            }
+
+            // rk4_onestep(func,dim,y21,y2,to+dt/2.,dt/2.,nargs,potential_args,ynk,a);
+            rk4_onestep(
+                func,
+                dim,
+                y21,
+                y2,
+                to + dt / 2.0,
+                dt / 2.0,
+                nargs,
+                potential_args,
+                ynk,
+                a,
+            );
+
+            // //Norm
+            // err= 0.;
+            err = 0.0;
+
+            // for (ii=0; ii < dim; ii++) {
+            //   err+= exp(2.*log(fabs(*(y1+ii)-*(y2+ii)))-2.* *(scale+ii));
+            // }
+            for i in 0..dim {
+                let diff = *y1.add(i as usize) - *y2.add(i as usize);
+                let term = exp(2.0 * log(fabs(diff)) - 2.0 * *scale.add(i as usize));
+                err += term;
+            }
+
+            // err= sqrt(err/dim);
+            err = sqrt(err / c_double::from(dim));
+
+            // if ( ceil(pow(err,1./5.)) > 1.
+            //      && init_dt / dt * ceil(pow(err,1./5.)) < _MAX_DT_REDUCE)
+            //   dt/= ceil(pow(err,1./5.));
+            // else
+            //   break;
+            let factor = ceil(pow(err, 1.0 / 5.0));
+            if factor > 1.0 && init_dt / dt * factor < MAX_DT_REDUCE {
+                dt /= factor;
+            } else {
+                break;
+            }
+        }
+
+        // //free what we allocated
+        libc::free(yn.cast::<libc::c_void>());
+        libc::free(y1.cast::<libc::c_void>());
+        libc::free(y2.cast::<libc::c_void>());
+        libc::free(y21.cast::<libc::c_void>());
+        libc::free(ynk.cast::<libc::c_void>());
+        libc::free(a.cast::<libc::c_void>());
+        libc::free(scale.cast::<libc::c_void>());
+
+        // //return
+        // //printf("%f\n",dt);
+        // //fflush(stdout);
+        dt
     }
-
-    // //set up scale
-    // double c= fmax(atol, rtol + max_val);
-    let c = fmax(atol, rtol + max_val);
-
-    // double s= log(exp(atol-c)+exp(rtol + max_val-c))+c;
-    let s = log(exp(atol - c) + exp(rtol + max_val - c)) + c;
-
-    // for (ii=0; ii < dim; ii++) *(scale+ii)= s;
-    for i in 0..dim {
-        *scale.add(i as usize) = s;
-    }
-
-    // //find good dt
-    // //dt*= 2.;
-    while err > 1.0 {
-        // //dt/= 2.;
-        // //copy initial condition
-        // for (ii=0; ii < dim; ii++) *(yn+ii)= *(yo+ii);
-        for i in 0..dim {
-            *yn.add(i as usize) = *yo.add(i as usize);
-        }
-        // for (ii=0; ii < dim; ii++) *(y1+ii)= *(yo+ii);
-        for i in 0..dim {
-            *y1.add(i as usize) = *yo.add(i as usize);
-        }
-        // for (ii=0; ii < dim; ii++) *(y21+ii)= *(yo+ii);
-        for i in 0..dim {
-            *y21.add(i as usize) = *yo.add(i as usize);
-        }
-
-        // //do one step with step dt, and one with step dt/2.
-        // //dt
-        // rk4_onestep(func,dim,yn,y1,to,dt,nargs,potentialArgs,ynk,a);
-        rk4_onestep(func, dim, yn, y1, to, dt, nargs, potentialArgs, ynk, a);
-
-        // //dt/2
-        // rk4_onestep(func,dim,yn,y21,to,dt/2.,nargs,potentialArgs,ynk,a);
-        rk4_onestep(
-            func,
-            dim,
-            yn,
-            y21,
-            to,
-            dt / 2.0,
-            nargs,
-            potentialArgs,
-            ynk,
-            a,
-        );
-
-        // for (ii=0; ii < dim; ii++) *(y2+ii)= *(y21+ii);
-        for i in 0..dim {
-            *y2.add(i as usize) = *y21.add(i as usize);
-        }
-
-        // rk4_onestep(func,dim,y21,y2,to+dt/2.,dt/2.,nargs,potentialArgs,ynk,a);
-        rk4_onestep(
-            func,
-            dim,
-            y21,
-            y2,
-            to + dt / 2.0,
-            dt / 2.0,
-            nargs,
-            potentialArgs,
-            ynk,
-            a,
-        );
-
-        // //Norm
-        // err= 0.;
-        err = 0.0;
-
-        // for (ii=0; ii < dim; ii++) {
-        //   err+= exp(2.*log(fabs(*(y1+ii)-*(y2+ii)))-2.* *(scale+ii));
-        // }
-        for i in 0..dim {
-            let diff = *y1.add(i as usize) - *y2.add(i as usize);
-            let term = exp(2.0 * log(fabs(diff)) - 2.0 * *scale.add(i as usize));
-            err += term;
-        }
-
-        // err= sqrt(err/dim);
-        err = sqrt(err / (dim as c_double));
-
-        // if ( ceil(pow(err,1./5.)) > 1.
-        //      && init_dt / dt * ceil(pow(err,1./5.)) < _MAX_DT_REDUCE)
-        //   dt/= ceil(pow(err,1./5.));
-        // else
-        //   break;
-        let factor = ceil(pow(err, 1.0 / 5.0));
-        if factor > 1.0 && init_dt / dt * factor < MAX_DT_REDUCE {
-            dt /= factor;
-        } else {
-            break;
-        }
-    }
-
-    // //free what we allocated
-    libc::free(yn as *mut libc::c_void);
-    libc::free(y1 as *mut libc::c_void);
-    libc::free(y2 as *mut libc::c_void);
-    libc::free(y21 as *mut libc::c_void);
-    libc::free(ynk as *mut libc::c_void);
-    libc::free(a as *mut libc::c_void);
-    libc::free(scale as *mut libc::c_void);
-
-    // //return
-    // //printf("%f\n",dt);
-    // //fflush(stdout);
-    dt
 }
 
 unsafe fn dopr54_onestep(
@@ -287,7 +304,7 @@ unsafe fn dopr54_onestep(
     to: *mut c_double,
     dt_one: *mut c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    potential_args: *mut potentialArg,
     rtol: c_double,
     atol: c_double,
     a1: *mut c_double,
@@ -303,71 +320,77 @@ unsafe fn dopr54_onestep(
     ynk: *mut c_double,
     err: *mut c_int,
 ) {
-    // double init_dt_one= *dt_one;
-    let init_dt_one: c_double = *dt_one;
-    // double init_to= *to;
-    let init_to: c_double = *to;
-    // unsigned char accept;
-    let mut accept: u8;
+    unsafe {
+        // double init_dt_one= *dt_one;
+        let init_dt_one: c_double = *dt_one;
+        // double init_to= *to;
+        let init_to: c_double = *to;
+        // unsigned char accept;
+        let mut accept: u8;
 
-    // while ( ( dt >= 0. && *to < (init_to+dt))
-    //         || ( dt < 0. && *to > (init_to+dt)) ) {
-    while (dt >= 0.0 && *to < init_to + dt) || (dt < 0.0 && *to > init_to + dt) {
-        // accept= 0;
-        accept = 0;
+        // while ( ( dt >= 0. && *to < (init_to+dt))
+        //         || ( dt < 0. && *to > (init_to+dt)) ) {
+        // `*to` is advanced inside `dopr54_actualstep` through the raw pointer,
+        // which clippy cannot observe, so the "immutable condition" is a false
+        // positive here.
+        #[allow(clippy::while_immutable_condition)]
+        while (dt >= 0.0 && *to < init_to + dt) || (dt < 0.0 && *to > init_to + dt) {
+            // accept= 0;
+            accept = 0;
 
-        // if ( init_dt_one/ *dt_one > _MAX_STEPREDUCE
-        //      || *dt_one != *dt_one) { // check for NaN
-        if init_dt_one / *dt_one > MAX_STEPREDUCE || (*dt_one).is_nan() {
-            //   *dt_one= init_dt_one/_MAX_STEPREDUCE;
-            *dt_one = init_dt_one / MAX_STEPREDUCE;
-            //   accept= 1;
-            accept = 1;
-            //   if ( *err % 2 ==  0) *err+= 1;
-            if *err % 2 == 0 {
-                *err += 1;
+            // if ( init_dt_one/ *dt_one > _MAX_STEPREDUCE
+            //      || *dt_one != *dt_one) { // check for NaN
+            if init_dt_one / *dt_one > MAX_STEPREDUCE || (*dt_one).is_nan() {
+                //   *dt_one= init_dt_one/_MAX_STEPREDUCE;
+                *dt_one = init_dt_one / MAX_STEPREDUCE;
+                //   accept= 1;
+                accept = 1;
+                //   if ( *err % 2 ==  0) *err+= 1;
+                if *err % 2 == 0 {
+                    *err += 1;
+                }
             }
-        }
 
-        // if ( dt >= 0. && *dt_one > (init_to+dt - *to) )
-        //   *dt_one= (init_to + dt - *to);
-        if dt >= 0.0 && *dt_one > (init_to + dt - *to) {
-            *dt_one = init_to + dt - *to;
-        }
+            // if ( dt >= 0. && *dt_one > (init_to+dt - *to) )
+            //   *dt_one= (init_to + dt - *to);
+            if dt >= 0.0 && *dt_one > (init_to + dt - *to) {
+                *dt_one = init_to + dt - *to;
+            }
 
-        // if ( dt < 0. && *dt_one < (init_to+dt - *to) )
-        //   *dt_one = (init_to + dt - *to);
-        if dt < 0.0 && *dt_one < (init_to + dt - *to) {
-            *dt_one = init_to + dt - *to;
-        }
+            // if ( dt < 0. && *dt_one < (init_to+dt - *to) )
+            //   *dt_one = (init_to + dt - *to);
+            if dt < 0.0 && *dt_one < (init_to + dt - *to) {
+                *dt_one = init_to + dt - *to;
+            }
 
-        // *dt_one= dopr54_actualstep(func,dim,yo,*dt_one,to,nargs,potentialArgs,
-        //                                 rtol,atol,
-        //                                 a1,a,k1,k2,k3,k4,k5,k6,yn1,yerr,ynk,
-        //                                 accept);
-        *dt_one = dopr54_actualstep(
-            func,
-            dim,
-            yo,
-            *dt_one,
-            to,
-            nargs,
-            potentialArgs,
-            rtol,
-            atol,
-            a1,
-            a,
-            k1,
-            k2,
-            k3,
-            k4,
-            k5,
-            k6,
-            yn1,
-            yerr,
-            ynk,
-            accept,
-        );
+            // *dt_one= dopr54_actualstep(func,dim,yo,*dt_one,to,nargs,potential_args,
+            //                                 rtol,atol,
+            //                                 a1,a,k1,k2,k3,k4,k5,k6,yn1,yerr,ynk,
+            //                                 accept);
+            *dt_one = dopr54_actualstep(
+                func,
+                dim,
+                yo,
+                *dt_one,
+                to,
+                nargs,
+                potential_args,
+                rtol,
+                atol,
+                a1,
+                a,
+                k1,
+                k2,
+                k3,
+                k4,
+                k5,
+                k6,
+                yn1,
+                yerr,
+                ynk,
+                accept,
+            );
+        }
     }
 }
 
@@ -378,7 +401,7 @@ unsafe fn dopr54_actualstep(
     dt: c_double,
     to: *mut c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    potential_args: *mut potentialArg,
     rtol: c_double,
     atol: c_double,
     a1: *mut c_double,
@@ -394,182 +417,207 @@ unsafe fn dopr54_actualstep(
     ynk: *mut c_double,
     accept: u8,
 ) -> c_double {
-    // constant
-    const C2: c_double = 0.2;
-    const C3: c_double = 0.3;
-    const C4: c_double = 0.8;
-    const C5: c_double = 8.0 / 9.0;
-    const A21: c_double = 0.2;
-    const A31: c_double = 3.0 / 40.0;
-    const A41: c_double = 44.0 / 45.0;
-    const A51: c_double = 19372.0 / 6561.0;
-    const A61: c_double = 9017.0 / 3168.0;
-    const A71: c_double = 35.0 / 384.0;
-    const A32: c_double = 9.0 / 40.0;
-    const A42: c_double = -56.0 / 15.0;
-    const A52: c_double = -25360.0 / 2187.0;
-    const A62: c_double = -355.0 / 33.0;
-    const A43: c_double = 32.0 / 9.0;
-    const A53: c_double = 64448.0 / 6561.0;
-    const A63: c_double = 46732.0 / 5247.0;
-    const A73: c_double = 500.0 / 1113.0;
-    const A54: c_double = -212.0 / 729.0;
-    const A64: c_double = 49.0 / 176.0;
-    const A74: c_double = 125.0 / 192.0;
-    const A65: c_double = -5103.0 / 18656.0;
-    const A75: c_double = -2187.0 / 6784.0;
-    const A76: c_double = 11.0 / 84.0;
-    const B1: c_double = 35.0 / 384.0;
-    const B3: c_double = 500.0 / 1113.0;
-    const B4: c_double = 125.0 / 192.0;
-    const B5: c_double = -2187.0 / 6784.0;
-    const B6: c_double = 11.0 / 84.0;
-    // error coeffs
-    const BE1: c_double = B1 - 5179.0 / 57600.0;
-    const BE3: c_double = B3 - 7571.0 / 16695.0;
-    const BE4: c_double = B4 - 393.0 / 640.0;
-    const BE5: c_double = B5 + 92097.0 / 339200.0;
-    const BE6: c_double = B6 - 187.0 / 2100.0;
-    const BE7: c_double = -1.0 / 40.0;
+    unsafe {
+        // constant
+        const C2: c_double = 0.2;
+        const C3: c_double = 0.3;
+        const C4: c_double = 0.8;
+        const C5: c_double = 8.0 / 9.0;
+        const A21: c_double = 0.2;
+        const A31: c_double = 3.0 / 40.0;
+        const A41: c_double = 44.0 / 45.0;
+        const A51: c_double = 19372.0 / 6561.0;
+        const A61: c_double = 9017.0 / 3168.0;
+        const A71: c_double = 35.0 / 384.0;
+        const A32: c_double = 9.0 / 40.0;
+        const A42: c_double = -56.0 / 15.0;
+        const A52: c_double = -25360.0 / 2187.0;
+        const A62: c_double = -355.0 / 33.0;
+        const A43: c_double = 32.0 / 9.0;
+        const A53: c_double = 64448.0 / 6561.0;
+        const A63: c_double = 46732.0 / 5247.0;
+        const A73: c_double = 500.0 / 1113.0;
+        const A54: c_double = -212.0 / 729.0;
+        const A64: c_double = 49.0 / 176.0;
+        const A74: c_double = 125.0 / 192.0;
+        const A65: c_double = -5103.0 / 18656.0;
+        const A75: c_double = -2187.0 / 6784.0;
+        const A76: c_double = 11.0 / 84.0;
+        const B1: c_double = 35.0 / 384.0;
+        const B3: c_double = 500.0 / 1113.0;
+        const B4: c_double = 125.0 / 192.0;
+        const B5: c_double = -2187.0 / 6784.0;
+        const B6: c_double = 11.0 / 84.0;
+        // error coeffs
+        const BE1: c_double = B1 - 5179.0 / 57600.0;
+        const BE3: c_double = B3 - 7571.0 / 16695.0;
+        const BE4: c_double = B4 - 393.0 / 640.0;
+        const BE5: c_double = B5 + 92097.0 / 339_200.0;
+        const BE6: c_double = B6 - 187.0 / 2100.0;
+        const BE7: c_double = -1.0 / 40.0;
 
-    let f = func.expect("dopr54_actualstep: func pointer was null");
+        let f = func.expect("dopr54_actualstep: func pointer was null");
 
-    // setup yn1
-    for i in 0..dim {
-        let idx = i as usize;
-        *yn1.add(idx) = *yo.add(idx);
-    }
+        // setup yn1
+        for i in 0..dim {
+            let idx = i as usize;
+            *yn1.add(idx) = *yo.add(idx);
+        }
 
-    // calculate k1
-    for i in 0..dim {
-        let idx = i as usize;
-        *a.add(idx) = *a1.add(idx);
-    }
-    for i in 0..dim {
-        let idx = i as usize;
-        *k1.add(idx) = dt * *a.add(idx);
-        *yn1.add(idx) += B1 * *k1.add(idx);
-        *yerr.add(idx) = BE1 * *k1.add(idx);
-        *ynk.add(idx) = *yo.add(idx) + A21 * *k1.add(idx);
-    }
+        // calculate k1
+        for i in 0..dim {
+            let idx = i as usize;
+            *a.add(idx) = *a1.add(idx);
+        }
+        for i in 0..dim {
+            let idx = i as usize;
+            *k1.add(idx) = dt * *a.add(idx);
+            *yn1.add(idx) += B1 * *k1.add(idx);
+            *yerr.add(idx) = BE1 * *k1.add(idx);
+            *ynk.add(idx) = *yo.add(idx) + A21 * *k1.add(idx);
+        }
 
-    // calculate k2
-    f(*to + C2 * dt, ynk, a, nargs, potentialArgs);
-    for i in 0..dim {
-        let idx = i as usize;
-        *k2.add(idx) = dt * *a.add(idx);
-        *ynk.add(idx) = *yo.add(idx) + A31 * *k1.add(idx) + A32 * *k2.add(idx);
-    }
+        // calculate k2
+        f(*to + C2 * dt, ynk, a, nargs, potential_args);
+        for i in 0..dim {
+            let idx = i as usize;
+            *k2.add(idx) = dt * *a.add(idx);
+            *ynk.add(idx) = *yo.add(idx) + A31 * *k1.add(idx) + A32 * *k2.add(idx);
+        }
 
-    // calculate k3
-    f(*to + C3 * dt, ynk, a, nargs, potentialArgs);
-    for i in 0..dim {
-        let idx = i as usize;
-        *k3.add(idx) = dt * *a.add(idx);
-        *yn1.add(idx) += B3 * *k3.add(idx);
-        *yerr.add(idx) += BE3 * *k3.add(idx);
-        *ynk.add(idx) = *yo.add(idx) + A41 * *k1.add(idx) + A42 * *k2.add(idx) + A43 * *k3.add(idx);
-    }
+        // calculate k3
+        f(*to + C3 * dt, ynk, a, nargs, potential_args);
+        for i in 0..dim {
+            let idx = i as usize;
+            *k3.add(idx) = dt * *a.add(idx);
+            *yn1.add(idx) += B3 * *k3.add(idx);
+            *yerr.add(idx) += BE3 * *k3.add(idx);
+            *ynk.add(idx) =
+                *yo.add(idx) + A41 * *k1.add(idx) + A42 * *k2.add(idx) + A43 * *k3.add(idx);
+        }
 
-    // calculate k4
-    f(*to + C4 * dt, ynk, a, nargs, potentialArgs);
-    for i in 0..dim {
-        let idx = i as usize;
-        *k4.add(idx) = dt * *a.add(idx);
-        *yn1.add(idx) += B4 * *k4.add(idx);
-        *yerr.add(idx) += BE4 * *k4.add(idx);
-        *ynk.add(idx) = *yo.add(idx)
-            + A51 * *k1.add(idx)
-            + A52 * *k2.add(idx)
-            + A53 * *k3.add(idx)
-            + A54 * *k4.add(idx);
-    }
+        // calculate k4
+        f(*to + C4 * dt, ynk, a, nargs, potential_args);
+        for i in 0..dim {
+            let idx = i as usize;
+            *k4.add(idx) = dt * *a.add(idx);
+            *yn1.add(idx) += B4 * *k4.add(idx);
+            *yerr.add(idx) += BE4 * *k4.add(idx);
+            *ynk.add(idx) = *yo.add(idx)
+                + A51 * *k1.add(idx)
+                + A52 * *k2.add(idx)
+                + A53 * *k3.add(idx)
+                + A54 * *k4.add(idx);
+        }
 
-    // calculate k5
-    f(*to + C5 * dt, ynk, a, nargs, potentialArgs);
-    for i in 0..dim {
-        let idx = i as usize;
-        *k5.add(idx) = dt * *a.add(idx);
-        *yn1.add(idx) += B5 * *k5.add(idx);
-        *yerr.add(idx) += BE5 * *k5.add(idx);
-        *ynk.add(idx) = *yo.add(idx)
-            + A61 * *k1.add(idx)
-            + A62 * *k2.add(idx)
-            + A63 * *k3.add(idx)
-            + A64 * *k4.add(idx)
-            + A65 * *k5.add(idx);
-    }
+        // calculate k5
+        f(*to + C5 * dt, ynk, a, nargs, potential_args);
+        for i in 0..dim {
+            let idx = i as usize;
+            *k5.add(idx) = dt * *a.add(idx);
+            *yn1.add(idx) += B5 * *k5.add(idx);
+            *yerr.add(idx) += BE5 * *k5.add(idx);
+            *ynk.add(idx) = *yo.add(idx)
+                + A61 * *k1.add(idx)
+                + A62 * *k2.add(idx)
+                + A63 * *k3.add(idx)
+                + A64 * *k4.add(idx)
+                + A65 * *k5.add(idx);
+        }
 
-    // calculate k6
-    f(*to + dt, ynk, a, nargs, potentialArgs);
-    for i in 0..dim {
-        let idx = i as usize;
-        *k6.add(idx) = dt * *a.add(idx);
-        *yn1.add(idx) += B6 * *k6.add(idx);
-        *yerr.add(idx) += BE6 * *k6.add(idx);
-        *ynk.add(idx) = *yo.add(idx)
+        // calculate k6
+        f(*to + dt, ynk, a, nargs, potential_args);
+        for i in 0..dim {
+            let idx = i as usize;
+            *k6.add(idx) = dt * *a.add(idx);
+            *yn1.add(idx) += B6 * *k6.add(idx);
+            *yerr.add(idx) += BE6 * *k6.add(idx);
+            *ynk.add(idx) = *yo.add(idx)
                 + A71 * *k1.add(idx)
                 + A73 * *k3.add(idx) // a72 = 0
                 + A74 * *k4.add(idx)
                 + A75 * *k5.add(idx)
                 + A76 * *k6.add(idx);
-    }
-
-    // calculate k7
-    f(*to + dt, ynk, a, nargs, potentialArgs);
-    for i in 0..dim {
-        let idx = i as usize;
-        *yerr.add(idx) += BE7 * dt * *a.add(idx);
-    }
-    // yn1 is proposed new value
-
-    // find maximum values
-    let mut max_val: c_double = log(fabs(*yo));
-    for i in 1..dim {
-        let v = log(fabs(*yo.add(i as usize)));
-        if v > max_val {
-            max_val = v;
         }
-    }
 
-    // set up scale
-    let c = fmax(atol, rtol + max_val);
-    let s = log(exp(atol - c) + exp(rtol + max_val - c)) + c;
-
-    // Norm
-    let mut err: c_double = 0.0;
-    for i in 0..dim {
-        let idx = i as usize;
-        err += exp(2.0 * log(fabs(*yerr.add(idx))) - 2.0 * s);
-    }
-    err = sqrt(err / (dim as c_double));
-
-    let corr: c_double = 0.85 * pow(err, -0.2);
-
-    // Round to the nearest power of two
-    let mut powertwo: c_double = round(log(corr) / log(2.0));
-    if powertwo > MAX_STEPCHANGE_POWERTWO {
-        powertwo = MAX_STEPCHANGE_POWERTWO;
-    } else if powertwo < MIN_STEPCHANGE_POWERTWO {
-        powertwo = MIN_STEPCHANGE_POWERTWO;
-    }
-
-    // accept or reject
-    let dt_one: c_double;
-    if powertwo >= 0.0 || accept != 0 {
-        // accept, if the step is the smallest possible, always accept
+        // calculate k7
+        f(*to + dt, ynk, a, nargs, potential_args);
         for i in 0..dim {
             let idx = i as usize;
-            *a1.add(idx) = *a.add(idx);
-            *yo.add(idx) = *yn1.add(idx);
+            *yerr.add(idx) += BE7 * dt * *a.add(idx);
         }
-        *to += dt;
-    }
+        // yn1 is proposed new value
 
-    dt_one = dt * pow(2.0, powertwo);
-    dt_one
+        // find maximum values
+        let mut max_val: c_double = log(fabs(*yo));
+        for i in 1..dim {
+            let v = log(fabs(*yo.add(i as usize)));
+            if v > max_val {
+                max_val = v;
+            }
+        }
+
+        // set up scale
+        let c = fmax(atol, rtol + max_val);
+        let s = log(exp(atol - c) + exp(rtol + max_val - c)) + c;
+
+        // Norm
+        let mut err: c_double = 0.0;
+        for i in 0..dim {
+            let idx = i as usize;
+            err += exp(2.0 * log(fabs(*yerr.add(idx))) - 2.0 * s);
+        }
+        err = sqrt(err / c_double::from(dim));
+
+        let corr: c_double = 0.85 * pow(err, -0.2);
+
+        // Round to the nearest power of two
+        let mut powertwo: c_double = round(log(corr) / log(2.0));
+        powertwo = powertwo.clamp(MIN_STEPCHANGE_POWERTWO, MAX_STEPCHANGE_POWERTWO);
+
+        // accept or reject
+
+        if powertwo >= 0.0 || accept != 0 {
+            // accept, if the step is the smallest possible, always accept
+            for i in 0..dim {
+                let idx = i as usize;
+                *a1.add(idx) = *a.add(idx);
+                *yo.add(idx) = *yn1.add(idx);
+            }
+            *to += dt;
+        }
+
+        let dt_one: c_double = dt * pow(2.0, powertwo);
+        dt_one
+    }
 }
 
+/// Integrate the system described by `func` with the Dormand-Prince 5(4)
+/// method, writing one state per entry of `t` into `result`.
+///
+/// Mirrors galpy's C `dop54` integration entry point.
+///
+/// # Safety
+///
+/// All pointer arguments must be valid for their implied accesses:
+/// - `yo`, `result` must point to `dim * nt` / `dim * nt` writable `c_double`s
+///   (`yo` holds the initial state, `result` receives `nt` states),
+/// - `t` must point to `nt` ascending `c_double`s,
+/// - `err` must point to a writable `c_int`,
+/// - `potential_args` must be a pointer understood by `func` (may be null only
+///   if `func` accepts null).
+///
+/// `func` must be a valid C-ABI function pointer computing the derivative at
+/// `(t, q)` into `a`.
+///
+/// # Panics
+///
+/// Panics if `func` is `None` (a null function pointer).
+///
+/// # Errors
+///
+/// If a step cannot stay within tolerance, `*err` is set to a nonzero value
+/// instead of returning an error.
 // #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dopr54(
     func: FuncPtr,
@@ -579,104 +627,109 @@ pub unsafe extern "C" fn dopr54(
     dt_one: c_double,
     t: *mut c_double,
     nargs: c_int,
-    potentialArgs: *mut potentialArg,
+    potential_args: *mut potentialArg,
     rtol: c_double,
     atol: c_double,
     result: *mut c_double,
     err: *mut c_int,
 ) {
-    // //Declare and initialize
-    let dim_usize = dim as usize;
-    let sz = dim_usize * std::mem::size_of::<c_double>();
+    unsafe {
+        // //Declare and initialize
+        let dim_usize = dim as usize;
+        let sz = dim_usize * std::mem::size_of::<c_double>();
 
-    let a = libc::malloc(sz) as *mut c_double;
-    let a1 = libc::malloc(sz) as *mut c_double;
-    let k1 = libc::malloc(sz) as *mut c_double;
-    let k2 = libc::malloc(sz) as *mut c_double;
-    let k3 = libc::malloc(sz) as *mut c_double;
-    let k4 = libc::malloc(sz) as *mut c_double;
-    let k5 = libc::malloc(sz) as *mut c_double;
-    let k6 = libc::malloc(sz) as *mut c_double;
-    let yn = libc::malloc(sz) as *mut c_double;
-    let yn1 = libc::malloc(sz) as *mut c_double;
-    let yerr = libc::malloc(sz) as *mut c_double;
-    let ynk = libc::malloc(sz) as *mut c_double;
+        let a = libc::malloc(sz).cast::<c_double>();
+        let a1 = libc::malloc(sz).cast::<c_double>();
+        let k1 = libc::malloc(sz).cast::<c_double>();
+        let k2 = libc::malloc(sz).cast::<c_double>();
+        let k3 = libc::malloc(sz).cast::<c_double>();
+        let k4 = libc::malloc(sz).cast::<c_double>();
+        let k5 = libc::malloc(sz).cast::<c_double>();
+        let k6 = libc::malloc(sz).cast::<c_double>();
+        let yn = libc::malloc(sz).cast::<c_double>();
+        let yn1 = libc::malloc(sz).cast::<c_double>();
+        let yerr = libc::malloc(sz).cast::<c_double>();
+        let ynk = libc::malloc(sz).cast::<c_double>();
 
-    let mut ii: c_int;
+        let _ii: c_int;
 
-    save_rk(dim, yo, result);
+        save_rk(dim, yo, result);
 
-    let mut result = result.add(dim_usize);
+        let mut result = result.add(dim_usize);
 
-    *err = 0;
+        *err = 0;
 
-    for i in 0..dim {
-        *yn.add(i as usize) = *yo.add(i as usize);
+        for i in 0..dim {
+            *yn.add(i as usize) = *yo.add(i as usize);
+        }
+
+        let dt: c_double = *t.add(1) - *t;
+        let mut dt_one = dt_one;
+        // -9999.99 is galpy's exact "choose the timestep automatically" sentinel,
+        // never a computed value, so the bit-exact comparison is intentional.
+        #[allow(clippy::float_cmp)]
+        if dt_one == -9999.99 {
+            dt_one = rk4_estimate_step(func, dim, yo, dt, t, nargs, potential_args, rtol, atol);
+        }
+
+        // //Integrate the system
+        // double to= *t;
+        let mut to: c_double = *t;
+
+        // //set up a1
+        // func(to,yn,a1,nargs,potential_args);
+        let f = func.expect("dopr54: func pointer was null");
+        f(to, yn, a1, nargs, potential_args);
+
+        for _ii in 0..(nt - 1) {
+            // if ( interrupted ) { ... }  // not yet ported; see note above
+
+            // dopr54_onestep(func,dim,yn,dt,&to,&dt_one,
+            //                     nargs,potential_args,rtol,atol,
+            //                     a1,a,k1,k2,k3,k4,k5,k6,yn1,yerr,ynk,err);
+            dopr54_onestep(
+                func,
+                dim,
+                yn,
+                dt,
+                &raw mut to,
+                &raw mut dt_one,
+                nargs,
+                potential_args,
+                rtol,
+                atol,
+                a1,
+                a,
+                k1,
+                k2,
+                k3,
+                k4,
+                k5,
+                k6,
+                yn1,
+                yerr,
+                ynk,
+                err,
+            );
+
+            // //save
+            // save_rk(dim,yn,result);
+            save_rk(dim, yn, result);
+            // result+= dim;
+            result = result.add(dim_usize);
+        }
+
+        libc::free(a.cast::<libc::c_void>());
+        libc::free(a1.cast::<libc::c_void>());
+        libc::free(k1.cast::<libc::c_void>());
+        libc::free(k2.cast::<libc::c_void>());
+        libc::free(k3.cast::<libc::c_void>());
+        libc::free(k4.cast::<libc::c_void>());
+        libc::free(k5.cast::<libc::c_void>());
+        libc::free(k6.cast::<libc::c_void>());
+        libc::free(yn.cast::<libc::c_void>());
+        libc::free(yn1.cast::<libc::c_void>());
+        libc::free(yerr.cast::<libc::c_void>());
+        libc::free(ynk.cast::<libc::c_void>());
     }
-
-    let mut dt: c_double = *t.add(1) - *t;
-    let mut dt_one = dt_one;
-    if dt_one == -9999.99 {
-        dt_one = rk4_estimate_step(func, dim, yo, dt, t, nargs, potentialArgs, rtol, atol);
-    }
-
-    // //Integrate the system
-    // double to= *t;
-    let mut to: c_double = *t;
-
-    // //set up a1
-    // func(to,yn,a1,nargs,potentialArgs);
-    let f = func.expect("dopr54: func pointer was null");
-    f(to, yn, a1, nargs, potentialArgs);
-
-    for _ii in 0..(nt - 1) {
-        // if ( interrupted ) { ... }  // not yet ported; see note above
-
-        // dopr54_onestep(func,dim,yn,dt,&to,&dt_one,
-        //                     nargs,potentialArgs,rtol,atol,
-        //                     a1,a,k1,k2,k3,k4,k5,k6,yn1,yerr,ynk,err);
-        dopr54_onestep(
-            func,
-            dim,
-            yn,
-            dt,
-            &mut to,
-            &mut dt_one,
-            nargs,
-            potentialArgs,
-            rtol,
-            atol,
-            a1,
-            a,
-            k1,
-            k2,
-            k3,
-            k4,
-            k5,
-            k6,
-            yn1,
-            yerr,
-            ynk,
-            err,
-        );
-
-        // //save
-        // save_rk(dim,yn,result);
-        save_rk(dim, yn, result);
-        // result+= dim;
-        result = result.add(dim_usize);
-    }
-
-    libc::free(a as *mut libc::c_void);
-    libc::free(a1 as *mut libc::c_void);
-    libc::free(k1 as *mut libc::c_void);
-    libc::free(k2 as *mut libc::c_void);
-    libc::free(k3 as *mut libc::c_void);
-    libc::free(k4 as *mut libc::c_void);
-    libc::free(k5 as *mut libc::c_void);
-    libc::free(k6 as *mut libc::c_void);
-    libc::free(yn as *mut libc::c_void);
-    libc::free(yn1 as *mut libc::c_void);
-    libc::free(yerr as *mut libc::c_void);
-    libc::free(ynk as *mut libc::c_void);
 }

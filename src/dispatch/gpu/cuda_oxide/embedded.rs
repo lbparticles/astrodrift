@@ -15,7 +15,7 @@ const KERNEL_BUNDLE_NAME: &str = "kernels";
 #[inline(never)]
 fn artifact_binary_path() -> Result<PathBuf, GPUDispatchError> {
     let mut info = std::mem::MaybeUninit::<libc::Dl_info>::zeroed();
-    let address = artifact_binary_path as *const () as *const libc::c_void;
+    let address = (artifact_binary_path as *const ()).cast::<libc::c_void>();
 
     // SAFETY: `address` points to this function and `info` points to writable storage.
     let found = unsafe { libc::dladdr(address, info.as_mut_ptr()) };

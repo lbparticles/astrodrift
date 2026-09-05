@@ -1,3 +1,11 @@
+// This module is a port of Hairer's reference DOP853 integrator and keeps the
+// original variable names (`err2`/`erri`, `fac11`/`facc1`, ...) so it stays
+// comparable with the reference implementation.
+#![allow(
+    clippy::similar_names, // names follow Hairer's reference implementation
+    clippy::too_many_lines // the stepper is kept monolithic like the reference
+)]
+
 use libc::{c_double, c_int};
 
 #[repr(C)]
@@ -25,164 +33,164 @@ unsafe extern "C" {
 
 const UROUND: c_double = 2.3e-16;
 
-const C2: c_double = 0.526001519587677318785587544488e-1;
-const C3: c_double = 0.789002279381515978178381316732e-1;
-const C4: c_double = 0.118350341907227396726757197510;
-const C5: c_double = 0.281649658092772603273242802490;
-const C6: c_double = 0.333333333333333333333333333333;
+const C2: c_double = 0.526_001_519_587_677_318_785_587_544_488e-1;
+const C3: c_double = 0.789_002_279_381_515_978_178_381_316_732e-1;
+const C4: c_double = 0.118_350_341_907_227_396_726_757_197_510;
+const C5: c_double = 0.281_649_658_092_772_603_273_242_802_490;
+const C6: c_double = 0.333_333_333_333_333_333_333_333_333_333;
 const C7: c_double = 0.25;
-const C8: c_double = 0.307692307692307692307692307692;
-const C9: c_double = 0.651282051282051282051282051282;
+const C8: c_double = 0.307_692_307_692_307_692_307_692_307_692;
+const C9: c_double = 0.651_282_051_282_051_282_051_282_051_282;
 const C10: c_double = 0.6;
-const C11: c_double = 0.857142857142857142857142857142;
+const C11: c_double = 0.857_142_857_142_857_142_857_142_857_142;
 const C14: c_double = 0.1;
 const C15: c_double = 0.2;
-const C16: c_double = 0.777777777777777777777777777778;
+const C16: c_double = 0.777_777_777_777_777_777_777_777_777_778;
 
-const A21: c_double = 5.26001519587677318785587544488e-2;
-const A31: c_double = 1.97250569845378994544595329183e-2;
-const A32: c_double = 5.91751709536136983633785987549e-2;
-const A41: c_double = 2.95875854768068491816892993775e-2;
-const A43: c_double = 8.87627564304205475450678981324e-2;
-const A51: c_double = 2.41365134159266685502369798665e-1;
-const A53: c_double = -8.84549479328286085344864962717e-1;
-const A54: c_double = 9.24834003261792003115737966543e-1;
-const A61: c_double = 3.7037037037037037037037037037e-2;
-const A64: c_double = 1.70828608729473871279604482173e-1;
-const A65: c_double = 1.25467687566822425016691814123e-1;
-const A71: c_double = 3.7109375e-2;
-const A74: c_double = 1.70252211019544039314978060272e-1;
-const A75: c_double = 6.02165389804559606850219397283e-2;
-const A76: c_double = -1.7578125e-2;
-const A81: c_double = 3.70920001185047927108779319836e-2;
-const A84: c_double = 1.70383925712239993810214054705e-1;
-const A85: c_double = 1.07262030446373284651809199168e-1;
-const A86: c_double = -1.53194377486244017527936158236e-2;
-const A87: c_double = 8.27378916381402288758473766002e-3;
-const A91: c_double = 6.24110958716075717114429577812e-1;
-const A94: c_double = -3.36089262944694129406857109825e0;
-const A95: c_double = -8.68219346841726006818189891453e-1;
-const A96: c_double = 2.75920996994467083049415600797e1;
-const A97: c_double = 2.01540675504778934086186788979e1;
-const A98: c_double = -4.34898841810699588477366255144e1;
-const A101: c_double = 4.77662536438264365890433908527e-1;
-const A104: c_double = -2.48811461997166764192642586468e0;
-const A105: c_double = -5.90290826836842996371446475743e-1;
-const A106: c_double = 2.12300514481811942347288949897e1;
-const A107: c_double = 1.52792336328824235832596922938e1;
-const A108: c_double = -3.32882109689848629194453265587e1;
-const A109: c_double = -2.03312017085086261358222928593e-2;
-const A111: c_double = -9.3714243008598732571704021658e-1;
-const A114: c_double = 5.18637242884406370830023853209e0;
-const A115: c_double = 1.09143734899672957818500254654e0;
-const A116: c_double = -8.14978701074692612513997267357e0;
-const A117: c_double = -1.85200656599969598641566180701e1;
-const A118: c_double = 2.27394870993505042818970056734e1;
-const A119: c_double = 2.49360555267965238987089396762e0;
-const A1110: c_double = -3.0467644718982195003823669022e0;
-const A121: c_double = 2.27331014751653820792359768449e0;
-const A124: c_double = -1.05344954667372501984066689879e1;
-const A125: c_double = -2.00087205822486249909675718444e0;
-const A126: c_double = -1.79589318631187989172765950534e1;
-const A127: c_double = 2.79488845294199600508499808837e1;
-const A128: c_double = -2.85899827713502369474065508674e0;
-const A129: c_double = -8.87285693353062954433549289258e0;
-const A1210: c_double = 1.23605671757943030647266201528e1;
-const A1211: c_double = 6.43392746015763530355970484046e-1;
-const A141: c_double = 5.61675022830479523392909219681e-2;
-const A147: c_double = 2.53500210216624811088794765333e-1;
-const A148: c_double = -2.46239037470802489917441475441e-1;
-const A149: c_double = -1.24191423263816360469010140626e-1;
-const A1410: c_double = 1.5329179827876569731206322685e-1;
-const A1411: c_double = 8.20105229563468988491666602057e-3;
-const A1412: c_double = 7.56789766054569976138603589584e-3;
+const A21: c_double = 5.260_015_195_876_773_187_855_875_444_88e-2;
+const A31: c_double = 1.972_505_698_453_789_945_445_953_291_83e-2;
+const A32: c_double = 5.917_517_095_361_369_836_337_859_875_49e-2;
+const A41: c_double = 2.958_758_547_680_684_918_168_929_937_75e-2;
+const A43: c_double = 8.876_275_643_042_054_754_506_789_813_24e-2;
+const A51: c_double = 2.413_651_341_592_666_855_023_697_986_65e-1;
+const A53: c_double = -8.845_494_793_282_861e-1;
+const A54: c_double = 9.248_340_032_617_920_031_157_379_665_43e-1;
+const A61: c_double = 3.703_703_703_703_703_5e-2;
+const A64: c_double = 1.708_286_087_294_738_712_796_044_821_73e-1;
+const A65: c_double = 1.254_676_875_668_224_250_166_918_141_23e-1;
+const A71: c_double = 3.710_937_5e-2;
+const A74: c_double = 1.702_522_110_195_440_393_149_780_602_72e-1;
+const A75: c_double = 6.021_653_898_045_596_068_502_193_972_83e-2;
+const A76: c_double = -1.757_812_5e-2;
+const A81: c_double = 3.709_200_011_850_479_271_087_793_198_36e-2;
+const A84: c_double = 1.703_839_257_122_399_938_102_140_547_05e-1;
+const A85: c_double = 1.072_620_304_463_732_846_518_091_991_68e-1;
+const A86: c_double = -1.531_943_774_862_440_2e-2;
+const A87: c_double = 8.273_789_163_814_022_887_584_737_660_02e-3;
+const A91: c_double = 6.241_109_587_160_757_171_144_295_778_12e-1;
+const A94: c_double = -3.360_892_629_446_941_4;
+const A95: c_double = -8.682_193_468_417_26e-1;
+const A96: c_double = 2.759_209_969_944_670_830_494_156_007_97e1;
+const A97: c_double = 2.015_406_755_047_789_340_861_867_889_79e1;
+const A98: c_double = -4.348_988_418_106_996e1;
+const A101: c_double = 4.776_625_364_382_643_658_904_339_085_27e-1;
+const A104: c_double = -2.488_114_619_971_667_7;
+const A105: c_double = -5.902_908_268_368_43e-1;
+const A106: c_double = 2.123_005_144_818_119_423_472_889_498_97e1;
+const A107: c_double = 1.527_923_363_288_242_358_325_969_229_38e1;
+const A108: c_double = -3.328_821_096_898_486e1;
+const A109: c_double = -2.033_120_170_850_862_7e-2;
+const A111: c_double = -9.371_424_300_859_873e-1;
+const A114: c_double = 5.186_372_428_844_063_708_300_238_532_09;
+const A115: c_double = 1.091_437_348_996_729_578_185_002_546_54;
+const A116: c_double = -8.149_787_010_746_927;
+const A117: c_double = -1.852_006_565_999_696e1;
+const A118: c_double = 2.273_948_709_935_050_428_189_700_567_34e1;
+const A119: c_double = 2.493_605_552_679_652_389_870_893_967_62;
+const A1110: c_double = -3.046_764_471_898_219_6;
+const A121: c_double = 2.273_310_147_516_538_207_923_597_684_49;
+const A124: c_double = -1.053_449_546_673_725e1;
+const A125: c_double = -2.000_872_058_224_862_5;
+const A126: c_double = -1.795_893_186_311_88e1;
+const A127: c_double = 2.794_888_452_941_996_005_084_998_088_37e1;
+const A128: c_double = -2.858_998_277_135_023_5;
+const A129: c_double = -8.872_856_933_530_63;
+const A1210: c_double = 1.236_056_717_579_430_306_472_662_015_28e1;
+const A1211: c_double = 6.433_927_460_157_635_303_559_704_840_46e-1;
+const A141: c_double = 5.616_750_228_304_795_233_929_092_196_81e-2;
+const A147: c_double = 2.535_002_102_166_248_110_887_947_653_33e-1;
+const A148: c_double = -2.462_390_374_708_025e-1;
+const A149: c_double = -1.241_914_232_638_163_7e-1;
+const A1410: c_double = 1.532_917_982_787_656_8e-1;
+const A1411: c_double = 8.201_052_295_634_689_884_916_666_020_57e-3;
+const A1412: c_double = 7.567_897_660_545_699_761_386_035_895_84e-3;
 const A1413: c_double = -8.298e-3;
-const A151: c_double = 3.18346481635021405060768473261e-2;
-const A156: c_double = 2.83009096723667755288322961402e-2;
-const A157: c_double = 5.35419883074385676223797384372e-2;
-const A158: c_double = -5.49237485713909884646569340306e-2;
-const A1511: c_double = -1.08347328697249322858509316994e-4;
-const A1512: c_double = 3.82571090835658412954920192323e-4;
-const A1513: c_double = -3.40465008687404560802977114492e-4;
-const A1514: c_double = 1.41312443674632500278074618366e-1;
-const A161: c_double = -4.28896301583791923408573538692e-1;
-const A166: c_double = -4.69762141536116384314449447206e0;
-const A167: c_double = 7.68342119606259904184240953878e0;
-const A168: c_double = 4.06898981839711007970213554331e0;
-const A169: c_double = 3.56727187455281109270669543021e-1;
-const A1613: c_double = -1.39902416515901462129418009734e-3;
-const A1614: c_double = 2.9475147891527723389556272149e0;
-const A1615: c_double = -9.15095847217987001081870187138e0;
+const A151: c_double = 3.183_464_816_350_214_050_607_684_732_61e-2;
+const A156: c_double = 2.830_090_967_236_677_552_883_229_614_02e-2;
+const A157: c_double = 5.354_198_830_743_856_762_237_973_843_72e-2;
+const A158: c_double = -5.492_374_857_139_099e-2;
+const A1511: c_double = -1.083_473_286_972_493_2e-4;
+const A1512: c_double = 3.825_710_908_356_584_129_549_201_923_23e-4;
+const A1513: c_double = -3.404_650_086_874_045_6e-4;
+const A1514: c_double = 1.413_124_436_746_325_002_780_746_183_66e-1;
+const A161: c_double = -4.288_963_015_837_919_4e-1;
+const A166: c_double = -4.697_621_415_361_164;
+const A167: c_double = 7.683_421_196_062_599_041_842_409_538_78;
+const A168: c_double = 4.068_989_818_397_110_079_702_135_543_31;
+const A169: c_double = 3.567_271_874_552_811_092_706_695_430_21e-1;
+const A1613: c_double = -1.399_024_165_159_014_5e-3;
+const A1614: c_double = 2.947_514_789_152_772_4;
+const A1615: c_double = -9.150_958_472_179_87;
 
-const B1: c_double = 5.42937341165687622380535766363e-2;
-const B6: c_double = 4.45031289275240888144113950566;
-const B7: c_double = 1.89151789931450038304281599044;
-const B8: c_double = -5.8012039600105847814672114227;
-const B9: c_double = 3.1116436695781989440891606237e-1;
-const B10: c_double = -1.52160949662516078556178806805e-1;
-const B11: c_double = 2.01365400804030348374776537501e-1;
-const B12: c_double = 4.47106157277725905176885569043e-2;
-const BHH1: c_double = 0.244094488188976377952755905512;
-const BHH2: c_double = 0.733846688281611857341361741547;
-const BHH3: c_double = 0.220588235294117647058823529412e-1;
+const B1: c_double = 5.429_373_411_656_876_223_805_357_663_63e-2;
+const B6: c_double = 4.450_312_892_752_408_881_441_139_505_66;
+const B7: c_double = 1.891_517_899_314_500_383_042_815_990_44;
+const B8: c_double = -5.801_203_960_010_585;
+const B9: c_double = 3.111_643_669_578_199e-1;
+const B10: c_double = -1.521_609_496_625_161e-1;
+const B11: c_double = 2.013_654_008_040_303_483_747_765_375_01e-1;
+const B12: c_double = 4.471_061_572_777_259_051_768_855_690_43e-2;
+const BHH1: c_double = 0.244_094_488_188_976_377_952_755_905_512;
+const BHH2: c_double = 0.733_846_688_281_611_857_341_361_741_547;
+const BHH3: c_double = 0.220_588_235_294_117_647_058_823_529_412e-1;
 
-const D41: c_double = -0.84289382761090128651353491142e1;
-const D46: c_double = 0.56671495351937776962531783590;
-const D47: c_double = -0.30689499459498916912797304727e1;
-const D48: c_double = 0.23846676565120698287728149680e1;
-const D49: c_double = 0.21170345824450282767155149946e1;
-const D410: c_double = -0.87139158377797299206789907490;
-const D411: c_double = 0.22404374302607882758541771650e1;
-const D412: c_double = 0.63157877876946881815570249290;
-const D413: c_double = -0.88990336451333310820698117400e-1;
-const D414: c_double = 0.18148505520854727256656404962e2;
-const D415: c_double = -0.91946323924783554000451984436e1;
-const D416: c_double = -0.44360363875948939664310572000e1;
-const D51: c_double = 0.10427508642579134603413151009e2;
-const D56: c_double = 0.24228349177525818288430175319e3;
-const D57: c_double = 0.16520045171727028198505394887e3;
-const D58: c_double = -0.37454675472269020279518312152e3;
-const D59: c_double = -0.22113666853125306036270938578e2;
-const D510: c_double = 0.77334326684722638389603898808e1;
-const D511: c_double = -0.30674084731089398182061213626e2;
-const D512: c_double = -0.93321305264302278729567221706e1;
-const D513: c_double = 0.15697238121770843886131091075e2;
-const D514: c_double = -0.31139403219565177677282850411e2;
-const D515: c_double = -0.93529243588444783865713862664e1;
-const D516: c_double = 0.35816841486394083752465898540e2;
-const D61: c_double = 0.19985053242002433820987653617e2;
-const D66: c_double = -0.38703730874935176555105901742e3;
-const D67: c_double = -0.18917813819516756882830838328e3;
-const D68: c_double = 0.52780815920542364900561016686e3;
-const D69: c_double = -0.11573902539959630126141871134e2;
-const D610: c_double = 0.68812326946963000169666922661e1;
-const D611: c_double = -0.10006050966910838403183860980e1;
-const D612: c_double = 0.77771377980534432092869265740;
-const D613: c_double = -0.27782057523535084065932004339e1;
-const D614: c_double = -0.60196695231264120758267380846e2;
-const D615: c_double = 0.84320405506677161018159903784e2;
-const D616: c_double = 0.11992291136182789328035130030e2;
-const D71: c_double = -0.25693933462703749003312586129e2;
-const D76: c_double = -0.15418974869023643374053993627e3;
-const D77: c_double = -0.23152937917604549567536039109e3;
-const D78: c_double = 0.35763911791061412378285349910e3;
-const D79: c_double = 0.93405324183624310003907691704e2;
-const D710: c_double = -0.37458323136451633156875139351e2;
-const D711: c_double = 0.10409964950896230045147246184e3;
-const D712: c_double = 0.29840293426660503123344363579e2;
-const D713: c_double = -0.43533456590011143754432175058e2;
-const D714: c_double = 0.96324553959188282948394950600e2;
-const D715: c_double = -0.39177261675615439165231486172e2;
-const D716: c_double = -0.14972683625798562581422125276e3;
+const D41: c_double = -8.428_938_276_109_013;
+const D46: c_double = 0.566_714_953_519_377_7;
+const D47: c_double = -3.068_949_945_949_891_7;
+const D48: c_double = 2.384_667_656_512_07;
+const D49: c_double = 2.117_034_582_445_028;
+const D410: c_double = -0.871_391_583_777_973;
+const D411: c_double = 2.240_437_430_260_788_3;
+const D412: c_double = 0.631_578_778_769_468_8;
+const D413: c_double = -8.899_033_645_133_331e-2;
+const D414: c_double = 1.814_850_552_085_472_7e1;
+const D415: c_double = -9.194_632_392_478_356;
+const D416: c_double = -4.436_036_387_594_894;
+const D51: c_double = 1.042_750_864_257_913_4e1;
+const D56: c_double = 2.422_834_917_752_581_7e2;
+const D57: c_double = 1.652_004_517_172_702_8e2;
+const D58: c_double = -3.745_467_547_226_902e2;
+const D59: c_double = -2.211_366_685_312_530_6e1;
+const D510: c_double = 7.733_432_668_472_264;
+const D511: c_double = -3.067_408_473_108_939_8e1;
+const D512: c_double = -9.332_130_526_430_229;
+const D513: c_double = 1.569_723_812_177_084_5e1;
+const D514: c_double = -3.113_940_321_956_517_8e1;
+const D515: c_double = -9.352_924_358_844_48;
+const D516: c_double = 3.581_684_148_639_408e1;
+const D61: c_double = 1.998_505_324_200_243_3e1;
+const D66: c_double = -3.870_373_087_493_518e2;
+const D67: c_double = -1.891_781_381_951_675_8e2;
+const D68: c_double = 5.278_081_592_054_236e2;
+const D69: c_double = -1.157_390_253_995_963e1;
+const D610: c_double = 6.881_232_694_696_3;
+const D611: c_double = -1.000_605_096_691_083_8;
+const D612: c_double = 0.777_713_779_805_344_3;
+const D613: c_double = -2.778_205_752_353_508;
+const D614: c_double = -6.019_669_523_126_412e1;
+const D615: c_double = 8.432_040_550_667_716e1;
+const D616: c_double = 1.199_229_113_618_279e1;
+const D71: c_double = -2.569_393_346_270_375e1;
+const D76: c_double = -1.541_897_486_902_364_3e2;
+const D77: c_double = -2.315_293_791_760_455e2;
+const D78: c_double = 3.576_391_179_106_141e2;
+const D79: c_double = 9.340_532_418_362_432e1;
+const D710: c_double = -3.745_832_313_645_163e1;
+const D711: c_double = 1.040_996_495_089_623e2;
+const D712: c_double = 2.984_029_342_666_05e1;
+const D713: c_double = -4.353_345_659_001_114e1;
+const D714: c_double = 9.632_455_395_918_828e1;
+const D715: c_double = -3.917_726_167_561_544e1;
+const D716: c_double = -1.497_268_362_579_856_4e2;
 
-const ER1: c_double = 0.1312004499419488073250102996e-1;
-const ER6: c_double = -0.1225156446376204440720569753e1;
-const ER7: c_double = -0.4957589496572501915214079952;
-const ER8: c_double = 0.1664377182454986536961530415e1;
-const ER9: c_double = -0.3503288487499736816886487290;
-const ER10: c_double = 0.3341791187130174790297318841;
-const ER11: c_double = 0.8192320648511571246570742613e-1;
-const ER12: c_double = -0.2235530786388629525884427845e-1;
+const ER1: c_double = 1.312_004_499_419_488e-2;
+const ER6: c_double = -1.225_156_446_376_204_4;
+const ER7: c_double = -0.495_758_949_657_250_2;
+const ER8: c_double = 1.664_377_182_454_986_4;
+const ER9: c_double = -0.350_328_848_749_973_66;
+const ER10: c_double = 0.334_179_118_713_017_5;
+const ER11: c_double = 8.192_320_648_511_571e-2;
+const ER12: c_double = -2.235_530_786_388_629_4e-2;
 
 #[inline]
 fn c_exp(value: c_double) -> c_double {
@@ -219,7 +227,26 @@ fn custom_sign(x: c_double, y: c_double) -> c_double {
     if y > 0.0 { c_fabs(x) } else { -c_fabs(x) }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Integrate the system described by `func` with Hairer's DOP853 method,
+/// writing one state per entry of `t` into `result`.
+///
+/// # Safety
+///
+/// All pointer arguments must be valid for their implied accesses:
+/// - `y0` and `result` must point to `dim * nt` `c_double`s (`y0` holds the
+///   initial state, `result` receives `nt` output states),
+/// - `t` must point to `nt` ascending `c_double`s,
+/// - `potential_args` must be a pointer understood by `func` (may be null only
+///   if `func` accepts null).
+///
+/// `func` must be a valid C-ABI function pointer computing the derivative at
+/// `(t, q)` into `a`.
+///
+/// # Panics
+///
+/// Panics if `dim` or `nt` are negative, if `dim == 0`, or if `nt < 2`.
+/// Panics if `func` is `None` (a null function pointer).
+#[allow(clippy::too_many_arguments)] // argument list follows the reference API
 pub unsafe fn dop853(
     func: FuncPtr,
     dim: c_int,
@@ -479,7 +506,7 @@ pub unsafe fn dop853(
 
         t_old_older = t_old;
         t_old = t_current;
-        t_current = t_current + h;
+        t_current += h;
 
         f(
             t_current,
@@ -523,7 +550,9 @@ pub unsafe fn dop853(
         if deno <= 0.0 {
             deno = 1.0;
         }
-        err = c_fabs(h) * err * c_sqrt(1.0 / (deno * dim as c_double));
+        #[allow(clippy::cast_precision_loss)] // dim is a small state dimension
+        let dim_c: c_double = dim as c_double;
+        err = c_fabs(h) * err * c_sqrt(1.0 / (deno * dim_c));
 
         let fac11 = c_pow(err, expo1);
         let mut fac = fac11 / c_pow(facold, beta);

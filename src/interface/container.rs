@@ -10,14 +10,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static NEXT_DEP_LABEL: AtomicU64 = AtomicU64::new(0);
 
 fn next_dep_label() -> Index {
-    let i: Index = NEXT_DEP_LABEL.fetch_add(1, Ordering::Relaxed) as Index;
+    // Labels grow by one per container; the counter can never realistically
+    // approach `usize::MAX`, so fall back to it instead of truncating.
+    let i: Index =
+        Index::try_from(NEXT_DEP_LABEL.fetch_add(1, Ordering::Relaxed)).unwrap_or(Index::MAX);
     if i >= MAX_CONTAINERS {
-        println!("Error!!!! To many containers")
+        println!("Error!!!! To many containers");
     }
     i
 }
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct Container {
     pub num_particles: Option<Index>,
@@ -26,36 +29,38 @@ pub struct Container {
     pub dependency_label: Index,
 }
 
-fn initialize_container<'py>(
-    _py: Python<'py>,
-    istate: PyReadonlyArrayDyn<Real>,
+fn initialize_container(
+    py: Python<'_>,
+    istate: &PyReadonlyArrayDyn<Real>,
     recipe: Option<PyRecipe>,
 ) -> PyResult<Py<Container>> {
-    let n = &istate.as_array().len();
-    let state = InputState::from_py_array(&istate);
+    let state = InputState::from_py_array(istate);
 
     let container = Container {
-        num_particles: Some(*n),
-        recipe: recipe,
+        num_particles: Some(istate.as_array().len()),
+        recipe,
         state: Some(state),
         dependency_label: next_dep_label(),
     };
-    Ok(Py::new(_py, container)?)
+    Py::new(py, container)
 }
 
+// `#[pyfunction]` arguments are extracted from Python objects by value by
+// design; pyo3 does not support `&PyReadonlyArrayDyn` extraction.
+#[allow(clippy::needless_pass_by_value)]
 #[pyfunction]
 #[pyo3(signature = (istate))]
-pub fn test_group<'py>(
-    _py: Python<'py>,
-    istate: PyReadonlyArrayDyn<Real>,
-) -> PyResult<Py<Container>> {
-    initialize_container(_py, istate, None)
+pub fn test_group(py: Python<'_>, istate: PyReadonlyArrayDyn<Real>) -> PyResult<Py<Container>> {
+    initialize_container(py, &istate, None)
 }
 
+// `#[pyfunction]` arguments are extracted from Python objects by value by
+// design; pyo3 does not support `&PyReadonlyArrayDyn` extraction.
+#[allow(clippy::needless_pass_by_value)]
 #[pyfunction]
 #[pyo3(signature = (potential,istate))]
-pub fn part_group<'py>(
-    _py: Python<'py>,
+pub fn part_group(
+    py: Python<'_>,
     potential: PyRecipe,
     istate: PyReadonlyArrayDyn<Real>,
 ) -> PyResult<Py<Container>> {
@@ -86,12 +91,12 @@ pub fn part_group<'py>(
             None
         }
     };
-    initialize_container(_py, istate, recipe)
+    initialize_container(py, &istate, recipe)
 }
 
 #[pyfunction]
 #[pyo3(signature = (potential))]
-pub fn bg_feature<'py>(_py: Python<'py>, potential: PyRecipe) -> Container {
+pub fn bg_feature(_py: Python<'_>, potential: PyRecipe) -> Container {
     Container {
         num_particles: None,
         recipe: Some(potential),
