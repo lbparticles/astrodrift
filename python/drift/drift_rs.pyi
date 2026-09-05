@@ -3,18 +3,11 @@ from enum import Flag
 import numpy.typing as npt
 from typing import (
     Any,
-    Iterable,
-    List,
-    Optional,
     Sequence,
-    Tuple,
-    overload,
-    Union,
 )
 
 # Public classes exposed by m.add_class
 # Note: These are runtime-provided by the compiled extension; this is a stub only.
-
 
 class Engine:
     def __init__(self, name: str) -> None: ...
@@ -22,18 +15,15 @@ class Engine:
     # "GPU" | "CPU"
     # inner is not exposed in Python
 
-
 class Method:
     def __init__(self, name: str) -> None: ...
 
     # "DOP853" | "DOPR54"
 
-
 class Variant:
     def __init__(self, name: str) -> None: ...
 
     # "Modern" | "Compatible"
-
 
 class Potential:
     @staticmethod
@@ -47,11 +37,9 @@ class Potential:
 
     # inner not exposed
 
-
 class Recipe:
     # Created from Potential internally; exposed as a type in containers
     ...
-
 
 # Flag wrapper class exposed as "Modern"
 class Modern:
@@ -60,7 +48,6 @@ class Modern:
     def has(self, value: int) -> bool: ...
     def bits(self) -> int: ...
     def __repr__(self) -> str: ...
-
 
 # Python enum.Flag defined in module and exported as "ModernFlag"
 class ModernFlag(Flag):
@@ -72,7 +59,6 @@ class ModernFlag(Flag):
     READ_WRITE: ModernFlag
     FULL_ACCESS: ModernFlag
 
-
 class Container:
     # Public attributes (as seen in your Rust class)
     recipe: Recipe | None
@@ -80,7 +66,6 @@ class Container:
     dependency_label: int  # shared::Index
 
     def __init__(self, *args: Any, **kwargs: Any) -> None: ...
-
 
 class Config:
     def __init__(
@@ -95,10 +80,8 @@ class Config:
 
     # run returns a list of arrays (each element is a Python list converted from Rust result)
     def run(self, *args: Container) -> list[list[float]]: ...
-
     def dependency(self, node: Container, *args: Container) -> None: ...
     def info(self) -> None: ...
-
 
 # Module-level functions
 def test_group(istate: "npt.NDArray[Any] | Sequence[float]") -> Container: ...
@@ -108,10 +91,8 @@ def part_group(
 ) -> Container: ...
 def bg_feature(potential: Potential) -> Container: ...
 
-
 # Optional: minimal numpy typing without hard dependency
 # If you prefer to avoid importing numpy.typing at runtime, alias a Protocol
-
 
 __all__ = [
     "Engine",

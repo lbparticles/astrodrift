@@ -2,6 +2,10 @@
 
 Run the commands below from the repository root.
 
+## Just Recipes
+
+`just --list` shows the common commands. `just lint` runs formatting, lint, and type checks and is what lefthook runs on push; `just test` runs the full sequence the former GitHub Actions workflow executed per PR (sync, build, Python tests, Rust tests, lint). The raw commands are documented below.
+
 ## Devcontainer
 
 The repository is mounted at `/workspaces/astrodrift` in the devcontainer. VS Code terminals receive the required NVVM loader path from the devcontainer configuration. When entering the container directly, set it before building either backend:
