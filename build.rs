@@ -23,9 +23,12 @@ fn main() {
         .release(true)
         .use_constant_memory_space(false);
 
-    if cfg!(feature = "galpy-kepler-reference") {
-        builder = builder.build_args(&["--features", "galpy-kepler-reference"]);
-    }
+    let kernel_features = if cfg!(feature = "galpy-kepler-reference") {
+        "rust-cuda,galpy-kepler-reference"
+    } else {
+        "rust-cuda"
+    };
+    builder = builder.build_args(&["--features", kernel_features]);
 
     builder
         .copy_to(out_path.join("kernels.ptx"))

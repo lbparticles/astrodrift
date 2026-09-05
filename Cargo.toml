@@ -8,7 +8,7 @@ name = "drift_rs"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-shared = { path = "shared"}
+shared = { path = "shared", default-features = false }
 pyo3 = "0.28.3"
 blastoff = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "blastoff", branch = "main" }
 cust = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust", branch = "main" }
@@ -32,9 +32,10 @@ name = "drift"
 members = ["shared", "."]
 
 [features]
-default = []
+default = ["rust-cuda"]
 extension-module = ["pyo3/extension-module"]
-cuda-oxide-kernel = []
+rust-cuda = ["shared/rust-cuda"]
+cuda-oxide-kernel = ["shared/cuda-oxide"]
 galpy-kepler-reference = []
 
 

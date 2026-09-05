@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cust_core = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust_core", branch = "main" }
+cust_core = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust_core", branch = "main", optional = true }
 libm = "0.2.11"
 
 [features]
 default = []
+rust-cuda = ["dep:cust_core"]
 cuda-oxide = []
 
 [dev-dependencies]
