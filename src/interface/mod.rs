@@ -177,9 +177,9 @@ impl PyConfig {
     ) -> Self {
         let thing = Self {
             inner: Config::new(
-                engine.unwrap_or_default().inner,
-                method.unwrap_or_default().inner,
-                variant.unwrap_or_default().inner,
+                engine.unwrap_or_default().into(),
+                method.unwrap_or_default().into(),
+                variant.unwrap_or_default().into(),
                 flags.unwrap_or_default().inner,
                 ts.unwrap_or_default().0,
                 tolerance.unwrap_or_default().0,
