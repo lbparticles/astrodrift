@@ -1,4 +1,8 @@
 use pyo3::prelude::*;
+
+/// A potential definition. Create one with the static constructors
+/// :meth:`Potential.kepler`, :meth:`Potential.plummer`, or
+/// :meth:`Potential.bovy`.
 #[pyclass(name = "Potential", subclass)]
 #[derive(Default, Debug, Clone, Copy)]
 pub struct PyRecipe {
