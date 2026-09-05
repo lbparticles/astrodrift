@@ -23,7 +23,7 @@ fn next_dep_label() -> PyResult<Index> {
 }
 
 #[pyclass]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Container {
     /// Number of particles in this group (0 for background containers).
     #[pyo3(get)]

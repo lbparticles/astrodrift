@@ -2,6 +2,7 @@ use numpy::PyArray1;
 use numpy::PyArrayMethods;
 use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
+use std::sync::Mutex;
 use pyo3::types::{PyAny, PyList, PyModule, PyTuple};
 
 mod container;
@@ -132,14 +133,25 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance {
 pub struct PyConfig {
     inner: Config,
     adjacency_matrix: AdjacencyMatrix,
+    /// Every container the config has seen (added directly, listed as a
+    /// dependency, or passed to run()), used by run() with no arguments.
+    containers: Mutex<Vec<Container>>,
 }
 
 impl PyConfig {
+    fn register(&self, container: &Container) {
+        let mut containers = self.containers.lock().unwrap();
+        if !containers
+            .iter()
+            .any(|c| c.dependency_label == container.dependency_label)
+        {
+            containers.push(container.clone());
+        }
+    }
+
     fn build_tree(&self, containers: Vec<Box<Container>>) -> (Model, InputFrame) {
         let input = vec_to_option_array_11(containers);
         let (x, y) = self.adjacency_matrix.build(input);
-        // println!("{:?}",x);
-        // println!("{:?}",y);
         (x, y)
     }
 }
@@ -181,6 +193,7 @@ impl PyConfig {
                 tolerance.unwrap_or_default().0,
             ),
             adjacency_matrix: AdjacencyMatrix(0),
+            containers: Mutex::new(Vec::new()),
         };
         println!("newpyconfig");
         thing
@@ -196,20 +209,34 @@ impl PyConfig {
         for i in 0..args.len() {
             let obj = args.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
+            self.register(&container);
             containers.push(Box::new(container.clone()));
         }
-        let group_sizes: Vec<Option<usize>> = containers
+        // run() with no arguments integrates every registered container.
+        let mut selected = if args.is_empty() {
+            let registered = self.containers.lock().unwrap();
+            registered
+                .iter()
+                .map(|c| Box::new(c.clone()))
+                .collect()
+        } else {
+            containers
+        };
+        // Dependency edges are keyed by creation order, so integrate in that
+        // order regardless of how the caller lists the containers.
+        selected.sort_unstable_by_key(|c| c.dependency_label);
+        let group_sizes: Vec<Option<usize>> = selected
             .iter()
             .map(|c| c.state.as_ref().map(|s| s.num_particles as usize))
             .collect();
-        if containers.len() > MAX_CONTAINERS {
+        if selected.len() > MAX_CONTAINERS {
             return Err(PyValueError::new_err(format!(
-                "run() received {} containers but a model supports at most \
+                "run() resolved {} containers but a model supports at most \
                  {MAX_CONTAINERS}",
-                containers.len()
+                selected.len()
             )));
         }
-        let (meal, istates) = self.build_tree(containers);
+        let (meal, istates) = self.build_tree(selected);
         let results = run_integration(self.inner, meal, istates)
             .map_err(|()| PyRuntimeError::new_err("integration failed"))?;
 
@@ -255,14 +282,16 @@ impl PyConfig {
         node: Container,
         requires: &Bound<'py, PyTuple>,
     ) -> PyResult<()> {
-        let mut dep: Vec<Index> = Vec::new();
+        let mut requires_labels: Vec<Index> = Vec::new();
 
         for i in 0..requires.len() {
             let obj = requires.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
-            dep.push(container.dependency_label);
+            self.register(&container);
+            requires_labels.push(container.dependency_label);
         }
-        for x in dep.iter() {
+        self.register(&node);
+        for x in requires_labels.iter() {
             self.adjacency_matrix
                 .set(x.clone(), node.dependency_label, true);
         }
