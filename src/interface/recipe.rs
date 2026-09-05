@@ -11,6 +11,23 @@ pub struct PyRecipe {
 
 #[pymethods]
 impl PyRecipe {
+    fn __repr__(&self) -> String {
+        match &self.inner {
+            shared::Recipe::Kepler(p) => format!("Potential.kepler(amp={})", p.amp),
+            shared::Recipe::Plummer(p) => {
+                format!("Potential.plummer(amp={}, radius={})", p.amp, p.radius)
+            }
+            shared::Recipe::CustomKepler(p) => {
+                format!("Potential.kepler(amp={}, custom=true)", p.amp)
+            }
+            shared::Recipe::CustomPlummer(p) => format!(
+                "Potential.plummer(amp={}, radius={}, custom=true)",
+                p.amp, p.radius
+            ),
+            shared::Recipe::Bovy(_) => "Potential.bovy()".to_string(),
+        }
+    }
+
     /// Point-mass potential. Units follow the codebase convention (G = 1).
     ///
     /// :param amp: Total mass of the point mass. Required; there is no

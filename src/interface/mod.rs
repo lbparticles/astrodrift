@@ -335,7 +335,18 @@ impl PyConfig {
     /// Return a human-readable summary of this configuration.
     #[pyo3(signature = ())]
     fn info(&self) -> String {
-        format!("{:?}", self)
+        format!(
+            "Config(engine={:?}, method={:?}, variant={:?}, ts={:?}, tolerance={:?})",
+            self.inner.engine,
+            self.inner.method,
+            self.inner.variant,
+            self.inner.settings.ts,
+            self.inner.settings.tolerance,
+        )
+    }
+
+    fn __repr__(&self) -> String {
+        self.info()
     }
 }
 
