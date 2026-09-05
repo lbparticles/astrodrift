@@ -348,7 +348,7 @@ impl PyConfig {
             container_identity_by_stage,
         } = plan;
         let results = run_integration(self.inner, model, input_frame)
-            .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
+            .map_err(|error| PyNotImplementedError::new_err(error.to_string()))?;
 
         let mut items: Vec<Option<Py<PyAny>>> = core::iter::repeat_with(|| None)
             .take(has_state.len())

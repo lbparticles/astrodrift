@@ -3,28 +3,40 @@ use crate::{
     state::{InputFrame, OutputFrame},
 };
 use shared::{Config, Engine, Method, Model, Variant};
+use thiserror::Error;
 
 pub mod dop853_cpu;
 pub mod dopr54_cpu;
+
+#[derive(Debug, Error)]
+pub enum IntegrationError {
+    #[error("{engine:?} + {method:?} + {variant:?} is not implemented")]
+    UnsupportedConfiguration {
+        engine: Engine,
+        method: Method,
+        variant: Variant,
+    },
+
+    #[error(transparent)]
+    Dispatch(#[from] DispatchError),
+}
 
 pub fn run_integration(
     config: Config,
     model: Model,
     input_frame: InputFrame,
-) -> Result<OutputFrame, DispatchError> {
+) -> Result<OutputFrame, IntegrationError> {
     match (config.engine, config.method, config.variant) {
-        (Engine::GPU, Method::DOPR54, Variant::Modern) => {
-            Ok(OutputFrame(core::array::from_fn(|_| None)))
-        }
-        (Engine::CPU, Method::DOPR54, Variant::Modern) => {
-            Ok(OutputFrame(core::array::from_fn(|_| None)))
-        }
         (Engine::GPU, Method::DOPR54 | Method::DOP853, Variant::Compatible) => {
-            gpu_dispatch(config, model, input_frame)
+            Ok(gpu_dispatch(config, model, input_frame)?)
         }
         (Engine::CPU, Method::DOPR54 | Method::DOP853, Variant::Compatible) => {
-            cpu_dispatch(config, model, input_frame)
+            Ok(cpu_dispatch(config, model, input_frame)?)
         }
-        _ => Ok(OutputFrame(core::array::from_fn(|_| None))),
+        (engine, method, variant) => Err(IntegrationError::UnsupportedConfiguration {
+            engine,
+            method,
+            variant,
+        }),
     }
 }
