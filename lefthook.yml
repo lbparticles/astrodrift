@@ -19,4 +19,11 @@ pre-commit:
 pre-push:
   commands:
     lint:
-      run: just lint
+      # Use the dev shell when pushing from outside `nix develop`, so the
+      # gate works from any shell.
+      run: |
+        if command -v just >/dev/null 2>&1; then
+          just lint
+        else
+          ASTRODRIFT_QUIET=1 nix develop -c just lint
+        fi
