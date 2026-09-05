@@ -5,8 +5,11 @@ from .drift_rs import (
     Variant,
     Method,
     Engine,
-    test_group,
+    particles,
+    test_particles,
+    background,
     part_group,
+    test_group,
     bg_feature,
 )
 
@@ -17,7 +20,11 @@ __all__ = [
     "Variant",
     "Method",
     "Engine",
-    "test_group",
+    "particles",
+    "test_particles",
+    "background",
+    # Deprecated names, kept until the 1.0 API freeze.
     "part_group",
+    "test_group",
     "bg_feature",
 ]
