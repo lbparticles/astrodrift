@@ -169,6 +169,11 @@ impl PyTolerance {
     }
 }
 
+/// Configuration and registered container graph for an integration.
+///
+/// The default selectors are ``Engine.CPU``, ``Method.DOPR54``, and
+/// ``Variant.Compatible``. Register force relationships with :meth:`add`,
+/// then execute the complete model with :meth:`run`.
 #[pyclass(name = "Config")]
 #[derive(Debug)]
 pub struct PyConfig {
@@ -320,6 +325,11 @@ impl PyConfig {
         thing
     }
 
+    /// Integrate the registered model.
+    ///
+    /// Results follow first-registration order. Each state-bearing container
+    /// produces a float64 array shaped ``(time, particle, 6)``; stationary
+    /// background containers produce ``None``.
     #[pyo3(signature = ())]
     fn run<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
         self.validate_registered_model()?;
@@ -385,6 +395,9 @@ impl PyConfig {
     }
 
     /// Register that ``node`` is integrated with ``requires`` as inputs.
+    ///
+    /// This adds directed force-source edges from every item in ``requires``
+    /// to ``node`` and registers all supplied containers with this config.
     #[pyo3(signature = (node, *requires))]
     fn add<'py>(&mut self, node: Container, requires: &Bound<'py, PyTuple>) -> PyResult<()> {
         let mut dependency_ids = Vec::with_capacity(requires.len());
@@ -414,6 +427,7 @@ impl PyConfig {
         Ok(())
     }
 
+    /// Deprecated alias for :meth:`add`.
     #[pyo3(signature = (node, *requires))]
     fn dependency<'py>(
         &mut self,
@@ -429,15 +443,31 @@ impl PyConfig {
         )?;
         self.add(node, requires)
     }
+
+    /// Return a human-readable summary of this configuration.
     #[pyo3(signature = ())]
-    fn info(&self) {
-        println!("{:?}", self);
+    fn info(&self) -> String {
+        let settings = self.inner.settings;
+        format!(
+            "Config(engine={:?}, method={:?}, variant={:?}, times=({}, {}, {}), \
+             tolerance=(rtol={:.6e}, atol={:.6e}), containers={}, dependencies={})",
+            self.inner.engine,
+            self.inner.method,
+            self.inner.variant,
+            settings.ts.start,
+            settings.ts.end,
+            settings.ts.steps,
+            settings.tolerance.rtol.exp(),
+            settings.tolerance.atol.exp(),
+            self.containers.len(),
+            self.dependencies.len(),
+        )
     }
 }
 
-//
-// Python Module Declaration
-//
+/// Low-level bindings for configuration, potentials, containers, and their
+/// constructors. The public selector enums are provided by the ``drift``
+/// Python package.
 #[pymodule]
 fn drift_rs(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PyConfig>()?;

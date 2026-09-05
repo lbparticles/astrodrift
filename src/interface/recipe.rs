@@ -1,4 +1,9 @@
 use pyo3::prelude::*;
+
+/// A gravitational potential definition.
+///
+/// Construct potentials with :meth:`Potential.kepler`,
+/// :meth:`Potential.plummer`, or :meth:`Potential.bovy`.
 #[pyclass(name = "Potential", subclass, from_py_object)]
 #[derive(Default, Debug, Clone)]
 pub struct PyRecipe {
@@ -36,6 +41,7 @@ impl PyRecipe {
         }
     }
 
+    /// Construct the built-in composite background potential.
     #[staticmethod]
     fn bovy() -> Self {
         Self {

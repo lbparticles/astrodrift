@@ -18,6 +18,7 @@ fn next_identity() -> u64 {
     NEXT_IDENTITY.fetch_add(1, Ordering::Relaxed)
 }
 
+/// A state-bearing particle group or stationary background potential.
 #[pyclass(from_py_object)]
 #[derive(Clone, Debug)]
 pub struct Container {
