@@ -9,6 +9,12 @@ compile_error!("features `rust-cuda` and `cuda-oxide` are mutually exclusive");
 #[cfg(not(any(feature = "rust-cuda", feature = "cuda-oxide")))]
 compile_error!("enable exactly one CUDA backend feature: `rust-cuda` or `cuda-oxide`");
 
+#[cfg(any(
+    all(feature = "rust-cuda", feature = "cuda-oxide"),
+    not(any(feature = "rust-cuda", feature = "cuda-oxide"))
+))]
+fn main() {}
+
 #[cfg(all(feature = "rust-cuda", not(feature = "cuda-oxide")))]
 fn main() {
     // if std::env::var_os("DOCS_RS").is_some() {
