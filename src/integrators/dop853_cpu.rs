@@ -226,6 +226,11 @@ fn custom_sign(x: c_double, y: c_double) -> c_double {
 #[allow(clippy::too_many_arguments)]
 /// Runs the galpy-compatible DOP853 integrator.
 ///
+/// `_dt` is retained because it is part of galpy's interface, although the
+/// native implementation derives its own initial step and does not read it.
+/// `_err` is also retained for interface compatibility; Drift does not
+/// reproduce galpy's process-wide signal handling.
+///
 /// # Safety
 ///
 /// `func` must be a valid callback. `dim` must be positive and `nt` must be at

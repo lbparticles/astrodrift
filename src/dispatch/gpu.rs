@@ -46,6 +46,7 @@ pub fn gather_states(
     dst
 }
 
+// FIXME: Validate the index layout against `_n_particles` and `_n_divisions`.
 pub fn gather_states_nested_extended(
     src: &[f64],
     indices: &[Vec<isize>],
