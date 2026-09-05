@@ -4,7 +4,8 @@ use numpy::PyReadonlyArrayDyn;
 use pyo3::prelude::*;
 use pyo3::exceptions::{PyNotImplementedError, PyValueError};
 use shared::{
-    CustomKeplerRecipe, CustomPlummerRecipe, Index, MAX_CONTAINERS, PotentialName, Real, Recipe,
+    CustomKeplerRecipe, CustomPlummerRecipe, Index, INPUT_STATE_DIM, MAX_CONTAINERS,
+    PotentialName, Real, Recipe,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -24,9 +25,13 @@ fn next_dep_label() -> PyResult<Index> {
 #[pyclass]
 #[derive(Clone)]
 pub struct Container {
+    /// Number of particles in this group (0 for background containers).
+    #[pyo3(get)]
     pub num_particles: Option<Index>,
     pub recipe: Option<PyRecipe>,
     pub state: Option<InputState>,
+    /// Creation-order id used to wire dependencies between containers.
+    #[pyo3(get)]
     pub dependency_label: Index,
 }
 
@@ -35,11 +40,13 @@ fn initialize_container<'py>(
     istate: PyReadonlyArrayDyn<Real>,
     recipe: Option<PyRecipe>,
 ) -> PyResult<Py<Container>> {
-    let n = &istate.as_array().len();
+    // num_particles is a particle count, not an element count: istate holds
+    // INPUT_STATE_DIM (6) numbers per particle.
+    let n = istate.as_array().len() / INPUT_STATE_DIM;
     let state = InputState::from_py_array(&istate);
 
     let container = Container {
-        num_particles: Some(*n),
+        num_particles: Some(n),
         recipe: recipe,
         state: Some(state),
         dependency_label: next_dep_label()?,
