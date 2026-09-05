@@ -50,6 +50,30 @@ cargo +nightly-2026-04-02 test \
 
 Use `--test dop853_tests` to run the DOP853 suite.
 
+## Wheel Builds
+
+Build a cuda-oxide wheel with the temporary Maturin bridge:
+
+```bash
+./scripts/build_cuda_oxide_wheel.py
+```
+
+The wheel is written to `dist/`. The bridge can be removed once cargo-oxide can run Maturin inside its prepared codegen environment.
+
+Rust-CUDA does not require the bridge:
+
+```bash
+RUSTUP_TOOLCHAIN=nightly-2026-04-02 \
+maturin build \
+    --release \
+    --locked \
+    --no-default-features \
+    --features rust-cuda \
+    --compatibility linux \
+    --interpreter "$UV_PROJECT_ENVIRONMENT/bin/python" \
+    --out dist/rust-cuda
+```
+
 ## Fixture Diagnostics
 
 Run the 100-case cuda-oxide DOPR54 diagnostic with:
