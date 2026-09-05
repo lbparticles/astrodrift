@@ -1,7 +1,5 @@
 use crate::Real;
-use crate::potential::{
-    BovyPotential, CustomOrigin, KeplerPotential, PlummerPotential, PotentialEnum,
-};
+use crate::potential::{BovyPotential, KeplerPotential, PlummerPotential, PotentialEnum};
 use crate::{MAX_MODEL_COMPONENTS, MAX_RECIPES};
 use core::array;
 use core::fmt::{self, Display, Formatter};
@@ -119,10 +117,7 @@ impl Display for Model {
 impl From<[Option<[Option<Recipe>; 11]>; 11]> for Model {
     fn from(arr: [Option<[Option<Recipe>; 11]>; 11]) -> Self {
         // Map Option<[Option<Recipe>; 11]> -> Option<Course>
-        let model_components: [Option<ModelComponent>; 11] = array::from_fn(|i| match arr[i] {
-            Some(inner) => Some(ModelComponent(inner)),
-            None => None,
-        });
+        let model_components = array::from_fn(|i| arr[i].map(ModelComponent));
 
         Model(model_components)
     }

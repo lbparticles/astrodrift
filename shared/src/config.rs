@@ -1,11 +1,8 @@
-use core::array;
 use core::f64::consts::PI;
 #[cfg(feature = "rust-cuda")]
 use cust_core::DeviceCopy;
 
-use crate::potential::Potential;
-use crate::{Index, MAX_STATES, MIN_ATOL, MIN_RTOL, Real};
-use crate::{Model, ModernFlags};
+use crate::{Index, MIN_ATOL, MIN_RTOL, ModernFlags, Real};
 
 #[cfg(feature = "rust-cuda")]
 unsafe impl DeviceCopy for Settings {}
