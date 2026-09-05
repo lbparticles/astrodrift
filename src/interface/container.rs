@@ -2,6 +2,7 @@ use crate::interface::recipe::PyRecipe;
 use crate::state::InputState;
 use numpy::PyReadonlyArrayDyn;
 use pyo3::prelude::*;
+use pyo3::exceptions::PyNotImplementedError;
 use shared::{
     CustomKeplerRecipe, CustomPlummerRecipe, Index, MAX_CONTAINERS, PotentialName, Real, Recipe,
 };
@@ -82,8 +83,10 @@ pub fn part_group<'py>(
             }),
         }),
         _ => {
-            eprintln!("Bovy isn't implemented, or how have you passed in a custom Potential???");
-            None
+            return Err(PyNotImplementedError::new_err(
+                "this potential cannot be attached to particles yet: Bovy is \
+                 not implemented. Use Potential.kepler() or Potential.plummer().",
+            ));
         }
     };
     initialize_container(_py, istate, recipe)
