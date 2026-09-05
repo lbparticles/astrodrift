@@ -13,7 +13,7 @@ fn next_identity() -> u64 {
 }
 
 #[pyclass(from_py_object)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Container {
     /// Number of particles in this group (`None` for background containers).
     #[pyo3(get)]
