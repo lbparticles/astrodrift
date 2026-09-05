@@ -12,7 +12,7 @@ pub fn run_integration(
     config: Config,
     model: Model,
     input_frame: InputFrame,
-) -> Result<OutputFrame, ()> {
+) -> Result<OutputFrame, String> {
     // println!("{}",recipes);
     // println!("{:?}",arrays);
     // let ptr = core::ptr::null();
@@ -29,18 +29,35 @@ pub fn run_integration(
     //     }
     // }
     match (config.engine, config.method, config.variant) {
-        (Engine::GPU, Method::DOPR54, Variant::Modern) => {
-            Ok(OutputFrame(core::array::from_fn(|_| None)))
-        }
-        (Engine::CPU, Method::DOPR54, Variant::Modern) => {
-            Ok(OutputFrame(core::array::from_fn(|_| None)))
-        }
-        (Engine::GPU, Method::DOPR54, Variant::Compatible) => {
-            Ok(gpu_dispatch(config, model, input_frame).expect("gpu_dispatch failed"))
-        }
-        (Engine::CPU, Method::DOPR54, Variant::Compatible) => {
-            Ok(cpu_dispatch(config, model, input_frame).expect("cpu_dispatch failed"))
-        }
-        _ => Ok(OutputFrame(core::array::from_fn(|_| None))),
+        (Engine::GPU, Method::DOPR54, Variant::Modern) => Err(format!(
+            "{:?} + {:?} + {:?} is not implemented yet",
+            config.engine,
+            config.method,
+            config.variant
+        )),
+        (Engine::CPU, Method::DOPR54, Variant::Modern) => Err(format!(
+            "{:?} + {:?} + {:?} is not implemented yet",
+            config.engine,
+            config.method,
+            config.variant
+        )),
+        (Engine::GPU, Method::DOPR54, Variant::Compatible) => gpu_dispatch(
+            config,
+            model,
+            input_frame,
+        )
+        .map_err(|e| format!("gpu_dispatch failed: {e:?}")),
+        (Engine::CPU, Method::DOPR54, Variant::Compatible) => cpu_dispatch(
+            config,
+            model,
+            input_frame,
+        )
+        .map_err(|e| format!("cpu_dispatch failed: {e:?}")),
+        _ => Err(format!(
+            "{:?} + {:?} + {:?} is not implemented yet",
+            config.engine,
+            config.method,
+            config.variant
+        )),
     }
 }
