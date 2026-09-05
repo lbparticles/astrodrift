@@ -103,21 +103,24 @@ mod tests {
 
     #[cfg(feature = "galpy-kepler-reference")]
     const GALPY_NATIVE_FIXTURE_DIR: &str = "tests/fixtures/dopr54_galpy_native";
+    const GALPY_NATIVE_REFERENCE: &str = "tests/fixtures/dopr54_galpy_native/reference.fixture";
 
     #[test]
+    #[ignore = "requires ./scripts/generate_galpy_fixtures.py reference"]
     fn dopr54_cpu_matches_reference() {
-        let init = parse_dopr54_dump("dopr54_init_dump.txt").expect("could not parse init dump");
+        let init = parse_dopr54_dump(GALPY_NATIVE_REFERENCE).expect("could not parse init dump");
         let result = integrate_cpu(&init);
 
-        assert_tail_bits("dopr54_init_dump.txt", &result, expected_tail_bits());
+        assert_tail_bits(GALPY_NATIVE_REFERENCE, &result, expected_tail_bits());
     }
 
     #[test]
+    #[ignore = "requires ./scripts/generate_galpy_fixtures.py reference"]
     fn dopr54_gpu_matches_reference() {
-        let init = parse_dopr54_dump("dopr54_init_dump.txt").expect("could not parse init dump");
+        let init = parse_dopr54_dump(GALPY_NATIVE_REFERENCE).expect("could not parse init dump");
         let result = integrate_gpu(&init);
 
-        assert_tail_bits("dopr54_init_dump.txt", &result, expected_tail_bits());
+        assert_tail_bits(GALPY_NATIVE_REFERENCE, &result, expected_tail_bits());
     }
 
     #[cfg(feature = "galpy-kepler-reference")]
@@ -203,7 +206,11 @@ mod tests {
         let mut paths: Vec<_> = fs::read_dir(GALPY_NATIVE_FIXTURE_DIR)
             .unwrap_or_else(|err| panic!("could not read {GALPY_NATIVE_FIXTURE_DIR}: {err}"))
             .map(|entry| entry.unwrap().path())
-            .filter(|path| path.extension().is_some_and(|ext| ext == "fixture"))
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("case_") && name.ends_with(".fixture"))
+            })
             .collect();
         paths.sort();
 
