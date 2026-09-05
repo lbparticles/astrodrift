@@ -1,7 +1,10 @@
 use core::fmt;
 
-use crate::{interface::Container, state::{InputFrame, InputState}};
-use shared::{Model,MAX_MODEL_COMPONENTS,ModelComponent,Recipe,MAX_RECIPES,MAX_STATES};
+use crate::{
+    interface::Container,
+    state::{InputFrame, InputState},
+};
+use shared::{MAX_MODEL_COMPONENTS, MAX_RECIPES, MAX_STATES, Model, ModelComponent, Recipe};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AdjacencyMatrix(pub u128);
@@ -104,9 +107,7 @@ impl AdjacencyMatrix {
         }
         cnt
     }
-    pub fn last_true_column_power(&self, cap: usize) 
-    -> [u8; 11] 
-    {
+    pub fn last_true_column_power(&self, cap: usize) -> [u8; 11] {
         // assert!(cap > 0 && cap <= 255, "cap must be in 1..=255");
         let n = Self::N;
         let mut last: [u8; 11] = [0; 11];
@@ -199,10 +200,7 @@ impl AdjacencyMatrix {
         }
         true
     }
-    pub fn build(
-        &self,
-        containers: Box<[Option<Box<Container>>; 11]>,
-    ) -> (Model, InputFrame) {
+    pub fn build(&self, containers: Box<[Option<Box<Container>>; 11]>) -> (Model, InputFrame) {
         let last = self.last_true_column_power(11);
 
         let mut with_deps: Vec<usize> = (0..11).filter(|&v| last[v] >= 1).collect();
@@ -222,8 +220,7 @@ impl AdjacencyMatrix {
 
         let mut meal_by_stage: [Option<[Option<Recipe>; MAX_RECIPES]>; MAX_MODEL_COMPONENTS] =
             std::array::from_fn(|_| None);
-        let mut istates_by_stage: [Option<InputState>; MAX_STATES] =
-            std::array::from_fn(|_| None);
+        let mut istates_by_stage: [Option<InputState>; MAX_STATES] = std::array::from_fn(|_| None);
         let mut rank: [usize; 11] = [0; 11];
         for (s, &v) in order.iter().enumerate() {
             rank[v] = s;

@@ -1,15 +1,18 @@
 #![no_std]
 // shared/src/lib.rs
-mod flags;
-mod potential;
 mod config;
+mod flags;
 mod model;
+mod potential;
 
+pub use config::{Config, Engine, Linspace, Method, Tolerance, Variant};
 pub use flags::ModernFlags;
-pub use model::{Model,ModelComponent};
-pub use model::{Recipe,PotentialName,KeplerRecipe,PlummerRecipe,BovyRecipe,CustomPlummerRecipe,CustomKeplerRecipe, Construct};
-pub use config::{Config,Engine,Variant,Method,Linspace,Tolerance};
-pub use potential::{Potential, PlummerPotential, PotentialEnum, KeplerPotential};
+pub use model::{
+    BovyRecipe, Construct, CustomKeplerRecipe, CustomPlummerRecipe, KeplerRecipe, PlummerRecipe,
+    PotentialName, Recipe,
+};
+pub use model::{Model, ModelComponent};
+pub use potential::{KeplerPotential, PlummerPotential, Potential, PotentialEnum};
 
 pub type Index = usize;
 pub type Real = f64;
@@ -25,6 +28,6 @@ pub const MIN_RTOL: Real = 1e-12;
 pub const MIN_ATOL: Real = 1e-12;
 pub const INPUT_STATE_DIM: Index = 6;
 pub const INPUT_LENGTH: Index = INPUT_STATE_DIM * MAX_PARTICLES;
-pub const OUTPUT_STATE_DIM: Index = 11; 
+pub const OUTPUT_STATE_DIM: Index = 11;
 pub const OUTPUT_LENGTH: Index = OUTPUT_STATE_DIM * MAX_PARTICLES;
 pub const FUZZ_FACTOR: Real = 1e3;

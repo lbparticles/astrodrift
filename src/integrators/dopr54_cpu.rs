@@ -13,8 +13,7 @@ const MIN_STEPCHANGE_POWERTWO: c_double = -3.0;
 const MAX_STEPREDUCE: c_double = 10000.0;
 const MAX_DT_REDUCE: c_double = 10000.0;
 
-
-#[link(name = "m")]   // link explicitly with libm instead of using rust port
+#[link(name = "m")] // link explicitly with libm instead of using rust port
 unsafe extern "C" {
     pub fn sqrt(x: c_double) -> c_double;
     pub fn log(x: c_double) -> c_double;

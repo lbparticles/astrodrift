@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use shared::{
-    Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance, MAX_STATES,
+    Config, Linspace, MAX_STATES, Method, Model, ModelComponent, ModernFlags, Real, Tolerance,
 };
 use std::array;
 use std::fs::File;
@@ -289,13 +289,7 @@ fn launch_kernel_named(
     });
 
     let mut output_state = OutputState::new_zeroed();
-    backend::launch(
-        kernel,
-        input_state,
-        &times,
-        &mut output_state,
-        tolerance,
-    )?;
+    backend::launch(kernel, input_state, &times, &mut output_state, tolerance)?;
 
     Ok(output_state)
     // let mut f = File::create("dopr54_rust_out_gpu_yay.txt")?;

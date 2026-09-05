@@ -34,8 +34,8 @@ use approx::{assert_abs_diff_eq, assert_relative_eq};
 use rand::Rng;
 use rstest::rstest;
 
-use shared::Potential;
 use shared::PlummerPotential;
+use shared::Potential;
 
 fn plummer(amp: f64, b: f64) -> PlummerPotential {
     PlummerPotential { amp, b }

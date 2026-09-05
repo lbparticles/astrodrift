@@ -1,9 +1,9 @@
-mod interface;
-mod tree;
-pub mod integrators;
 pub mod dispatch;
+pub mod integrators;
+mod interface;
 pub mod state;
+mod tree;
 
-pub use interface::{PyConfig,PyRecipe,PyMethod,PyVariant,PyEngine};
-pub use interface::{Container};
-pub use tree::{AdjacencyMatrix};
+pub use interface::Container;
+pub use interface::{PyConfig, PyEngine, PyMethod, PyRecipe, PyVariant};
+pub use tree::AdjacencyMatrix;
