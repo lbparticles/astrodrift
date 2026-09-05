@@ -1,6 +1,8 @@
 use cuda_core::{CudaContext, DeviceBuffer, LaunchConfig1D};
 use shared::Tolerance;
 
+mod embedded;
+
 use super::{GPUDispatchError, Kernel, grid_size};
 use crate::state::{InputState, OutputState};
 
@@ -13,7 +15,7 @@ pub(super) fn launch(
 ) -> Result<(), GPUDispatchError> {
     let context = CudaContext::new(0)?;
     let stream = context.default_stream();
-    let module = unsafe { kernels::oxide::load(&context) }?;
+    let module = embedded::load_module(&context)?;
 
     let state0 = DeviceBuffer::from_host(&stream, &input_state.data)?;
     let device_times = DeviceBuffer::from_host(&stream, times)?;
