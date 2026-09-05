@@ -19,7 +19,10 @@ pub use engine::PyEngine;
 pub use flag::Modern;
 pub use method::PyMethod;
 pub use recipe::PyRecipe;
-use shared::{Config, INPUT_STATE_DIM, Linspace, MAX_OUTPUT_TIMES, MAX_STATES, Real, Tolerance};
+use shared::{
+    Config, INPUT_STATE_DIM, Linspace, MAX_CONTAINERS, MAX_OUTPUT_TIMES, MAX_STATES, Real,
+    Tolerance,
+};
 pub use variant::PyVariant;
 
 // Python extraction and validation live here so shared::Linspace remains usable
@@ -235,6 +238,13 @@ impl PyConfig {
             let obj = args.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
             containers.push(container.clone());
+        }
+        if containers.len() > MAX_CONTAINERS {
+            return Err(PyValueError::new_err(format!(
+                "run() received {} containers but a model supports at most \
+                 {MAX_CONTAINERS}",
+                containers.len()
+            )));
         }
         let has_state: Vec<bool> = containers.iter().map(|c| c.state.is_some()).collect();
         let plan = self.build_tree(containers)?;
