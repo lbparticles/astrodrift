@@ -2,7 +2,7 @@ use crate::interface::recipe::PyRecipe;
 use crate::state::InputState;
 use numpy::PyReadonlyArrayDyn;
 use pyo3::prelude::*;
-use pyo3::exceptions::PyNotImplementedError;
+use pyo3::exceptions::{PyNotImplementedError, PyValueError};
 use shared::{
     CustomKeplerRecipe, CustomPlummerRecipe, Index, MAX_CONTAINERS, PotentialName, Real, Recipe,
 };
@@ -10,12 +10,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_DEP_LABEL: AtomicU64 = AtomicU64::new(0);
 
-fn next_dep_label() -> Index {
+fn next_dep_label() -> PyResult<Index> {
     let i: Index = NEXT_DEP_LABEL.fetch_add(1, Ordering::Relaxed) as Index;
     if i >= MAX_CONTAINERS {
-        println!("Error!!!! To many containers")
+        return Err(PyValueError::new_err(format!(
+            "too many containers: a model supports at most {MAX_CONTAINERS} \
+             containers per process"
+        )));
     }
-    i
+    Ok(i)
 }
 
 #[pyclass]
@@ -39,7 +42,7 @@ fn initialize_container<'py>(
         num_particles: Some(*n),
         recipe: recipe,
         state: Some(state),
-        dependency_label: next_dep_label(),
+        dependency_label: next_dep_label()?,
     };
     Ok(Py::new(_py, container)?)
 }
@@ -94,11 +97,12 @@ pub fn part_group<'py>(
 
 #[pyfunction]
 #[pyo3(signature = (potential))]
-pub fn bg_feature<'py>(_py: Python<'py>, potential: PyRecipe) -> Container {
-    Container {
+pub fn bg_feature<'py>(_py: Python<'py>, potential: PyRecipe) -> PyResult<Py<Container>> {
+    let container = Container {
         num_particles: None,
         recipe: Some(potential),
         state: None,
-        dependency_label: next_dep_label(),
-    }
+        dependency_label: next_dep_label()?,
+    };
+    Py::new(_py, container)
 }
