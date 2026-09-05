@@ -7,6 +7,8 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::raw::{c_double, c_int};
 use std::path::Path;
+#[cfg(feature = "cuda-oxide")]
+use std::path::PathBuf;
 use thiserror::Error;
 
 use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
@@ -199,6 +201,26 @@ pub enum GPUDispatchError {
     #[cfg(feature = "cuda-oxide")]
     #[error("CUDA launch contract error: {0}")]
     LaunchContract(#[from] cuda_core::LaunchContractError),
+
+    #[cfg(feature = "cuda-oxide")]
+    #[error("could not locate the binary containing the embedded CUDA module")]
+    ArtifactBinaryNotFound,
+
+    #[cfg(feature = "cuda-oxide")]
+    #[error("expected one embedded CUDA module '{name}' in {}, found {count}", path.display())]
+    ArtifactBundleCount {
+        path: PathBuf,
+        name: &'static str,
+        count: usize,
+    },
+
+    #[cfg(feature = "cuda-oxide")]
+    #[error("expected one cubin payload in embedded CUDA module '{name}' in {}, found {count}", path.display())]
+    ArtifactCubinCount {
+        path: PathBuf,
+        name: &'static str,
+        count: usize,
+    },
 
     #[error("I/O error: {0}")]
     IO(#[from] io::Error),
