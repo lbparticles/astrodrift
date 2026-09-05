@@ -51,7 +51,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
                     "NumPy linspace must contain at least two points",
                 ));
             }
-
+            Self::validate_uniform(slice)?;
             let start = slice.first().copied().unwrap_or(0.0);
             let end = slice.last().copied().unwrap_or(start);
             let steps = n;
@@ -63,6 +63,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
                     "List must have at least two elements to form Linspace",
                 ));
             }
+            Self::validate_uniform(&seq)?;
             let start = seq[0];
             let end = *seq.last().unwrap();
             let steps = seq.len();
@@ -72,6 +73,31 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
         Err(PyValueError::new_err(
             "Expected (start, end, steps) tuple or 1D numpy.linspace array",
         ))
+    }
+}
+
+impl BoundLinspace {
+    /// The engine stores output times as (start, end, steps), so an array
+    /// argument is rebuilt as a uniform grid between its endpoints. A
+    /// non-uniform grid would silently diverge from the caller's array, so
+    /// it is rejected instead.
+    fn validate_uniform(times: &[Real]) -> PyResult<()> {
+        let step = times[1] - times[0];
+        let matches = |a: Real, b: Real| {
+            (a - b).abs() <= 1e-9 * (a.abs() + b.abs() + 1.0)
+        };
+        for pair in times.windows(2) {
+            if !matches(pair[1] - pair[0], step) {
+                return Err(PyValueError::new_err(
+                    "ts arrays must be uniformly spaced: output times are stored \
+                     as (start, stop, num), so a non-uniform grid such as \
+                     np.logspace would be silently replaced by \
+                     np.linspace(ts[0], ts[-1], len(ts)). Pass (start, stop, num) \
+                     for uniform output times.",
+                ));
+            }
+        }
+        Ok(())
     }
 }
 
