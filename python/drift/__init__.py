@@ -10,8 +10,6 @@ from .drift_rs import (
     bg_feature,
 )
 
-# from .lib import Potential, bg_feature, part_group, test_group
-
 __all__ = [
     "Potential",
     "Container",

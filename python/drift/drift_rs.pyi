@@ -1,15 +1,8 @@
 from __future__ import annotations
-from enum import Flag
 import numpy.typing as npt
 from typing import (
     Any,
-    Iterable,
-    List,
-    Optional,
     Sequence,
-    Tuple,
-    overload,
-    Union,
 )
 
 # Public classes exposed by m.add_class
@@ -59,23 +52,8 @@ class Recipe:
 
 
 # Flag wrapper class exposed as "Modern"
-class Modern:
-    def __init__(self) -> None: ...
-    def add(self, value: int) -> None: ...
-    def has(self, value: int) -> bool: ...
-    def bits(self) -> int: ...
-    def __repr__(self) -> str: ...
-
-
-# Python enum.Flag defined in module and exported as "ModernFlag"
-class ModernFlag(Flag):
-    NONE: ModernFlag
-    READ: ModernFlag
-    WRITE: ModernFlag
-    EXECUTE: ModernFlag
-    DELETE: ModernFlag
-    READ_WRITE: ModernFlag
-    FULL_ACCESS: ModernFlag
+# (removed: placeholder READ/WRITE/EXECUTE/DELETE flags were never wired
+# to any behavior; the `flags` Config parameter is gone.)
 
 
 class Container:
@@ -93,7 +71,6 @@ class Config:
         engine: Engine | None = ...,
         method: Method | None = ...,
         variant: Variant | None = ...,
-        flags: Modern | None = ...,
         ts: tuple[float, float, int] | Sequence[float] | None = ...,
         tolerance: tuple[float, float] | float | None = ...,
     ) -> None: ...
@@ -124,8 +101,6 @@ __all__ = [
     "Variant",
     "Potential",
     "Recipe",
-    "Modern",
-    "ModernFlag",
     "Container",
     "Config",
     "test_group",
