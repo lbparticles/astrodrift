@@ -10,9 +10,10 @@ crate-type = ["rlib", "cdylib"]
 [dependencies]
 shared = { path = "shared", default-features = false }
 pyo3 = "0.28.3"
-blastoff = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "blastoff", branch = "main" }
-cust = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust", branch = "main" }
-cust_raw = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust_raw", branch = "main", features = ["driver"] }
+cust = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust", branch = "main", optional = true }
+cuda-core = { version = "0.3.1", optional = true }
+cuda-host = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "8ac82ec761e950594db5f47322330b231f3d80be", optional = true }
+kernels = { path = "kernels", default-features = false, optional = true }
 ndarray-rand = "0.16.0"
 rand = "0.10.1"
 rayon = "1.11.0"
@@ -23,20 +24,20 @@ libc = "0.2.177"
 thiserror = "2.0.17"
 
 [build-dependencies]
-cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_builder", branch = "main", features = ["rustc_codegen_nvvm"] }
+cuda_builder = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_builder", branch = "main", features = ["rustc_codegen_nvvm"], optional = true }
 
 [package.metadata.maturin]
 name = "drift"
 
 [workspace]
-members = ["shared", "."]
+members = ["shared", "kernels", "."]
 
 [features]
-default = ["rust-cuda"]
+default = ["cuda-oxide"]
 extension-module = ["pyo3/extension-module"]
-rust-cuda = ["shared/rust-cuda"]
-cuda-oxide-kernel = ["shared/cuda-oxide"]
-galpy-kepler-reference = []
+rust-cuda = ["dep:cust", "dep:cuda_builder", "shared/rust-cuda"]
+cuda-oxide = ["dep:cuda-core", "dep:cuda-host", "dep:kernels", "kernels/cuda-oxide", "shared/cuda-oxide"]
+galpy-kepler-reference = ["kernels?/galpy-kepler-reference"]
 
 
 [target.'cfg(unix)'.dependencies]

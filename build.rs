@@ -1,9 +1,15 @@
-#[cfg(not(feature = "cuda-oxide-kernel"))]
+#[cfg(feature = "rust-cuda")]
 use cuda_builder::CudaBuilder;
-#[cfg(not(feature = "cuda-oxide-kernel"))]
+#[cfg(feature = "rust-cuda")]
 use cuda_builder::NvvmArch;
 
-#[cfg(not(feature = "cuda-oxide-kernel"))]
+#[cfg(all(feature = "rust-cuda", feature = "cuda-oxide"))]
+compile_error!("features `rust-cuda` and `cuda-oxide` are mutually exclusive");
+
+#[cfg(not(any(feature = "rust-cuda", feature = "cuda-oxide")))]
+compile_error!("enable exactly one CUDA backend feature: `rust-cuda` or `cuda-oxide`");
+
+#[cfg(all(feature = "rust-cuda", not(feature = "cuda-oxide")))]
 fn main() {
     // if std::env::var_os("DOCS_RS").is_some() {
     //     // println!("cargo:warning=build.rs skipped for docs build");
@@ -36,23 +42,7 @@ fn main() {
         .unwrap();
 }
 
-#[cfg(feature = "cuda-oxide-kernel")]
+#[cfg(all(feature = "cuda-oxide", not(feature = "rust-cuda")))]
 fn main() {
     println!("cargo::rerun-if-changed=build.rs");
-    let out_path = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    let manifest_dir = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let cubin = if cfg!(feature = "galpy-kepler-reference") {
-        manifest_dir.join("target/cuda-oxide/galpy-kepler-reference/kernels.cubin")
-    } else {
-        manifest_dir.join("target/cuda-oxide/kernels.cubin")
-    };
-
-    println!("cargo::rerun-if-changed={}", cubin.display());
-
-    std::fs::copy(&cubin, out_path.join("kernels.cubin")).unwrap_or_else(|err| {
-        panic!(
-            "failed to copy cuda-oxide cubin from {}: {err}. Run ./build-cuda-oxide-kernels.sh with matching features first",
-            cubin.display()
-        )
-    });
 }
