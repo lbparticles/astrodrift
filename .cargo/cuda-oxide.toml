@@ -1,0 +1,5 @@
+default-arch = "sm_80"
+
+[env]
+CUDA_OXIDE_DEVICE_CODEGEN_CRATE = "kernels"
+CUDA_OXIDE_NO_FMA = "1"

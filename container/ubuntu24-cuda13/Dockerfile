@@ -47,6 +47,7 @@ RUN apt-get update \
         python3 \
         python3-dev \
         python3-pip \
+        ripgrep \
         sudo \
         wget \
         xz-utils \
@@ -100,6 +101,7 @@ RUN wget -q "${NSYS_URL}${NSYS_PKG}" \
     && dpkg -i "${NSYS_PKG}" \
     && rm "${NSYS_PKG}"
 
+# cuda-oxide and Rust-CUDA require different compiler nightlies.
 RUN curl -fsSL https://sh.rustup.rs \
         | sh -s -- --default-toolchain none --profile minimal -y \
     && rustup toolchain install nightly-2026-08-28 \
@@ -109,12 +111,15 @@ RUN curl -fsSL https://sh.rustup.rs \
         --component rust-analyzer \
         --component rustfmt \
         --component clippy \
+        --component llvm-tools \
+    && rustup toolchain install nightly-2026-04-02 \
+        --profile minimal \
+        --component rust-src \
+        --component rustc-dev \
+        --component rust-analyzer \
+        --component rustfmt \
+        --component clippy \
         --component llvm-tools
-
-# Separately pinned Rust toolchain from the manifest.
-WORKDIR /tmp/astrodrift-toolchain
-RUN --mount=type=bind,source=rust-toolchain.toml,target=/tmp/astrodrift-toolchain/rust-toolchain.toml \
-    rustup show >/dev/null
 
 RUN uv python install 3.13.15 \
     && uv tool install maturin@1.15.0 \

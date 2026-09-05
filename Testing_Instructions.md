@@ -8,16 +8,34 @@ export LD_LIBRARY_PATH="/usr/local/cuda/nvvm/lib64${LD_LIBRARY_PATH:+:$LD_LIBRAR
 
 ## cuda-oxide
 
-cuda-oxide is the default backend and uses the repository's `nightly-2026-08-28` toolchain. Build the kernels and run the galpy DOPR54 tests with:
+cuda-oxide is the default backend and uses the repository's `nightly-2026-08-28` toolchain. Install the `cargo-oxide` frontend from the mounted sibling checkout after creating the container:
+
+```bash
+cargo +nightly-2026-08-28 install \
+    --path /workspaces/cuda-oxide/crates/cargo-oxide --locked --force
+```
+
+Build the kernels and run the galpy DOPR54 tests with:
 
 ```bash
 cd /workspaces/astrodrift
-/workspaces/cuda-oxide/target/debug/cargo-oxide test \
-    --arch sm_80 --materialize-cubin --no-fmad -- \
+cargo oxide test --materialize-cubin -- \
     --release --features galpy-kepler-reference --test dopr54_tests -- --nocapture
 ```
 
 Use `--test dop853_tests` to run the DOP853 suite.
+
+### Local cuda-oxide development
+
+To test changes from the sibling checkout, create an uncommitted `.cargo/config.toml`:
+
+```toml
+[patch."https://github.com/NVlabs/cuda-oxide.git"]
+cuda-device = { path = "../cuda-oxide/crates/cuda-device" }
+cuda-host = { path = "../cuda-oxide/crates/cuda-host" }
+```
+
+Cargo will update the lockfile while the path override is active; do not commit that source change. Reinstall the frontend after changing `cargo-oxide` itself. Remove the override to return to Astrodrift's pinned cuda-oxide revision.
 
 ## Rust-CUDA
 
@@ -37,8 +55,7 @@ Use `--test dop853_tests` to run the DOP853 suite.
 Run the 100-case cuda-oxide DOPR54 diagnostic with:
 
 ```bash
-/workspaces/cuda-oxide/target/debug/cargo-oxide test \
-    --arch sm_80 --materialize-cubin --no-fmad -- \
+cargo oxide test --materialize-cubin -- \
     --release --features galpy-kepler-reference --test dopr54_tests \
     tests::dopr54_gpu_native_galpy_fixture_error_summary -- \
     --ignored --exact --nocapture
