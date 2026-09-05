@@ -3,6 +3,7 @@ use numpy::PyArrayMethods;
 use pyo3::exceptions::{PyDeprecationWarning, PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyList, PyModule, PyTuple};
+use std::sync::Mutex;
 
 mod container;
 mod engine;
@@ -175,9 +176,21 @@ pub struct PyConfig {
     inner: Config,
     // Dependencies use stable identities until build_tree assigns dense labels.
     dependencies: Vec<(u64, u64)>,
+    // Containers are retained for zero-argument run().
+    containers: Mutex<Vec<Container>>,
 }
 
 impl PyConfig {
+    fn register(&self, container: &Container) {
+        let mut containers = self.containers.lock().unwrap();
+        if !containers
+            .iter()
+            .any(|candidate| candidate.identity == container.identity)
+        {
+            containers.push(container.clone());
+        }
+    }
+
     fn dependency_path_exists(&self, start: u64, target: u64) -> bool {
         let mut pending = vec![start];
         let mut visited = Vec::new();
@@ -279,6 +292,7 @@ impl PyConfig {
                 tolerance.unwrap_or_default().0,
             ),
             dependencies: Vec::new(),
+            containers: Mutex::new(Vec::new()),
         };
         println!("newpyconfig");
         thing
@@ -301,10 +315,22 @@ impl PyConfig {
         for i in 0..args.len() {
             let obj = args.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
+            self.register(&container);
             containers.push(container.clone());
         }
-        let has_state: Vec<bool> = containers.iter().map(|c| c.state.is_some()).collect();
-        let plan = self.build_tree(containers)?;
+        let selected = if args.is_empty() {
+            self.containers.lock().unwrap().clone()
+        } else {
+            containers
+        };
+        if selected.len() > MAX_MODEL_COMPONENTS {
+            return Err(PyValueError::new_err(format!(
+                "run() resolved {} containers but a model supports at most {MAX_MODEL_COMPONENTS}",
+                selected.len()
+            )));
+        }
+        let has_state: Vec<bool> = selected.iter().map(|c| c.state.is_some()).collect();
+        let plan = self.build_tree(selected)?;
         let IntegrationPlan {
             model,
             input_frame,
@@ -355,14 +381,21 @@ impl PyConfig {
     #[pyo3(signature = (node, *requires))]
     fn add<'py>(&mut self, node: Container, requires: &Bound<'py, PyTuple>) -> PyResult<()> {
         let mut dependency_ids = Vec::with_capacity(requires.len());
+        let mut dependency_containers = Vec::with_capacity(requires.len());
         for i in 0..requires.len() {
             let obj = requires.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
             if !dependency_ids.contains(&container.identity) {
                 dependency_ids.push(container.identity);
+                dependency_containers.push(container.clone());
             }
         }
-        self.add_dependencies(node.identity, dependency_ids)
+        self.add_dependencies(node.identity, dependency_ids)?;
+        for dependency in &dependency_containers {
+            self.register(dependency);
+        }
+        self.register(&node);
+        Ok(())
     }
 
     #[pyo3(signature = (node, *requires))]
