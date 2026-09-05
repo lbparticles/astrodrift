@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use pyo3::exceptions::{PyNotImplementedError, PyValueError};
 use shared::{
     CustomKeplerRecipe, CustomPlummerRecipe, Index, INPUT_STATE_DIM, MAX_CONTAINERS,
-    PotentialName, Real, Recipe,
+    MAX_PARTICLES, PotentialName, Real, Recipe,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -35,14 +35,44 @@ pub struct Container {
     pub dependency_label: Index,
 }
 
+/// Validate an initial-state array and return the particle count.
+///
+/// Accepts an (N, 6) array or a flat length-6N array. Columns are the
+/// phase-space coordinates [x, y, z, vx, vy, vz].
+fn validate_istate(istate: &PyReadonlyArrayDyn<Real>) -> PyResult<Index> {
+    let view = istate.as_array();
+    let shape = view.shape();
+    let (particles, well_formed) = match shape.len() {
+        1 => (shape[0] / INPUT_STATE_DIM, shape[0] % INPUT_STATE_DIM == 0),
+        2 => (shape[0], shape[1] == INPUT_STATE_DIM),
+        _ => (0, false),
+    };
+    if !well_formed {
+        return Err(PyValueError::new_err(format!(
+            "istate must have shape (N, 6) with columns [x, y, z, vx, vy, vz] \
+             (or a flat array of length 6N); got shape {shape:?}"
+        )));
+    }
+    if particles == 0 {
+        return Err(PyValueError::new_err(
+            "istate must contain at least one particle",
+        ));
+    }
+    if particles > MAX_PARTICLES {
+        return Err(PyValueError::new_err(format!(
+            "istate has {particles} particles but the current engine supports \
+             at most {MAX_PARTICLES}; split the group into multiple containers"
+        )));
+    }
+    Ok(particles)
+}
+
 fn initialize_container<'py>(
     _py: Python<'py>,
     istate: PyReadonlyArrayDyn<Real>,
     recipe: Option<PyRecipe>,
 ) -> PyResult<Py<Container>> {
-    // num_particles is a particle count, not an element count: istate holds
-    // INPUT_STATE_DIM (6) numbers per particle.
-    let n = istate.as_array().len() / INPUT_STATE_DIM;
+    let n = validate_istate(&istate)?;
     let state = InputState::from_py_array(&istate);
 
     let container = Container {
