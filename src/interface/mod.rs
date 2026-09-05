@@ -463,6 +463,10 @@ impl PyConfig {
             self.dependencies.len(),
         )
     }
+
+    fn __repr__(&self) -> String {
+        self.info()
+    }
 }
 
 /// Low-level bindings for configuration, potentials, containers, and their
