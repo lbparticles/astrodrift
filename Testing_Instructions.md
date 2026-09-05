@@ -1,24 +1,35 @@
 # Testing Instructions
 
-VS Code terminals receive the required NVVM loader path from the devcontainer configuration. When entering the container directly, set it before building either backend:
+Run the commands below from the repository root.
+
+## Devcontainer
+
+The repository is mounted at `/workspaces/astrodrift` in the devcontainer. VS Code terminals receive the required NVVM loader path from the devcontainer configuration. When entering the container directly, set it before building either backend:
 
 ```bash
 export LD_LIBRARY_PATH="/usr/local/cuda/nvvm/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ```
 
-## cuda-oxide
-
-cuda-oxide is the default backend and uses the repository's `nightly-2026-08-28` toolchain. Install the `cargo-oxide` frontend from the mounted sibling checkout after creating the container:
+cuda-oxide is the default backend and uses the repository's `nightly-2026-08-28` toolchain. Install the `cargo-oxide` frontend from the mounted sibling checkout after creating the devcontainer:
 
 ```bash
 cargo +nightly-2026-08-28 install \
     --path /workspaces/cuda-oxide/crates/cargo-oxide --locked --force
 ```
 
+## Nix
+
+Run `nix develop` from the repository root. The shell remains in that directory and installs the pinned `cargo-oxide` frontend on its first normal entry. Before using Rust-CUDA for the first time, install its toolchain with:
+
+```bash
+rustup toolchain install nightly-2026-04-02 --profile minimal --component rust-src --component rustc-dev --component rust-analyzer --component rustfmt --component clippy --component llvm-tools
+```
+
+## cuda-oxide
+
 Build the kernels and run the galpy DOPR54 tests with:
 
 ```bash
-cd /workspaces/astrodrift
 cargo oxide test --materialize-cubin -- \
     --release --features galpy-kepler-reference --test dopr54_tests -- --nocapture
 ```
@@ -42,7 +53,6 @@ Cargo will update the lockfile while the path override is active; do not commit 
 Rust-CUDA requires `nightly-2026-04-02`, so select it explicitly and opt out of the default cuda-oxide feature:
 
 ```bash
-cd /workspaces/astrodrift
 cargo +nightly-2026-04-02 test \
     --release --no-default-features --features rust-cuda,galpy-kepler-reference \
     --test dopr54_tests -- --nocapture
@@ -70,7 +80,7 @@ maturin build \
     --no-default-features \
     --features rust-cuda \
     --compatibility linux \
-    --interpreter "$UV_PROJECT_ENVIRONMENT/bin/python" \
+    --interpreter "${PYTHON:-$UV_PROJECT_ENVIRONMENT/bin/python}" \
     --out dist/rust-cuda
 ```
 
