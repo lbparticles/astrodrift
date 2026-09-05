@@ -247,17 +247,18 @@ impl PyConfig {
         PyList::new(py, items)
     }
 
-    #[pyo3(signature = (node,*args))]
-    fn dependency<'py>(
+    /// Register that ``node`` is integrated with ``requires`` as inputs.
+    #[pyo3(signature = (node, *requires))]
+    fn add<'py>(
         &mut self,
         _py: Python<'py>,
         node: Container,
-        args: &Bound<'py, PyTuple>,
+        requires: &Bound<'py, PyTuple>,
     ) -> PyResult<()> {
         let mut dep: Vec<Index> = Vec::new();
 
-        for i in 0..args.len() {
-            let obj = args.get_item(i)?;
+        for i in 0..requires.len() {
+            let obj = requires.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
             dep.push(container.dependency_label);
         }
@@ -266,6 +267,23 @@ impl PyConfig {
                 .set(x.clone(), node.dependency_label, true);
         }
         Ok(())
+    }
+
+    #[pyo3(signature = (node, *args))]
+    fn dependency<'py>(
+        &mut self,
+        py: Python<'py>,
+        node: Container,
+        args: &Bound<'py, PyTuple>,
+    ) -> PyResult<()> {
+        py.import("warnings")?.call_method1(
+            "warn",
+            (
+                "Config.dependency() is deprecated, use Config.add(node, *requires)",
+                py.get_type::<pyo3::exceptions::PyDeprecationWarning>(),
+            ),
+        )?;
+        self.add(py, node, args)
     }
     #[pyo3(signature = ())]
     fn info(&self) -> () {
