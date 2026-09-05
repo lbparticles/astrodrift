@@ -101,6 +101,22 @@ def test_empty_config_returns_no_results() -> None:
     assert dft.Config().run() == []
 
 
+def test_info_returns_a_bounded_summary_without_printing(
+    model: SmokeModel, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sim = dft.Config()
+    sim.add(model.gmc, model.gal)
+    capsys.readouterr()
+
+    summary = sim.info()
+
+    assert capsys.readouterr().out == ""
+    assert summary.startswith("Config(engine=CPU, method=DOPR54")
+    assert "containers=2" in summary
+    assert "dependencies=1" in summary
+    assert len(summary) < 300
+
+
 def test_particle_group_requires_a_registered_force_source(
     model: SmokeModel,
 ) -> None:
