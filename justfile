@@ -25,6 +25,7 @@ lint:
     ruff check .
     ruff format --check .
     uvx ty check
+    uvx basedpyright python tests
 
 # Compile the Rust test binaries without running them
 build-tests:

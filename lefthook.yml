@@ -1,7 +1,7 @@
 # Local git gates replacing the old GitHub Actions CI.
 #
 # pre-commit : fast, staged-file ruff checks only.
-# pre-push   : full `just lint` (ruff + ty) across the repo.
+# pre-push   : full `just lint` (ruff + ty + basedpyright) across the repo.
 #
 # Bypass with `LEFTHOOK=0 git push ...` or `git push --no-verify`; the
 # reviewer-side equivalent is running `just check` on a PR branch. Full
