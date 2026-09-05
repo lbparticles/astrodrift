@@ -12,6 +12,7 @@ mod tests {
     use std::ptr;
 
     const GALPY_NATIVE_FIXTURE_DIR: &str = "tests/fixtures/dop853_galpy_native";
+    const GALPY_NATIVE_REFERENCE: &str = "tests/fixtures/dop853_galpy_native/reference.fixture";
 
     #[link(name = "m")]
     unsafe extern "C" {
@@ -52,11 +53,12 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires ./scripts/generate_galpy_fixtures.py reference"]
     fn dop853_cpu_matches_native_galpy_dump() {
-        let dump = parse_dump("dop853_init_dump.txt").expect("could not parse DOP853 dump");
+        let dump = parse_dump(GALPY_NATIVE_REFERENCE).expect("could not parse DOP853 dump");
         let result = integrate_cpu(&dump);
 
-        assert_all_state_bits("dop853_init_dump.txt", &result, &dump);
+        assert_all_state_bits(GALPY_NATIVE_REFERENCE, &result, &dump);
     }
 
     // two differing libdevice pow(x, 1/8) results in this run. Substituting those bits makes all
@@ -64,15 +66,16 @@ mod tests {
     #[test]
     #[ignore = "CUDA device math first differs from native galpy by 1 ULP at step 3, component 3"]
     fn dop853_gpu_matches_native_galpy_dump() {
-        let dump = parse_dump("dop853_init_dump.txt").expect("could not parse DOP853 dump");
+        let dump = parse_dump(GALPY_NATIVE_REFERENCE).expect("could not parse DOP853 dump");
         let result = integrate_gpu(&dump);
 
-        assert_all_state_bits("dop853_init_dump.txt", &result, &dump);
+        assert_all_state_bits(GALPY_NATIVE_REFERENCE, &result, &dump);
     }
 
     #[test]
+    #[ignore = "requires ./scripts/generate_galpy_fixtures.py reference"]
     fn dop853_gpu_tracks_native_galpy_dump() {
-        let dump = parse_dump("dop853_init_dump.txt").expect("could not parse DOP853 dump");
+        let dump = parse_dump(GALPY_NATIVE_REFERENCE).expect("could not parse DOP853 dump");
         let result = integrate_gpu(&dump);
         let mut mismatched = 0;
         let mut max_absolute_error = 0.0_f64;
@@ -324,8 +327,9 @@ mod tests {
             .unwrap_or_else(|error| panic!("could not read {GALPY_NATIVE_FIXTURE_DIR}: {error}"))
             .map(|entry| entry.unwrap().path())
             .filter(|path| {
-                path.extension()
-                    .is_some_and(|extension| extension == "fixture")
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("case_") && name.ends_with(".fixture"))
             })
             .collect();
         paths.sort();
