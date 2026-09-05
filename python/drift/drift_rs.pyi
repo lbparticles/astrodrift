@@ -26,11 +26,12 @@ class Recipe:
     ...
 
 class Container:
-    # Public attributes (as seen in your Rust class)
+    """A group of particles or a background potential feature."""
+
+    # Public read-only attributes
+    num_particles: int | None  # particle count; None for background containers
     recipe: Recipe | None
     state: Any | None  # shared::InputState – treat as opaque
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None: ...
 
 class Config:
     def __init__(
