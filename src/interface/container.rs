@@ -17,7 +17,7 @@ fn next_dep_label() -> Index {
     i
 }
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct Container {
     pub num_particles: Option<Index>,
@@ -27,35 +27,35 @@ pub struct Container {
 }
 
 fn initialize_container<'py>(
-    _py: Python<'py>,
+    py: Python<'py>,
     istate: PyReadonlyArrayDyn<Real>,
     recipe: Option<PyRecipe>,
 ) -> PyResult<Py<Container>> {
-    let n = &istate.as_array().len();
+    let n = istate.as_array().len();
     let state = InputState::from_py_array(&istate);
 
     let container = Container {
-        num_particles: Some(*n),
-        recipe: recipe,
+        num_particles: Some(n),
+        recipe,
         state: Some(state),
         dependency_label: next_dep_label(),
     };
-    Ok(Py::new(_py, container)?)
+    Py::new(py, container)
 }
 
 #[pyfunction]
 #[pyo3(signature = (istate))]
 pub fn test_group<'py>(
-    _py: Python<'py>,
+    py: Python<'py>,
     istate: PyReadonlyArrayDyn<Real>,
 ) -> PyResult<Py<Container>> {
-    initialize_container(_py, istate, None)
+    initialize_container(py, istate, None)
 }
 
 #[pyfunction]
 #[pyo3(signature = (potential,istate))]
 pub fn part_group<'py>(
-    _py: Python<'py>,
+    py: Python<'py>,
     potential: PyRecipe,
     istate: PyReadonlyArrayDyn<Real>,
 ) -> PyResult<Py<Container>> {
@@ -86,7 +86,7 @@ pub fn part_group<'py>(
             None
         }
     };
-    initialize_container(_py, istate, recipe)
+    initialize_container(py, istate, recipe)
 }
 
 #[pyfunction]

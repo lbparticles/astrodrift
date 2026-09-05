@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-#[pyclass(name = "Variant")]
+#[pyclass(name = "Variant", from_py_object)]
 #[derive(Default, Clone)]
 pub struct PyVariant {
     pub inner: shared::Variant,

@@ -4,7 +4,7 @@ use crate::{
     interface::Container,
     state::{InputFrame, InputState},
 };
-use shared::{MAX_MODEL_COMPONENTS, MAX_RECIPES, MAX_STATES, Model, ModelComponent, Recipe};
+use shared::{MAX_MODEL_COMPONENTS, MAX_RECIPES, MAX_STATES, Model, Recipe};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AdjacencyMatrix(pub u128);
@@ -59,25 +59,23 @@ impl AdjacencyMatrix {
     // Square over boolean semiring: C = A ⊙ A (OR/AND).
     // For each (i, j): c[i,j] = any k s.t. A[i,k] & A[k,j].
     pub fn mul_self(&self) -> AdjacencyMatrix {
-        let n = Self::N;
-
         // Precompute row bitsets: row[i] is 11-bit word for row i
         let mut row_bits: [u16; 11] = [0; 11];
-        for i in 0..n {
-            row_bits[i] = (self.row_bits(i) as u16) & 0x7FF;
+        for (i, row) in row_bits.iter_mut().enumerate() {
+            *row = (self.row_bits(i) as u16) & 0x7FF;
         }
 
         // Precompute column-as-rows masks: col_rows[j] has bit k set iff A[k, j] == 1
         let mut col_rows: [u16; 11] = [0; 11];
-        for j in 0..n {
-            col_rows[j] = self.column_rows_mask(j); // 11-bit
+        for (j, column) in col_rows.iter_mut().enumerate() {
+            *column = self.column_rows_mask(j); // 11-bit
         }
 
         // For each pair (i, j), c[i,j] = (row_bits[i] & col_rows[j]) != 0
         let mut out: u128 = 0;
-        for i in 0..n {
-            for j in 0..n {
-                let has = (row_bits[i] & col_rows[j]) != 0;
+        for (i, row) in row_bits.iter().enumerate() {
+            for (j, column) in col_rows.iter().enumerate() {
+                let has = (row & column) != 0;
                 if has {
                     out |= 1u128 << Self::idx(i, j);
                 }
@@ -115,7 +113,7 @@ impl AdjacencyMatrix {
         let mut power = *self; // A^1
         for p in 1..=cap {
             // For each column j, check if any entry in column j is true in A^p
-            for j in 0..n {
+            for (j, last_power) in last.iter_mut().enumerate() {
                 // build a quick "any bit in column j" test
                 // We can scan rows, since n=11 this is cheap.
                 let mut any = false;
@@ -128,7 +126,7 @@ impl AdjacencyMatrix {
                     r += 1;
                 }
                 if any {
-                    last[j] = p as u8;
+                    *last_power = p as u8;
                 }
             }
 
@@ -156,24 +154,22 @@ impl AdjacencyMatrix {
 
     // General boolean matrix multiply: C = A · B over OR/AND
     pub fn mul_bool(&self, rhs: &AdjacencyMatrix) -> AdjacencyMatrix {
-        let n = Self::N;
-
         // Row i of A as 11-bit masks
         let mut a_rows: [u16; 11] = [0; 11];
-        for i in 0..n {
-            a_rows[i] = (self.row_bits(i) as u16) & 0x7FF;
+        for (i, row) in a_rows.iter_mut().enumerate() {
+            *row = (self.row_bits(i) as u16) & 0x7FF;
         }
 
         // For B, precompute column-as-rows masks: for each column j, bit k is B[k, j]
         let mut b_col_rows: [u16; 11] = [0; 11];
-        for j in 0..n {
-            b_col_rows[j] = rhs.column_rows_mask(j);
+        for (j, column) in b_col_rows.iter_mut().enumerate() {
+            *column = rhs.column_rows_mask(j);
         }
 
         let mut out: u128 = 0;
-        for i in 0..n {
-            for j in 0..n {
-                if (a_rows[i] & b_col_rows[j]) != 0 {
+        for (i, row) in a_rows.iter().enumerate() {
+            for (j, column) in b_col_rows.iter().enumerate() {
+                if (row & column) != 0 {
                     out |= 1u128 << Self::idx(i, j);
                 }
             }
@@ -200,7 +196,7 @@ impl AdjacencyMatrix {
         }
         true
     }
-    pub fn build(&self, containers: Box<[Option<Box<Container>>; 11]>) -> (Model, InputFrame) {
+    pub fn build(&self, containers: [Option<Container>; 11]) -> (Model, InputFrame) {
         let last = self.last_true_column_power(11);
 
         let mut with_deps: Vec<usize> = (0..11).filter(|&v| last[v] >= 1).collect();
@@ -241,13 +237,13 @@ impl AdjacencyMatrix {
 
             // Build the per-upstream array for this stage
             let mut arr_k: [Option<Recipe>; 11] = std::array::from_fn(|_| None);
-            for k in 0..11 {
-                if self.get(k, v) {
-                    if let Some(src) = containers[k].as_ref() {
-                        if let Some(py_recipe) = src.recipe.as_ref() {
-                            arr_k[k] = Some(py_recipe.inner.clone());
-                        }
-                    }
+            for (k, recipe) in arr_k.iter_mut().enumerate() {
+                if self.get(k, v)
+                    && let Some(py_recipe) = containers[k]
+                        .as_ref()
+                        .and_then(|source| source.recipe.as_ref())
+                {
+                    *recipe = Some(py_recipe.inner);
                 }
             }
             if arr_k.iter().any(|x| x.is_some()) {

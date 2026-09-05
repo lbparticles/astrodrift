@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-#[pyclass(name = "Engine")]
+#[pyclass(name = "Engine", from_py_object)]
 #[derive(Default, Clone)]
 pub struct PyEngine {
     pub inner: shared::Engine,
