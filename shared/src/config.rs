@@ -1,12 +1,11 @@
+use core::array;
+use core::f64::consts::PI;
 #[cfg(feature = "rust-cuda")]
 use cust_core::DeviceCopy;
-use core::f64::consts::PI;
-use core::array;
 
-use crate::{ModernFlags,Model};
-use crate::{MAX_STATES,MIN_RTOL,MIN_ATOL,Real,Index};
 use crate::potential::Potential;
-
+use crate::{Index, MAX_STATES, MIN_ATOL, MIN_RTOL, Real};
+use crate::{Model, ModernFlags};
 
 #[cfg(feature = "rust-cuda")]
 unsafe impl DeviceCopy for Settings {}
@@ -49,32 +48,31 @@ impl Config {
     }
 }
 
-
 #[derive(Clone, Copy, Debug)]
-pub struct Linspace{
-    pub start: Real, 
-    pub end: Real, 
+pub struct Linspace {
+    pub start: Real,
+    pub end: Real,
     pub steps: Index,
 }
 impl Default for Linspace {
     fn default() -> Self {
-        Self{
-            start: 0.0, 
-            end: 2. * PI, 
-            steps:100
+        Self {
+            start: 0.0,
+            end: 2. * PI,
+            steps: 100,
         }
     }
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Tolerance{
-    pub atol: Real, 
-    pub rtol: Real
+pub struct Tolerance {
+    pub atol: Real,
+    pub rtol: Real,
 }
 impl Default for Tolerance {
     fn default() -> Self {
-        Self{
-            atol: MIN_ATOL, 
-            rtol: MIN_RTOL
+        Self {
+            atol: MIN_ATOL,
+            rtol: MIN_RTOL,
         }
     }
 }

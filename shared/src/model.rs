@@ -1,14 +1,16 @@
-use crate::{MAX_RECIPES,MAX_MODEL_COMPONENTS};
+use crate::Real;
+use crate::potential::{
+    BovyPotential, CustomOrigin, KeplerPotential, PlummerPotential, PotentialEnum,
+};
+use crate::{MAX_MODEL_COMPONENTS, MAX_RECIPES};
+use core::array;
 use core::fmt::{self, Display, Formatter};
 use core::slice;
-use core::array;
-use crate::{Real};
-use crate::potential::{PotentialEnum,KeplerPotential,PlummerPotential,BovyPotential,CustomOrigin};
 
 pub struct ModelComponent(pub [Option<Recipe>; MAX_RECIPES]);
 pub struct Model(pub [Option<ModelComponent>; MAX_MODEL_COMPONENTS]);
 
-impl<'a> IntoIterator for &'a ModelComponent{
+impl<'a> IntoIterator for &'a ModelComponent {
     type Item = &'a Option<Recipe>;
     type IntoIter = slice::Iter<'a, Option<Recipe>>;
 
@@ -17,7 +19,7 @@ impl<'a> IntoIterator for &'a ModelComponent{
     }
 }
 
-impl<'a> IntoIterator for &'a Model{
+impl<'a> IntoIterator for &'a Model {
     type Item = &'a Option<ModelComponent>;
     type IntoIter = slice::Iter<'a, Option<ModelComponent>>;
 
@@ -25,7 +27,6 @@ impl<'a> IntoIterator for &'a Model{
         self.0.iter()
     }
 }
-
 
 // #[repr(C)]
 // #[derive(Debug, Clone, Copy)]
@@ -44,8 +45,6 @@ impl<'a> IntoIterator for &'a Model{
 //         }
 //     }
 // }
-
-
 
 // impl From<RecipeEnum> for Recipe {
 //     fn from(pot: RecipeEnum) -> Self {
@@ -79,9 +78,7 @@ impl<'a> IntoIterator for &'a Model{
 //     }
 // }
 
-
-
-impl Display for Model{
+impl Display for Model {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;
 
@@ -119,23 +116,17 @@ impl Display for Model{
     }
 }
 
-
 impl From<[Option<[Option<Recipe>; 11]>; 11]> for Model {
     fn from(arr: [Option<[Option<Recipe>; 11]>; 11]) -> Self {
         // Map Option<[Option<Recipe>; 11]> -> Option<Course>
-        let model_components: [Option<ModelComponent>; 11] = array::from_fn(|i| {
-            match arr[i] {
-                Some(inner) => Some(ModelComponent(inner)),
-                None => None,
-            }
+        let model_components: [Option<ModelComponent>; 11] = array::from_fn(|i| match arr[i] {
+            Some(inner) => Some(ModelComponent(inner)),
+            None => None,
         });
 
         Model(model_components)
     }
 }
-
-
-
 
 #[derive(Clone, Copy, Debug)]
 pub enum Recipe {
@@ -146,19 +137,19 @@ pub enum Recipe {
     CustomKepler(CustomKeplerRecipe),
 }
 
-pub trait Construct{
-    fn construct(&self,ptr:*const f64)->PotentialEnum;
+pub trait Construct {
+    fn construct(&self, ptr: *const f64) -> PotentialEnum;
 }
 
 impl Construct for Recipe {
-    fn construct(&self,ptr:*const f64)->PotentialEnum{
-       match self {
-           Recipe::Kepler(v) =>v.construct(ptr),
-           Recipe::Plummer(v) =>v.construct(ptr),
-           Recipe::Bovy(v) =>v.construct(ptr),
-           Recipe::CustomKepler(v) =>v.construct(ptr),
-           Recipe::CustomPlummer(v) =>v.construct(ptr),
-       } 
+    fn construct(&self, ptr: *const f64) -> PotentialEnum {
+        match self {
+            Recipe::Kepler(v) => v.construct(ptr),
+            Recipe::Plummer(v) => v.construct(ptr),
+            Recipe::Bovy(v) => v.construct(ptr),
+            Recipe::CustomKepler(v) => v.construct(ptr),
+            Recipe::CustomPlummer(v) => v.construct(ptr),
+        }
     }
 }
 
@@ -190,10 +181,8 @@ impl Default for KeplerRecipe {
     }
 }
 impl Construct for KeplerRecipe {
-    fn construct(&self,_ptr:*const f64)->PotentialEnum{
-        PotentialEnum::Kepler(
-            KeplerPotential{amp:self.amp}
-        )
+    fn construct(&self, _ptr: *const f64) -> PotentialEnum {
+        PotentialEnum::Kepler(KeplerPotential { amp: self.amp })
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -207,10 +196,8 @@ pub struct CustomKeplerRecipe {
 }
 
 impl Construct for CustomKeplerRecipe {
-    fn construct(&self,_ptr:*const f64)->PotentialEnum{
-        PotentialEnum::Kepler(
-            KeplerPotential{amp:self.amp}
-        )
+    fn construct(&self, _ptr: *const f64) -> PotentialEnum {
+        PotentialEnum::Kepler(KeplerPotential { amp: self.amp })
     }
 }
 
@@ -221,10 +208,11 @@ pub struct PlummerRecipe {
     pub radius: Real,
 }
 impl Construct for PlummerRecipe {
-    fn construct(&self,_ptr:*const f64)->PotentialEnum{
-        PotentialEnum::Plummer(
-            PlummerPotential{amp:self.amp,b:self.radius}
-        )
+    fn construct(&self, _ptr: *const f64) -> PotentialEnum {
+        PotentialEnum::Plummer(PlummerPotential {
+            amp: self.amp,
+            b: self.radius,
+        })
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -238,10 +226,11 @@ pub struct CustomPlummerRecipe {
     pub final_time: f64,
 }
 impl Construct for CustomPlummerRecipe {
-    fn construct(&self,_ptr:*const f64)->PotentialEnum{
-        PotentialEnum::Plummer(
-            PlummerPotential{amp:self.amp,b:self.radius}
-        )
+    fn construct(&self, _ptr: *const f64) -> PotentialEnum {
+        PotentialEnum::Plummer(PlummerPotential {
+            amp: self.amp,
+            b: self.radius,
+        })
     }
 }
 
@@ -250,13 +239,10 @@ pub struct BovyRecipe {
     pub name: PotentialName,
 }
 impl Construct for BovyRecipe {
-    fn construct(&self,ptr:*const f64)->PotentialEnum{
-        PotentialEnum::Bovy(
-            BovyPotential::new(ptr,1.,1.,1)
-        )
+    fn construct(&self, ptr: *const f64) -> PotentialEnum {
+        PotentialEnum::Bovy(BovyPotential::new(ptr, 1., 1., 1))
     }
 }
-
 
 // pub trait Potential {
 //     // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64;

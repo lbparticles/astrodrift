@@ -165,29 +165,17 @@ const ER12: f64 = -0.2235530786388629525884427845e-1;
 
 #[inline(always)]
 fn c_min(a: f64, b: f64) -> f64 {
-    if a < b {
-        a
-    } else {
-        b
-    }
+    if a < b { a } else { b }
 }
 
 #[inline(always)]
 fn c_max(a: f64, b: f64) -> f64 {
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 
 #[inline(always)]
 fn custom_sign(x: f64, y: f64) -> f64 {
-    if y > 0.0 {
-        x.abs()
-    } else {
-        -x.abs()
-    }
+    if y > 0.0 { x.abs() } else { -x.abs() }
 }
 
 #[inline(always)]

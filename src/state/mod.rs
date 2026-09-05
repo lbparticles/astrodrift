@@ -1,23 +1,23 @@
 use core::slice;
 
 use numpy::PyReadonlyArrayDyn;
-use shared::{Index, Real, INPUT_LENGTH, INPUT_STATE_DIM, MAX_STATES, OUTPUT_LENGTH};
+use shared::{INPUT_LENGTH, INPUT_STATE_DIM, Index, MAX_STATES, OUTPUT_LENGTH, Real};
 
-#[derive(Debug,Clone)]
-pub struct InputState{
+#[derive(Debug, Clone)]
+pub struct InputState {
     pub num_particles: Index,
-    pub data: Vec<Real>
+    pub data: Vec<Real>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct InputFrame(pub [Option<InputState>; MAX_STATES]);
 
-#[derive(Debug,Clone)]
-pub struct OutputState{
-    pub data: Vec<Real>
+#[derive(Debug, Clone)]
+pub struct OutputState {
+    pub data: Vec<Real>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct OutputFrame(pub [Option<OutputState>; MAX_STATES]);
 
 impl<'a> IntoIterator for &'a InputFrame {
@@ -50,7 +50,10 @@ impl InputState {
             data[i] = v;
         }
 
-        InputState { num_particles, data }
+        InputState {
+            num_particles,
+            data,
+        }
     }
 
     #[inline]
@@ -94,4 +97,3 @@ impl OutputState {
         &mut self.data
     }
 }
-

@@ -46,21 +46,15 @@ fn rk4_onestep(
 }
 
 #[inline(always)]
-fn rk4_estimate_step(
-    yo: &[f64; DIM],
-    mut dt: f64,
-    t0: f64,
-    rtol: f64,
-    atol: f64,
-) -> f64 {
+fn rk4_estimate_step(yo: &[f64; DIM], mut dt: f64, t0: f64, rtol: f64, atol: f64) -> f64 {
     let mut err: f64 = 2.0;
 
-    let mut yn    = [0.0_f64; DIM];
-    let mut y1    = [0.0_f64; DIM];
-    let mut y21   = [0.0_f64; DIM];
-    let mut y2    = [0.0_f64; DIM];
-    let mut ynk   = [0.0_f64; DIM];
-    let mut a     = [0.0_f64; DIM];
+    let mut yn = [0.0_f64; DIM];
+    let mut y1 = [0.0_f64; DIM];
+    let mut y21 = [0.0_f64; DIM];
+    let mut y2 = [0.0_f64; DIM];
+    let mut ynk = [0.0_f64; DIM];
+    let mut a = [0.0_f64; DIM];
     let mut scale = [0.0_f64; DIM];
 
     // max log(|y|)
@@ -82,8 +76,8 @@ fn rk4_estimate_step(
 
     while err > 1.0 {
         for i in 0..DIM {
-            yn[i]  = yo[i];
-            y1[i]  = yo[i];
+            yn[i] = yo[i];
+            y1[i] = yo[i];
             y21[i] = yo[i];
         }
 
@@ -187,65 +181,53 @@ fn dopr54_actualstep(
         a[i] = a1[i];
     }
     for i in 0..DIM {
-        k1[i]   = dt * a[i];
+        k1[i] = dt * a[i];
         yn1[i] += B1 * k1[i];
         yerr[i] = BE1 * k1[i];
-        ynk[i]  = yn[i] + A21 * k1[i];
+        ynk[i] = yn[i] + A21 * k1[i];
     }
 
     // calculate k2
     kepler_rhs(*to + C2 * dt, ynk, a);
     for i in 0..DIM {
-        k2[i]  = dt * a[i];
+        k2[i] = dt * a[i];
         ynk[i] = yn[i] + A31 * k1[i] + A32 * k2[i];
     }
 
     // calculate k3
     kepler_rhs(*to + C3 * dt, ynk, a);
     for i in 0..DIM {
-        k3[i]   = dt * a[i];
+        k3[i] = dt * a[i];
         yn1[i] += B3 * k3[i];
         yerr[i] += BE3 * k3[i];
-        ynk[i]  = yn[i]
-            + A41 * k1[i]
-            + A42 * k2[i]
-            + A43 * k3[i];
+        ynk[i] = yn[i] + A41 * k1[i] + A42 * k2[i] + A43 * k3[i];
     }
 
     // calculate k4
     kepler_rhs(*to + C4 * dt, ynk, a);
     for i in 0..DIM {
-        k4[i]   = dt * a[i];
+        k4[i] = dt * a[i];
         yn1[i] += B4 * k4[i];
         yerr[i] += BE4 * k4[i];
-        ynk[i]  = yn[i]
-            + A51 * k1[i]
-            + A52 * k2[i]
-            + A53 * k3[i]
-            + A54 * k4[i];
+        ynk[i] = yn[i] + A51 * k1[i] + A52 * k2[i] + A53 * k3[i] + A54 * k4[i];
     }
 
     // calculate k5
     kepler_rhs(*to + C5 * dt, ynk, a);
     for i in 0..DIM {
-        k5[i]   = dt * a[i];
+        k5[i] = dt * a[i];
         yn1[i] += B5 * k5[i];
         yerr[i] += BE5 * k5[i];
-        ynk[i]  = yn[i]
-            + A61 * k1[i]
-            + A62 * k2[i]
-            + A63 * k3[i]
-            + A64 * k4[i]
-            + A65 * k5[i];
+        ynk[i] = yn[i] + A61 * k1[i] + A62 * k2[i] + A63 * k3[i] + A64 * k4[i] + A65 * k5[i];
     }
 
     // calculate k6
     kepler_rhs(*to + dt, ynk, a);
     for i in 0..DIM {
-        k6[i]   = dt * a[i];
+        k6[i] = dt * a[i];
         yn1[i] += B6 * k6[i];
         yerr[i] += BE6 * k6[i];
-        ynk[i]  = yn[i]
+        ynk[i] = yn[i]
             + A71 * k1[i]
             + A73 * k3[i]  // a72 = 0
             + A74 * k4[i]
@@ -310,7 +292,6 @@ fn dopr54_actualstep(
     dt_one
 }
 
-
 #[inline(always)]
 fn dopr54_onestep_kepler(
     yn: &mut [f64; DIM],
@@ -369,28 +350,10 @@ fn dopr54_onestep_kepler(
 
         // *dt_one= dopr54_actualstep(...);
         *dt_one = dopr54_actualstep(
-            yn,
-            *dt_one,
-            to,
-            rtol,
-            atol,
-            a1,
-            a,
-            k1,
-            k2,
-            k3,
-            k4,
-            k5,
-            k6,
-            yn1,
-            yerr,
-            ynk,
-            accept,
+            yn, *dt_one, to, rtol, atol, a1, a, k1, k2, k3, k4, k5, k6, yn1, yerr, ynk, accept,
         );
     }
 }
-
-
 
 #[inline(always)]
 fn dopr54_integrate_kepler(
@@ -403,17 +366,17 @@ fn dopr54_integrate_kepler(
 ) {
     let nt = t_grid.len() as i32;
 
-    let mut a   = [0.0_f64; DIM];
-    let mut a1  = [0.0_f64; DIM];
-    let mut k1  = [0.0_f64; DIM];
-    let mut k2  = [0.0_f64; DIM];
-    let mut k3  = [0.0_f64; DIM];
-    let mut k4  = [0.0_f64; DIM];
-    let mut k5  = [0.0_f64; DIM];
-    let mut k6  = [0.0_f64; DIM];
-    let mut yn  = [0.0_f64; DIM];
+    let mut a = [0.0_f64; DIM];
+    let mut a1 = [0.0_f64; DIM];
+    let mut k1 = [0.0_f64; DIM];
+    let mut k2 = [0.0_f64; DIM];
+    let mut k3 = [0.0_f64; DIM];
+    let mut k4 = [0.0_f64; DIM];
+    let mut k5 = [0.0_f64; DIM];
+    let mut k6 = [0.0_f64; DIM];
+    let mut yn = [0.0_f64; DIM];
     let mut yn1 = [0.0_f64; DIM];
-    let mut yerr= [0.0_f64; DIM];
+    let mut yerr = [0.0_f64; DIM];
     let mut ynk = [0.0_f64; DIM];
 
     #[cfg(feature = "cuda-oxide")]
@@ -439,7 +402,6 @@ fn dopr54_integrate_kepler(
 
     // ---- set up a1: a1 = f(to, yn) ----
     kepler_rhs(to, &mut yn, &mut a1);
-
 
     for _step in 0..(nt - 1) {
         // One Dormand–Prince 5(4) macro-step (possibly multiple substeps)
@@ -481,14 +443,7 @@ fn copy_state(dst: &mut [f64; DIM], src: &[f64; DIM]) {
     }
 }
 
-
-
-
-fn kepler_rhs(
-    _t: f64,
-    q: &[f64; DIM],
-    a: &mut [f64; DIM],
-) {
+fn kepler_rhs(_t: f64, q: &[f64; DIM], a: &mut [f64; DIM]) {
     let (ax, ay, az) = kepler_force(q[0], q[1], q[2]);
     a[0] = q[3];
     a[1] = q[4];

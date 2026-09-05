@@ -12,16 +12,16 @@ mod method;
 mod recipe;
 mod variant;
 
+use crate::integrators::run_integration;
+use crate::state::InputFrame;
+use crate::tree::AdjacencyMatrix;
 pub use container::Container;
 pub use engine::PyEngine;
 pub use flag::Modern;
 pub use method::PyMethod;
 pub use recipe::PyRecipe;
-use shared::{Linspace,Tolerance,Real,Model,Config,Index};
+use shared::{Config, Index, Linspace, Model, Real, Tolerance};
 pub use variant::PyVariant;
-use crate::integrators::run_integration;
-use crate::state::InputFrame;
-use crate::tree::AdjacencyMatrix;
 
 #[derive(Default, Clone, Debug)]
 pub struct BoundLinspace(pub Linspace);
@@ -38,7 +38,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
             let start: f64 = tup.get_item(0)?.extract()?;
             let end: f64 = tup.get_item(1)?.extract()?;
             let steps: usize = tup.get_item(2)?.extract()?;
-            return Ok(BoundLinspace(Linspace{start, end, steps}));
+            return Ok(BoundLinspace(Linspace { start, end, steps }));
         }
 
         // --- Case 2: NumPy array ---
@@ -55,7 +55,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
             let start = slice.first().copied().unwrap_or(0.0);
             let end = slice.last().copied().unwrap_or(start);
             let steps = n;
-            return Ok(BoundLinspace(Linspace{start, end, steps}));
+            return Ok(BoundLinspace(Linspace { start, end, steps }));
         }
         if let Ok(seq) = obj.extract::<Vec<f64>>() {
             if seq.len() < 2 {
@@ -66,7 +66,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
             let start = seq[0];
             let end = *seq.last().unwrap();
             let steps = seq.len();
-            return Ok(BoundLinspace(Linspace{start, end, steps}));
+            return Ok(BoundLinspace(Linspace { start, end, steps }));
         }
 
         Err(PyValueError::new_err(
@@ -85,12 +85,15 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance {
         {
             let rtol: f64 = tup.get_item(0)?.extract()?;
             let atol: f64 = tup.get_item(1)?.extract()?;
-            return Ok(BoundTolerance(Tolerance{rtol, atol}));
+            return Ok(BoundTolerance(Tolerance { rtol, atol }));
         }
 
         // Accept single float for convenience
         if let Ok(val) = obj.extract::<f64>() {
-            return Ok(BoundTolerance(Tolerance{rtol: val, atol: val}));
+            return Ok(BoundTolerance(Tolerance {
+                rtol: val,
+                atol: val,
+            }));
         }
 
         Err(PyValueError::new_err(
@@ -107,30 +110,29 @@ pub struct PyConfig {
 }
 
 impl PyConfig {
-    fn build_tree(&self,
-         containers: Vec<Box<Container>>) -> (Model, InputFrame) {
+    fn build_tree(&self, containers: Vec<Box<Container>>) -> (Model, InputFrame) {
         let input = vec_to_option_array_11(containers);
-        let (x,y) = self.adjacency_matrix.build(input);
+        let (x, y) = self.adjacency_matrix.build(input);
         // println!("{:?}",x);
         // println!("{:?}",y);
-        (x,y)
+        (x, y)
     }
 }
-
 
 fn vec_to_option_array_11(mut v: Vec<Box<Container>>) -> Box<[Option<Box<Container>>; 11]> {
     if v.len() > 11 {
         v.truncate(11);
     }
-    let mut out: Box<[Option<Box<Container>>; 11]> = Box::new([None,None,None,None,None,None,None,None,None,None,None]);
+    let mut out: Box<[Option<Box<Container>>; 11]> = Box::new([
+        None, None, None, None, None, None, None, None, None, None, None,
+    ]);
 
     // Copy by cloning into out[i]
     for (i, item) in v.iter().enumerate() {
         // i is guaranteed < 11 due to truncate above
         out[i] = Some(item.clone());
     }
-    out 
-
+    out
 }
 
 #[pymethods]
@@ -165,9 +167,7 @@ impl PyConfig {
         &self,
         py: Python<'py>,
         args: &Bound<'py, PyTuple>,
-    ) 
-    -> PyResult<Bound<'py, PyList>> 
-    {
+    ) -> PyResult<Bound<'py, PyList>> {
         let mut containers: Vec<Box<Container>> = Vec::new();
         for i in 0..args.len() {
             let obj = args.get_item(i)?;
@@ -176,7 +176,8 @@ impl PyConfig {
         }
         let (meal, istates) = self.build_tree(containers);
         let results = run_integration(self.inner, meal, istates).unwrap();
-        let items: Vec<Py<PyAny>> = results.0
+        let items: Vec<Py<PyAny>> = results
+            .0
             .iter()
             .filter_map(|opt| opt.as_ref())
             .map(|arr| {
@@ -216,7 +217,6 @@ impl PyConfig {
         println!("{:?}", self);
     }
 }
-
 
 //
 // Python Module Declaration
