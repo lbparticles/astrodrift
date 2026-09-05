@@ -20,7 +20,9 @@ pub use engine::PyEngine;
 pub use flag::Modern;
 pub use method::PyMethod;
 pub use recipe::PyRecipe;
-use shared::{Config, Index, Linspace, Model, OUTPUT_STATE_DIM, Real, Tolerance};
+use shared::{
+    Config, Index, Linspace, MAX_CONTAINERS, Model, OUTPUT_STATE_DIM, Real, Tolerance,
+};
 pub use variant::PyVariant;
 
 #[derive(Default, Clone, Debug)]
@@ -204,6 +206,13 @@ impl PyConfig {
             .iter()
             .map(|c| c.state.as_ref().map(|s| s.num_particles as usize))
             .collect();
+        if containers.len() > MAX_CONTAINERS {
+            return Err(PyValueError::new_err(format!(
+                "run() received {} containers but a model supports at most \
+                 {MAX_CONTAINERS}",
+                containers.len()
+            )));
+        }
         let (meal, istates) = self.build_tree(containers);
         let results = run_integration(self.inner, meal, istates).unwrap();
 
