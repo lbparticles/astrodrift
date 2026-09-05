@@ -1,72 +1,67 @@
+"""Type stubs for the compiled ``drift.drift_rs`` extension module.
+
+The extension is built by maturin from src/interface; this stub mirrors
+the classes and functions registered in the pymodule.
+"""
+
 from __future__ import annotations
+
+import numpy as np
 import numpy.typing as npt
-from typing import (
-    Any,
-    Sequence,
-)
-
-# Public classes exposed by m.add_class
-# Note: These are runtime-provided by the compiled extension; this is a stub only.
-
+from typing import Sequence, override
 
 class Engine:
-    """Execution backend. Members: CPU (default), GPU."""
+    """Execution backend. The default is ``CPU``; GPU requires a CUDA device."""
 
     CPU: Engine
     GPU: Engine
 
-
 class Method:
-    """Integration scheme. Members: DOPR54 (default), DOP853."""
+    """Integration scheme. ``DOPR54`` is the CUDA-accelerated default."""
 
     DOPR54: Method
     DOP853: Method
 
-
 class Variant:
-    """Kernel variant. Members: Compatible (default), Modern (experimental)."""
+    """Kernel variant. ``Compatible`` is the only dispatch path today."""
 
     Compatible: Variant
     Modern: Variant
 
-
 class Potential:
+    """A potential definition; create one with the static constructors."""
+
     @staticmethod
     def kepler(amp: float) -> Potential:
         """Point-mass potential (G = 1). ``amp`` is the total mass."""
         ...
+
     @staticmethod
     def plummer(amp: float, radius: float) -> Potential:
         """Plummer sphere. ``amp`` is the total mass, ``radius`` the scale radius."""
         ...
+
     @staticmethod
-    def bovy() -> Potential:
-        ...
+    def bovy() -> Potential: ...
 
     # inner not exposed
-
-
-class Recipe:
-    # Created from Potential internally; exposed as a type in containers
-    ...
-
-
-# Flag wrapper class exposed as "Modern"
-# (removed: placeholder READ/WRITE/EXECUTE/DELETE flags were never wired
-# to any behavior; the `flags` Config parameter is gone.)
-
 
 class Container:
     """A group of particles or a background potential feature."""
 
-    # Public read-only attributes
+    # Read-only attributes
     num_particles: int | None  # particle count; None for background containers
     dependency_label: int  # creation-order id used to wire dependencies
-    recipe: Recipe | None
-    state: Any | None  # shared::InputState – treat as opaque
 
+    @override
+    def __repr__(self) -> str: ...
 
 class Config:
+    """An integration: backend, scheme, and variant plus a container graph.
+
+    Defaults: ``Engine.CPU``, ``Method.DOPR54``, ``Variant.Compatible``.
+    """
+
     def __init__(
         self,
         engine: Engine | None = ...,
@@ -75,24 +70,45 @@ class Config:
         ts: tuple[float, float, int] | Sequence[float] | None = ...,
         tolerance: tuple[float, float] | float | None = ...,
     ) -> None: ...
+    def run(
+        self, *args: Container
+    ) -> list[npt.NDArray[np.float64]] | list[None]:
+        """Integrate every registered container (or exactly those passed).
 
-    # run returns a list of arrays (one (N, 11) array per container, aligned
-    # with the containers passed to run(); background containers give None)
-    def run(self, *args: Container) -> list[list[float] | npt.NDArray[Any] | None]: ...
+        Returns one (N, 11) float64 array per particle group, aligned with
+        the integration order; background containers contribute None.
+        """
+        ...
 
-    def add(self, node: Container, *requires: Container) -> None: ...
+    def add(self, node: Container, *requires: Container) -> None:
+        """Integrate ``node`` with ``requires`` as inputs."""
+        ...
+
     def dependency(self, node: Container, *args: Container) -> None:
         """Deprecated alias for :meth:`add`."""
         ...
-    def info(self) -> None: ...
 
+    def info(self) -> str:
+        """Return a human-readable summary of this configuration."""
+        ...
 
-# Module-level functions
-def test_particles(istate: "npt.NDArray[Any] | Sequence[float]") -> Container:
-    """Create a group of test particles from an (N, 6) initial state."""
+    @override
+    def __repr__(self) -> str: ...
+
+# Module-level container constructors
+
+def test_particles(
+    istate: "npt.NDArray[np.float64] | Sequence[float]",
+) -> Container:
+    """Create a group of test particles from an (N, 6) initial state.
+
+    Columns are the phase-space coordinates [x, y, z, vx, vy, vz].
+    """
     ...
 
-def particles(potential: Potential, istate: "npt.NDArray[Any] | Sequence[float]") -> Container:
+def particles(
+    potential: Potential, istate: "npt.NDArray[np.float64] | Sequence[float]"
+) -> Container:
     """Create a group of particles moving in ``potential``."""
     ...
 
@@ -101,13 +117,16 @@ def background(potential: Potential) -> Container:
     ...
 
 # Deprecated names, kept until the 1.0 API freeze.
-def test_group(istate: "npt.NDArray[Any] | Sequence[float]") -> Container:
+
+def test_group(
+    istate: "npt.NDArray[np.float64] | Sequence[float]",
+) -> Container:
     """Deprecated alias for :func:`test_particles`."""
     ...
 
 def part_group(
     potential: Potential,
-    istate: "npt.NDArray[Any] | Sequence[float]",
+    istate: "npt.NDArray[np.float64] | Sequence[float]",
 ) -> Container:
     """Deprecated alias for :func:`particles`."""
     ...
@@ -116,19 +135,16 @@ def bg_feature(potential: Potential) -> Container:
     """Deprecated alias for :func:`background`."""
     ...
 
-
-# Optional: minimal numpy typing without hard dependency
-# If you prefer to avoid importing numpy.typing at runtime, alias a Protocol
-
-
 __all__ = [
     "Engine",
     "Method",
     "Variant",
     "Potential",
-    "Recipe",
     "Container",
     "Config",
+    "test_particles",
+    "particles",
+    "background",
     "test_group",
     "part_group",
     "bg_feature",

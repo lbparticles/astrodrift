@@ -10,7 +10,7 @@ def main():
     gmc = dft.particles(kp, gmc_istate)
     iso = dft.test_particles(iso_istate)
     sim = dft.Config(variant=dft.Variant.Compatible)
-    sim.dependency(gmc, gal)  # deprecated; use sim.add(gmc, gal)
+    sim.add(gmc, gal)
     sim.add(iso, gmc, gal)
     out = sim.run(gal, gmc, iso)  # or just sim.run(): every added container
     print(out)
