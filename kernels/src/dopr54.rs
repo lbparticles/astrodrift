@@ -1,7 +1,3 @@
-#[cfg(feature = "cuda-oxide")]
-use cuda_device::{kernel, thread};
-#[cfg(feature = "rust-cuda")]
-use cuda_std::{kernel, thread};
 #[cfg(all(target_os = "cuda", feature = "rust-cuda"))]
 use cuda_std::GpuFloat;
 
@@ -488,18 +484,6 @@ fn copy_state(dst: &mut [f64; DIM], src: &[f64; DIM]) {
 
 
 
-#[inline(always)]
-#[cfg(feature = "rust-cuda")]
-fn thread_id_limit_check(n: usize) -> Option<usize> {
-    let tid = (thread::block_idx_x() * thread::block_dim_x()
-        + thread::thread_idx_x()) as usize;
-    if tid >= n {
-        None
-    } else {
-        Some(tid)
-    }
-}
-
 fn kepler_rhs(
     _t: f64,
     q: &[f64; DIM],
@@ -575,37 +559,30 @@ fn galpy_kepler_force(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
 //     a[5] = -z * inv_r3;
 // }
 
-#[kernel]
-pub unsafe fn dopr54_cpu_port(
-    state0: *const f64,    // [n * DIM]
-    times:  *const f64,    // [nt]
-    state_out: *mut f64,   // [nt * n * DIM]
+/// Integrates one particle and writes its complete trajectory.
+///
+/// # Safety
+///
+/// `tid` must be less than `n`; `state0` must contain at least `n * DIM`
+/// values; `times` must contain at least `nt` values with `2 <= nt <= 1024`;
+/// and `state_out` must point to at least `nt * n * DIM` writable values.
+/// Concurrent callers must use distinct particle indices.
+pub(crate) unsafe fn integrate_particle(
+    tid: usize,
     n: usize,
     nt: usize,
+    state0: &[f64],
+    times: &[f64],
+    state_out: *mut f64,
     rtol: f64,
     atol: f64,
     dt_one_init: f64,
 ) {
-    #[cfg(feature = "cuda-oxide")]
-    let tid = {
-        let tid = thread::index_1d().get();
-        if tid >= n {
-            return;
-        }
-        tid
-    };
-
-    #[cfg(feature = "rust-cuda")]
-    let tid = match thread_id_limit_check(n) {
-        Some(id) => id,
-        None => return,
-    };
-
-    let t_slice = core::slice::from_raw_parts(times, nt);
+    let t_slice = &times[..nt];
     let mut yo = [0.0_f64; DIM];
     let base_in = tid * DIM;
     for i in 0..DIM {
-        yo[i] = *state0.add(base_in + i);
+        yo[i] = state0[base_in + i];
     }
 
     let mut out_steps: [[f64; DIM]; 1024] = [[0.0; DIM]; 1024];
@@ -621,9 +598,6 @@ pub unsafe fn dopr54_cpu_port(
 
     // Write back to global memory: layout (step, particle, dim)
     for step in 0..nt {
-        let out_base = ((step * n) + tid) * DIM;
-        for i in 0..DIM {
-            *state_out.add(out_base + i) = out_steps[step][i];
-        }
+        unsafe { crate::write_time_major_state(state_out, step, n, tid, &out_steps[step]) };
     }
 }

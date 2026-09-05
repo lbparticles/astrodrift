@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 cuda_std = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_std", branch = "main", optional = true }
+cuda-core = { version = "0.3.1", optional = true }
+cuda-device = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "8ac82ec761e950594db5f47322330b231f3d80be", optional = true }
+cuda-host = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "8ac82ec761e950594db5f47322330b231f3d80be", optional = true }
 glam = { version = "0.33.0", default-features = false, features = ["cuda", "nostd-libm", "u32"] }
 libm = "0.2.11"
 shared = { path = "../shared", default-features = false }
@@ -12,10 +15,8 @@ shared = { path = "../shared", default-features = false }
 [features]
 default = []
 rust-cuda = ["dep:cuda_std", "shared/rust-cuda"]
-cuda-oxide = ["shared/cuda-oxide"]
+cuda-oxide = ["dep:cuda-core", "dep:cuda-device", "dep:cuda-host", "shared/cuda-oxide"]
 galpy-kepler-reference = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]
-
-[workspace]

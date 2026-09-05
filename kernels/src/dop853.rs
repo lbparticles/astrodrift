@@ -1,9 +1,5 @@
-#[cfg(feature = "cuda-oxide")]
-use cuda_device::{kernel, thread};
 #[cfg(all(target_os = "cuda", feature = "rust-cuda"))]
 use cuda_std::GpuFloat;
-#[cfg(feature = "rust-cuda")]
-use cuda_std::{kernel, thread};
 
 const DIM: usize = 6;
 const UROUND: f64 = 2.3e-16;
@@ -217,14 +213,6 @@ fn kepler_rhs(_t: f64, q: &[f64; DIM], a: &mut [f64; DIM]) {
 }
 
 #[inline(always)]
-unsafe fn write_state(state_out: *mut f64, step: usize, n: usize, tid: usize, state: &[f64; DIM]) {
-    let out_base = ((step * n) + tid) * DIM;
-    for i in 0..DIM {
-        unsafe { *state_out.add(out_base + i) = state[i] };
-    }
-}
-
-#[inline(always)]
 unsafe fn dop853_integrate_kepler(
     y0: &mut [f64; DIM],
     t: &[f64],
@@ -267,7 +255,7 @@ unsafe fn dop853_integrate_kepler(
     let mut rcont7 = [0.0; DIM];
     let mut rcont8 = [0.0; DIM];
 
-    unsafe { write_state(state_out, 0, n, tid, y0) };
+    unsafe { crate::write_time_major_state(state_out, 0, n, tid, y0) };
 
     kepler_rhs(t[0], y0, &mut k1);
 
@@ -549,7 +537,15 @@ unsafe fn dop853_integrate_kepler(
                                     + s1 * (rcont5[i]
                                         + s * (rcont6[i] + s1 * (rcont7[i] + s * rcont8[i]))))));
                 }
-                unsafe { write_state(state_out, finished_user_t_ii + 1, n, tid, &yy_temp) };
+                unsafe {
+                    crate::write_time_major_state(
+                        state_out,
+                        finished_user_t_ii + 1,
+                        n,
+                        tid,
+                        &yy_temp,
+                    )
+                };
                 finished_user_t_ii += 1;
             }
 
@@ -573,48 +569,29 @@ unsafe fn dop853_integrate_kepler(
     }
 }
 
-#[inline(always)]
-#[cfg(feature = "rust-cuda")]
-fn thread_id_limit_check(n: usize) -> Option<usize> {
-    let tid = (thread::block_idx_x() * thread::block_dim_x() + thread::thread_idx_x()) as usize;
-    if tid >= n {
-        None
-    } else {
-        Some(tid)
-    }
-}
-
-#[kernel]
-pub unsafe fn dop853_cpu_port(
-    state0: *const f64,
-    times: *const f64,
-    state_out: *mut f64,
+/// Integrates one particle and writes its complete trajectory.
+///
+/// # Safety
+///
+/// `tid` must be less than `n`; `state0` must contain at least `n * DIM`
+/// values; `times` must contain at least `nt` values with `2 <= nt <= 1024`;
+/// and `state_out` must point to at least `nt * n * DIM` writable values.
+/// Concurrent callers must use distinct particle indices.
+pub(crate) unsafe fn integrate_particle(
+    tid: usize,
     n: usize,
     nt: usize,
+    state0: &[f64],
+    times: &[f64],
+    state_out: *mut f64,
     rtol: f64,
     atol: f64,
-    _dt_one_init: f64,
 ) {
-    #[cfg(feature = "cuda-oxide")]
-    let tid = {
-        let tid = thread::index_1d().get();
-        if tid >= n {
-            return;
-        }
-        tid
-    };
-
-    #[cfg(feature = "rust-cuda")]
-    let tid = match thread_id_limit_check(n) {
-        Some(id) => id,
-        None => return,
-    };
-
-    let t_slice = unsafe { core::slice::from_raw_parts(times, nt) };
+    let t_slice = &times[..nt];
     let mut y0 = [0.0; DIM];
     let base_in = tid * DIM;
     for i in 0..DIM {
-        y0[i] = unsafe { *state0.add(base_in + i) };
+        y0[i] = state0[base_in + i];
     }
 
     unsafe { dop853_integrate_kepler(&mut y0, t_slice, rtol, atol, state_out, n, tid) };

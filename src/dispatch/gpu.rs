@@ -1,6 +1,3 @@
-use cust::error::CudaError;
-// use crate::tables::build_sphericalcutoff_force_table;
-use cust::prelude::*;
 use pyo3::prelude::*;
 use shared::{
     Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance, MAX_STATES,
@@ -14,21 +11,25 @@ use thiserror::Error;
 
 use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
 
-#[cfg(feature = "cuda-oxide-kernel")]
-static CUBIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kernels.cubin"));
-#[cfg(not(feature = "cuda-oxide-kernel"))]
-static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
+#[cfg(feature = "cuda-oxide")]
+mod cuda_oxide;
+#[cfg(feature = "rust-cuda")]
+mod rust_cuda;
+
+#[cfg(feature = "cuda-oxide")]
+use cuda_oxide as backend;
+#[cfg(feature = "rust-cuda")]
+use rust_cuda as backend;
 
 fn py_runtime_err<T, E: std::fmt::Display>(res: Result<T, E>) -> PyResult<T> {
     res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
 const BLOCK_SIZE: u32 = 128;
-const NF64: usize = 6;
 
-fn grid_size(n: usize, block: u32) -> (u32, u32) {
-    let blocks = ((n as u32) + block - 1) / block;
-    (blocks, block)
+fn grid_size(n: usize) -> (u32, u32) {
+    let blocks = ((n as u32) + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    (blocks, BLOCK_SIZE)
 }
 
 pub fn gather_states(
@@ -183,11 +184,30 @@ fn parse_dopr54_dump<P: AsRef<Path>>(path: P) -> io::Result<DumpData> {
 
 #[derive(Debug, Error)]
 pub enum GPUDispatchError {
+    #[cfg(feature = "rust-cuda")]
     #[error("CUDA error: {0:?}")]
-    Cuda(#[from] CudaError),
+    Cuda(#[from] cust::error::CudaError),
+
+    #[cfg(feature = "cuda-oxide")]
+    #[error("CUDA error: {0}")]
+    Cuda(#[from] cuda_core::DriverError),
+
+    #[cfg(feature = "cuda-oxide")]
+    #[error("embedded CUDA module error: {0}")]
+    EmbeddedModule(#[from] cuda_host::EmbeddedModuleError),
+
+    #[cfg(feature = "cuda-oxide")]
+    #[error("CUDA launch contract error: {0}")]
+    LaunchContract(#[from] cuda_core::LaunchContractError),
 
     #[error("I/O error: {0}")]
     IO(#[from] io::Error),
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum Kernel {
+    Dopr54,
+    Dop853,
 }
 
 pub fn launch_kernel(
@@ -199,7 +219,7 @@ pub fn launch_kernel(
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, GPUDispatchError> {
     launch_kernel_named(
-        "dopr54_cpu_port",
+        Kernel::Dopr54,
         model_component,
         input_state,
         flags,
@@ -218,7 +238,7 @@ pub fn launch_dop853_kernel(
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, GPUDispatchError> {
     launch_kernel_named(
-        "dop853_cpu_port",
+        Kernel::Dop853,
         model_component,
         input_state,
         flags,
@@ -229,7 +249,7 @@ pub fn launch_dop853_kernel(
 }
 
 fn launch_kernel_named(
-    kernel_name: &str,
+    kernel: Kernel,
     model_component: &ModelComponent,
     input_state: &InputState,
     flags: ModernFlags,
@@ -237,8 +257,6 @@ fn launch_kernel_named(
     linspace: Linspace,
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, GPUDispatchError> {
-    let _ctx = cust::quick_init()?;
-
     let times: Vec<Real> = times.unwrap_or_else(|| {
         (0..linspace.steps)
             .map(|i| {
@@ -249,39 +267,13 @@ fn launch_kernel_named(
     });
 
     let mut output_state = OutputState::new_zeroed();
-
-    #[cfg(feature = "cuda-oxide-kernel")]
-    let module = Module::from_cubin(CUBIN, &[])?;
-    #[cfg(not(feature = "cuda-oxide-kernel"))]
-    let module = Module::from_ptx(PTX, &[])?;
-    let stream = Stream::new(StreamFlags::DEFAULT, None)?;
-    let kernel = module.get_function(kernel_name)?;
-    let dev_state0 = DeviceBuffer::<f64>::from_slice(&input_state.data)?;
-    let dev_times = DeviceBuffer::<f64>::from_slice(&times)?;
-    let dev_state_out = DeviceBuffer::<f64>::from_slice(&output_state.data)?;
-
-    let (grid, block) = grid_size(input_state.num_particles, BLOCK_SIZE);
-
-    // FIXME: hmmmm
-    let dt_one_init = -9999.99f64;
-
-    unsafe {
-        launch!(
-            kernel<<<grid, block, 0, stream>>>(
-                dev_state0.as_device_ptr(),
-                dev_times.as_device_ptr(),
-                dev_state_out.as_device_ptr(),
-                input_state.num_particles,
-                linspace.steps,
-                tolerance.rtol,
-                tolerance.atol,
-                dt_one_init
-            )
-        )?;
-    }
-    stream.synchronize()?;
-
-    dev_state_out.copy_to(&mut output_state.data)?;
+    backend::launch(
+        kernel,
+        input_state,
+        &times,
+        &mut output_state,
+        tolerance,
+    )?;
 
     Ok(output_state)
     // let mut f = File::create("dopr54_rust_out_gpu_yay.txt")?;
