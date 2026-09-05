@@ -10,7 +10,14 @@ compile_error!("enable exactly one CUDA backend feature: `rust-cuda` or `cuda-ox
 const STATE_DIM: usize = 6;
 
 /// Writes one particle state into the `(time, particle, component)` output.
+///
+/// # Safety
+///
+/// `state_out` must point to at least `((step + 1) * n) * STATE_DIM` writable
+/// elements, and `tid` must be less than `n`. Concurrent callers must use
+/// distinct `(step, tid)` pairs.
 #[inline(always)]
+#[allow(clippy::needless_range_loop)]
 pub(crate) unsafe fn write_time_major_state(
     state_out: *mut f64,
     step: usize,
@@ -37,6 +44,16 @@ fn rust_cuda_thread_id(n: usize) -> Option<usize> {
 
 #[cfg(feature = "rust-cuda")]
 #[cuda_std::kernel]
+#[allow(clippy::too_many_arguments)]
+/// Runs DOPR54 for one particle per CUDA thread.
+///
+/// # Safety
+///
+/// `state0`, `times`, and `state_out` must be valid, aligned device pointers to
+/// at least `n * STATE_DIM`, `nt`, and `nt * n * STATE_DIM` elements. The output
+/// must not overlap either input, those size products must not overflow, and no
+/// concurrent launch may write the same output. `n` must be positive and
+/// `2 <= nt <= 1024`.
 pub unsafe fn dopr54_cpu_port(
     state0: *const f64,
     times: *const f64,
@@ -72,6 +89,16 @@ pub unsafe fn dopr54_cpu_port(
 
 #[cfg(feature = "rust-cuda")]
 #[cuda_std::kernel]
+#[allow(clippy::too_many_arguments)]
+/// Runs DOP853 for one particle per CUDA thread.
+///
+/// # Safety
+///
+/// `state0`, `times`, and `state_out` must be valid, aligned device pointers to
+/// at least `n * STATE_DIM`, `nt`, and `nt * n * STATE_DIM` elements. The output
+/// must not overlap either input, those size products must not overflow, and no
+/// concurrent launch may write the same output. `n` must be positive and
+/// `2 <= nt <= 1024`.
 pub unsafe fn dop853_cpu_port(
     state0: *const f64,
     times: *const f64,
@@ -111,6 +138,7 @@ pub mod oxide {
             state_out.len() >= nt * n * 6
         )
     )]
+    #[allow(clippy::too_many_arguments)]
     pub fn dopr54_cpu_port(
         state0: &[f64],
         times: &[f64],
@@ -156,6 +184,7 @@ pub mod oxide {
             state_out.len() >= nt * n * 6
         )
     )]
+    #[allow(clippy::too_many_arguments)]
     pub fn dop853_cpu_port(
         state0: &[f64],
         times: &[f64],

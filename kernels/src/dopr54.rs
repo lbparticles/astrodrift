@@ -1,3 +1,16 @@
+// This is an exact device port of the galpy reference. Keep its control flow
+// and copy operations stable so compiler/backend comparisons remain meaningful.
+#![allow(
+    unused_mut,
+    clippy::explicit_counter_loop,
+    clippy::manual_clamp,
+    clippy::manual_memcpy,
+    clippy::needless_late_init,
+    clippy::needless_range_loop,
+    clippy::too_many_arguments,
+    clippy::unnecessary_mut_passed
+)]
+
 #[cfg(all(target_os = "cuda", feature = "rust-cuda"))]
 use cuda_std::GpuFloat;
 
