@@ -128,6 +128,13 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance {
     }
 }
 
+/// An integration: execution backend, scheme, and variant selection plus a
+/// dependency graph of containers.
+///
+/// Defaults are CPU, :attr:`Method.DOPR54`, and :attr:`Variant.Compatible`.
+/// Build containers with :func:`particles`, :func:`test_particles`, and
+/// :func:`background`; wire them with :meth:`add`; integrate with
+/// :meth:`run`.
 #[pyclass(name = "Config")]
 #[derive(Debug)]
 pub struct PyConfig {
@@ -199,6 +206,13 @@ impl PyConfig {
         thing
     }
 
+    /// Integrate and return the results.
+    ///
+    /// With no arguments, integrates every container registered with this
+    /// config in creation order. Passing containers restricts the run to
+    /// exactly those (order-independent). Returns one (N, 11) float64 array
+    /// per particle group — per-particle engine outputs — aligned with the
+    /// integration order; background containers contribute ``None``.
     #[pyo3(signature = (*args))]
     fn run<'py>(
         &self,
@@ -275,6 +289,10 @@ impl PyConfig {
     }
 
     /// Register that ``node`` is integrated with ``requires`` as inputs.
+    ///
+    /// Both ``node`` and every container in ``requires`` become known to
+    /// this config, so a later ``run()`` with no arguments integrates all
+    /// of them.
     #[pyo3(signature = (node, *requires))]
     fn add<'py>(
         &mut self,
@@ -314,15 +332,18 @@ impl PyConfig {
         )?;
         self.add(py, node, args)
     }
+    /// Return a human-readable summary of this configuration.
     #[pyo3(signature = ())]
-    fn info(&self) -> () {
-        println!("{:?}", self);
+    fn info(&self) -> String {
+        format!("{:?}", self)
     }
 }
 
-//
-// Python Module Declaration
-//
+///
+/// Exposes the integration API: :class:`Config`, :class:`Potential`,
+/// :class:`Container`, the :class:`Engine` / :class:`Method` /
+/// :class:`Variant` selections, and the container constructors
+/// :func:`particles`, :func:`test_particles`, and :func:`background`.
 #[pymodule]
 fn drift_rs(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PyEngine>()?;
