@@ -17,7 +17,7 @@
 #
 #   rustup toolchain install nightly-2026-04-02 --profile minimal --component rust-src --component rustc-dev --component rust-analyzer --component rustfmt --component clippy --component llvm-tools
 #
-# Build and test commands are documented in Testing_Instructions.md.
+# Build and test commands are documented in docs/Testing_Instructions.md.
 #
 # The first shell entry builds LLVM 7.1.0 from source. Nix caches that result.
 {
