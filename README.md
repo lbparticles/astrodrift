@@ -16,6 +16,41 @@
 
 ```uv add astrodrift```
 
+# USAGE
+
+Build containers, wire them into a simulation, and integrate:
+
+```python
+import drift as dft
+import numpy as np
+
+# Potentials
+kepler = dft.Potential.kepler(amp=1.0)
+
+# Containers: a background feature plus groups of particles
+bg = dft.background(kepler)
+gmc = dft.particles(kepler, np.array([[1.0, 0.0, 0.0, 0.0, 1.0, 0.0]]))
+iso = dft.test_particles(np.array([[-1.0, 0.0, 0.0, 0.0, -1.0, 0.0]]))
+
+# Simulation: backend, scheme, output times
+test_sim = dft.Config(
+    engine=dft.Engine.CPU,
+    method=dft.Method.DOPR54,
+    variant=dft.Variant.Compatible,
+    ts=(0.0, 100.0, 201),
+)
+test_sim.add(gmc, bg)        # gmc is integrated with bg as an input
+test_sim.add(iso, gmc, bg)
+
+# Integrate: one (N, 11) float64 array per particle group
+results = test_sim.run()
+```
+
+The initial state is an `(N, 6)` array (or flat `6N`) with phase-space
+columns `[x, y, z, vx, vy, vz]`. See the docstrings
+(`help(dft.Config)`) and
+[Testing_Instructions.md](docs/Testing_Instructions.md) for details.
+
 # DEPENDENCIES
 
 ```
@@ -28,9 +63,7 @@ To install from source
 
 ```git clone https://github.com/lbparticles/astrodrift```
 
-To use the gpu functions calls you must have an nvidia gpu and drivers installed on your system, download them from the [official website]( https://www.nvidia.com/en-us/drivers/) or use your os package manager.
-
-It is recommended to use the provided devcontainer which includes CUDA, LLVM, Rust, Python, Rust-CUDA, and the cuda-oxide tooling used for GPU development. The cuda-oxide repository is mounted by default alongside drift so both the Rust-CUDA and cuda-oxide backends can be built and tested in the same environment.
+Enter the nix dev shell (`nix develop`) or the provided devcontainer, which include CUDA, LLVM, Rust, Python, and the cuda-oxide tooling used for GPU development. Common commands are `just` recipes: `just lint` (what the pre-push hook runs) and `just test` (the full suite).
 
 # Testing Instructions
 
