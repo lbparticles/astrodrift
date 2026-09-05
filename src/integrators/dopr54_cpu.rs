@@ -1,3 +1,16 @@
+// This module intentionally retains galpy's C control flow and pointer model so
+// the CPU implementation remains a bit-for-bit reference for the GPU ports.
+#![allow(
+    unsafe_op_in_unsafe_fn,
+    non_snake_case,
+    unused_mut,
+    unused_variables,
+    clippy::manual_clamp,
+    clippy::needless_late_init,
+    clippy::too_many_arguments,
+    clippy::while_immutable_condition
+)]
+
 use libc;
 // use libm::{ceil, exp, fabs, fmax, log, pow, sqrt};
 use libc::{c_double, c_int};
@@ -570,7 +583,15 @@ unsafe fn dopr54_actualstep(
     dt_one
 }
 
-// #[unsafe(no_mangle)]
+/// Runs the galpy-compatible DOPR54 integrator.
+///
+/// # Safety
+///
+/// `func` must be a valid callback. `dim` must be positive and `nt` must be at
+/// least two. `yo`, `t`, `result`, and `err` must be aligned and valid for
+/// `dim`, `nt`, `nt * dim`, and one element respectively. The callback must
+/// accept the supplied `potentialArgs` and the temporary `dim`-element state
+/// and acceleration buffers for every invocation.
 pub unsafe extern "C" fn dopr54(
     func: FuncPtr,
     dim: c_int,

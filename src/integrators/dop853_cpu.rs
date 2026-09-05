@@ -1,3 +1,7 @@
+// Preserve the published DOP853 coefficients and galpy operation ordering in
+// this CPU reference implementation, including expressions Clippy can shorten.
+#![allow(clippy::assign_op_pattern, clippy::excessive_precision)]
+
 use libc::{c_double, c_int};
 
 #[repr(C)]
@@ -220,6 +224,15 @@ fn custom_sign(x: c_double, y: c_double) -> c_double {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Runs the galpy-compatible DOP853 integrator.
+///
+/// # Safety
+///
+/// `func` must be a valid callback. `dim` must be positive and `nt` must be at
+/// least two. `y0`, `t`, and `result` must be aligned, mutually non-overlapping,
+/// and valid for `dim`, `nt`, and `nt * dim` elements respectively. The
+/// callback must accept the supplied `potential_args` and every temporary
+/// `dim`-element state and acceleration buffer passed to it.
 pub unsafe fn dop853(
     func: FuncPtr,
     dim: c_int,

@@ -1,3 +1,12 @@
+// Preserve the published DOP853 coefficients and the operation ordering used
+// by the CPU reference; even equivalent rewrites can change device results.
+#![allow(
+    clippy::assign_op_pattern,
+    clippy::excessive_precision,
+    clippy::manual_memcpy,
+    clippy::too_many_arguments
+)]
+
 #[cfg(all(target_os = "cuda", feature = "rust-cuda"))]
 use cuda_std::GpuFloat;
 
