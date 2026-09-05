@@ -1,5 +1,4 @@
 from __future__ import annotations
-from enum import Flag
 from .selectors import Engine, Method, Variant
 import numpy as np
 import numpy.typing as npt
@@ -26,24 +25,6 @@ class Recipe:
     # Created from Potential internally; exposed as a type in containers
     ...
 
-# Flag wrapper class exposed as "Modern"
-class Modern:
-    def __init__(self) -> None: ...
-    def add(self, value: int) -> None: ...
-    def has(self, value: int) -> bool: ...
-    def bits(self) -> int: ...
-    def __repr__(self) -> str: ...
-
-# Python enum.Flag defined in module and exported as "ModernFlag"
-class ModernFlag(Flag):
-    NONE: ModernFlag
-    READ: ModernFlag
-    WRITE: ModernFlag
-    EXECUTE: ModernFlag
-    DELETE: ModernFlag
-    READ_WRITE: ModernFlag
-    FULL_ACCESS: ModernFlag
-
 class Container:
     # Public attributes (as seen in your Rust class)
     recipe: Recipe | None
@@ -57,7 +38,6 @@ class Config:
         engine: Engine | None = ...,
         method: Method | None = ...,
         variant: Variant | None = ...,
-        flags: Modern | None = ...,
         ts: tuple[float, float, int]
         | Sequence[float]
         | npt.NDArray[np.float64]
@@ -82,8 +62,6 @@ def bg_feature(potential: Potential) -> Container: ...
 __all__ = [
     "Potential",
     "Recipe",
-    "Modern",
-    "ModernFlag",
     "Container",
     "Config",
     "test_group",

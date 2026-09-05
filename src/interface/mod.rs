@@ -1,13 +1,11 @@
 use numpy::PyArray1;
 use numpy::PyArrayMethods;
 use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
-use pyo3::ffi::c_str;
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyDict, PyList, PyModule, PyTuple};
+use pyo3::types::{PyAny, PyList, PyModule, PyTuple};
 
 mod container;
 mod engine;
-mod flag;
 mod method;
 mod recipe;
 mod selector;
@@ -17,7 +15,6 @@ use crate::integrators::run_integration;
 use crate::tree::{AdjacencyMatrix, IntegrationPlan};
 pub use container::Container;
 use engine::PyEngine;
-pub use flag::Modern;
 use method::PyMethod;
 pub use recipe::PyRecipe;
 use shared::{
@@ -218,12 +215,11 @@ impl PyConfig {
 #[pymethods]
 impl PyConfig {
     #[new]
-    #[pyo3(signature = (engine=None,method=None,variant=None,flags=None,ts=None,tolerance=None))]
+    #[pyo3(signature = (engine=None,method=None,variant=None,ts=None,tolerance=None))]
     fn new(
         engine: Option<PyEngine>,
         method: Option<PyMethod>,
         variant: Option<PyVariant>,
-        flags: Option<Modern>,
         ts: Option<PyLinspace>,
         tolerance: Option<PyTolerance>,
     ) -> Self {
@@ -232,7 +228,7 @@ impl PyConfig {
                 engine.unwrap_or_default().into(),
                 method.unwrap_or_default().into(),
                 variant.unwrap_or_default().into(),
-                flags.unwrap_or_default().inner,
+                Default::default(),
                 ts.unwrap_or_default().0,
                 tolerance.unwrap_or_default().0,
             ),
@@ -328,38 +324,13 @@ impl PyConfig {
 // Python Module Declaration
 //
 #[pymodule]
-fn drift_rs(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+fn drift_rs(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PyConfig>()?;
     m.add_class::<PyRecipe>()?;
-    m.add_class::<Modern>()?;
     m.add_class::<Container>()?;
     m.add_function(wrap_pyfunction!(container::test_group, m)?)?;
     m.add_function(wrap_pyfunction!(container::part_group, m)?)?;
     m.add_function(wrap_pyfunction!(container::bg_feature, m)?)?;
-
-    // Define enum.Flag in Python
-    let locals = PyDict::new(py);
-    py.run(
-        c_str!(
-            r#"
-import enum
-
-class ModernFlag(enum.Flag):
-    NONE        = 0
-    READ        = 1 << 0
-    WRITE       = 1 << 1
-    EXECUTE     = 1 << 2
-    DELETE      = 1 << 3
-    READ_WRITE  = READ | WRITE
-    FULL_ACCESS = READ | WRITE | EXECUTE | DELETE
-"#
-        ),
-        None,
-        Some(&locals),
-    )?;
-
-    let py_enum = locals.get_item("ModernFlag").unwrap();
-    m.add("ModernFlag", py_enum)?;
 
     Ok(())
 }
