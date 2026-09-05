@@ -1,6 +1,6 @@
 use numpy::PyArray1;
 use numpy::PyArrayMethods;
-use pyo3::exceptions::{PyNotImplementedError, PyValueError};
+use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyList, PyModule, PyTuple};
@@ -214,7 +214,8 @@ impl PyConfig {
             )));
         }
         let (meal, istates) = self.build_tree(containers);
-        let results = run_integration(self.inner, meal, istates).unwrap();
+        let results = run_integration(self.inner, meal, istates)
+            .map_err(|()| PyRuntimeError::new_err("integration failed"))?;
 
         // Align outputs with the containers passed to run(). Background
         // containers carry no particle state and contribute `None`; a group
