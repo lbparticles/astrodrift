@@ -1,8 +1,8 @@
 #[cfg(feature = "cuda-oxide")]
 use cuda_device::{kernel, thread};
-#[cfg(not(feature = "cuda-oxide"))]
+#[cfg(feature = "rust-cuda")]
 use cuda_std::{kernel, thread};
-#[cfg(all(target_os = "cuda", not(feature = "cuda-oxide")))]
+#[cfg(all(target_os = "cuda", feature = "rust-cuda"))]
 use cuda_std::GpuFloat;
 
 const DIM: usize = 6;
@@ -422,12 +422,12 @@ fn dopr54_integrate_kepler(
 
     #[cfg(feature = "cuda-oxide")]
     copy_state(&mut yn, yo);
-    #[cfg(not(feature = "cuda-oxide"))]
+    #[cfg(feature = "rust-cuda")]
     yn.copy_from_slice(yo);
 
     #[cfg(feature = "cuda-oxide")]
     copy_state(&mut out_states[0], yo);
-    #[cfg(not(feature = "cuda-oxide"))]
+    #[cfg(feature = "rust-cuda")]
     out_states[0].copy_from_slice(yo);
     let mut out_idx = 1usize;
 
@@ -469,7 +469,7 @@ fn dopr54_integrate_kepler(
 
         #[cfg(feature = "cuda-oxide")]
         copy_state(&mut out_states[out_idx], &yn);
-        #[cfg(not(feature = "cuda-oxide"))]
+        #[cfg(feature = "rust-cuda")]
         out_states[out_idx].copy_from_slice(&yn);
         out_idx += 1;
     }
@@ -489,7 +489,7 @@ fn copy_state(dst: &mut [f64; DIM], src: &[f64; DIM]) {
 
 
 #[inline(always)]
-#[cfg(not(feature = "cuda-oxide"))]
+#[cfg(feature = "rust-cuda")]
 fn thread_id_limit_check(n: usize) -> Option<usize> {
     let tid = (thread::block_idx_x() * thread::block_dim_x()
         + thread::thread_idx_x()) as usize;
@@ -595,7 +595,7 @@ pub unsafe fn dopr54_cpu_port(
         tid
     };
 
-    #[cfg(not(feature = "cuda-oxide"))]
+    #[cfg(feature = "rust-cuda")]
     let tid = match thread_id_limit_check(n) {
         Some(id) => id,
         None => return,

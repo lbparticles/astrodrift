@@ -1,12 +1,4 @@
-#[cfg(not(feature = "cuda-oxide"))]
-use libm::sqrt;
-use libm::{floor, log, pow};
-
-#[cfg(feature = "cuda-oxide")]
-#[inline(always)]
-fn sqrt(x: f64) -> f64 {
-    x.sqrt()
-}
+use libm::{floor, log, pow, sqrt};
 
 #[derive(Clone, Copy)]
 pub enum PotentialEnum {

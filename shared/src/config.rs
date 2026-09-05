@@ -1,3 +1,4 @@
+#[cfg(feature = "rust-cuda")]
 use cust_core::DeviceCopy;
 use core::f64::consts::PI;
 use core::array;
@@ -7,6 +8,7 @@ use crate::{MAX_STATES,MIN_RTOL,MIN_ATOL,Real,Index};
 use crate::potential::Potential;
 
 
+#[cfg(feature = "rust-cuda")]
 unsafe impl DeviceCopy for Settings {}
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -97,4 +99,3 @@ pub enum Variant {
     #[default]
     Modern,
 }
-

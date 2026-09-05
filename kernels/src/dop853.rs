@@ -1,8 +1,8 @@
 #[cfg(feature = "cuda-oxide")]
 use cuda_device::{kernel, thread};
-#[cfg(all(target_os = "cuda", not(feature = "cuda-oxide")))]
+#[cfg(all(target_os = "cuda", feature = "rust-cuda"))]
 use cuda_std::GpuFloat;
-#[cfg(not(feature = "cuda-oxide"))]
+#[cfg(feature = "rust-cuda")]
 use cuda_std::{kernel, thread};
 
 const DIM: usize = 6;
@@ -574,7 +574,7 @@ unsafe fn dop853_integrate_kepler(
 }
 
 #[inline(always)]
-#[cfg(not(feature = "cuda-oxide"))]
+#[cfg(feature = "rust-cuda")]
 fn thread_id_limit_check(n: usize) -> Option<usize> {
     let tid = (thread::block_idx_x() * thread::block_dim_x() + thread::thread_idx_x()) as usize;
     if tid >= n {
@@ -604,7 +604,7 @@ pub unsafe fn dop853_cpu_port(
         tid
     };
 
-    #[cfg(not(feature = "cuda-oxide"))]
+    #[cfg(feature = "rust-cuda")]
     let tid = match thread_id_limit_check(n) {
         Some(id) => id,
         None => return,

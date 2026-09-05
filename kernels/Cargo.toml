@@ -4,14 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cuda_std = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_std", branch = "main" }
+cuda_std = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_std", branch = "main", optional = true }
 glam = { version = "0.33.0", default-features = false, features = ["cuda", "nostd-libm", "u32"] }
 libm = "0.2.11"
-shared = { path="../shared"}
+shared = { path = "../shared", default-features = false }
 
 [features]
 default = []
-cuda-oxide = []
+rust-cuda = ["dep:cuda_std", "shared/rust-cuda"]
+cuda-oxide = ["shared/cuda-oxide"]
 galpy-kepler-reference = []
 
 [lib]

@@ -91,6 +91,7 @@ shared = { path = "shared", features = ["cuda-oxide"] }
 
 [features]
 default = []
+rust-cuda = []
 cuda-oxide = []
 galpy-kepler-reference = []
 
