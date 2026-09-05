@@ -79,9 +79,11 @@ impl Default for Tolerance {
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum Engine {
+    // CPU is the default so that a bare Config works on every machine;
+    // GPU must be requested explicitly and fails visibly without a device.
     #[default]
-    GPU,
     CPU,
+    GPU,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -93,7 +95,9 @@ pub enum Method {
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum Variant {
-    Compatible,
+    // Compatible is the default: it is the only variant with a working
+    // dispatch path today (see integrators::run_integration).
     #[default]
+    Compatible,
     Modern,
 }
