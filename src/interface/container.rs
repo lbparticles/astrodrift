@@ -35,6 +35,20 @@ pub struct Container {
     pub dependency_label: Index,
 }
 
+#[pymethods]
+impl Container {
+    fn __repr__(&self) -> String {
+        let kind = match &self.recipe {
+            Some(recipe) => format!("potential={:?}", recipe.inner),
+            None => "test particles".to_string(),
+        };
+        format!(
+            "Container(label={}, particles={:?}, {})",
+            self.dependency_label, self.num_particles, kind
+        )
+    }
+}
+
 /// Validate an initial-state array and return the particle count.
 ///
 /// Accepts an (N, 6) array or a flat length-6N array. Columns are the
