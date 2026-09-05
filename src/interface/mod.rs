@@ -321,7 +321,6 @@ impl PyConfig {
             dependencies: Vec::new(),
             containers: Vec::new(),
         };
-        println!("newpyconfig");
         thing
     }
 
