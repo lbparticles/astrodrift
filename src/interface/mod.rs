@@ -443,9 +443,9 @@ fn drift_rs(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PyConfig>()?;
     m.add_class::<PyRecipe>()?;
     m.add_class::<Container>()?;
-    m.add_function(wrap_pyfunction!(container::test_group, m)?)?;
-    m.add_function(wrap_pyfunction!(container::part_group, m)?)?;
-    m.add_function(wrap_pyfunction!(container::bg_feature, m)?)?;
+    m.add_function(wrap_pyfunction!(container::test_particles, m)?)?;
+    m.add_function(wrap_pyfunction!(container::particles, m)?)?;
+    m.add_function(wrap_pyfunction!(container::background, m)?)?;
 
     Ok(())
 }

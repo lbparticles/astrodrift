@@ -28,9 +28,9 @@ class SmokeModel(NamedTuple):
 
 def _make_model() -> SmokeModel:
     kp = dft.Potential.kepler(1.0)
-    gal = dft.bg_feature(kp)
-    gmc = dft.part_group(kp, GMC_INITIAL_STATE)
-    iso = dft.test_group(ISO_INITIAL_STATE)
+    gal = dft.background(kp)
+    gmc = dft.particles(kp, GMC_INITIAL_STATE)
+    iso = dft.test_particles(ISO_INITIAL_STATE)
     return SmokeModel(gal, gmc, iso)
 
 
