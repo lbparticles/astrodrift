@@ -8,8 +8,6 @@ from .drift_rs import (  # pyright: ignore[reportMissingModuleSource]
     bg_feature,
 )
 
-# from .lib import Potential, bg_feature, part_group, test_group
-
 __all__ = [
     "Potential",
     "Container",
