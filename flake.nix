@@ -111,6 +111,8 @@
               uv
               maturin
               ruff
+              just
+              lefthook
               python313
 
               gcc
@@ -179,6 +181,10 @@
                   --rev ${cudaOxideRev} \
                   --locked --force cargo-oxide
               fi
+
+              # Self-configure local git hooks (pre-commit/pre-push gates
+              # defined in lefthook.yml). No-op outside a git checkout.
+              lefthook install >/dev/null 2>&1 || true
 
               # NixOS exposes the proprietary driver outside the store. NVVM
               # also needs an explicit runtime loader path.
