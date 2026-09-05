@@ -1,0 +1,103 @@
+diff --git a/galpy/util/bovy_rk.c b/galpy/util/bovy_rk.c
+index 9e72ab6..b991ce3 100644
+--- a/galpy/util/bovy_rk.c
++++ b/galpy/util/bovy_rk.c
+@@ -34,0 +35,3 @@ POSSIBILITY OF SUCH DAMAGE.
++#include <inttypes.h>
++#include <stdint.h>
++#include <string.h>
+@@ -41,0 +45,20 @@ POSSIBILITY OF SUCH DAMAGE.
++
++static void dump_f64_hex(FILE *file, double value){
++  uint64_t bits;
++  memcpy(&bits, &value, sizeof(bits));
++  fprintf(file, " %016" PRIx64, bits);
++}
++
++static void dump_f64_hex_row(FILE *file, const char *label, int n, const double *values){
++  if ( file == NULL ) return;
++  fprintf(file, "%s", label);
++  for (int ii= 0; ii < n; ii++) dump_f64_hex(file, values[ii]);
++  fprintf(file, "\n");
++}
++
++static void dump_dopr54_state_hex(FILE *file, int step, int dim, const double *state){
++  if ( file == NULL ) return;
++  fprintf(file, "state_hex %d", step);
++  for (int ii= 0; ii < dim; ii++) dump_f64_hex(file, state[ii]);
++  fprintf(file, "\n");
++}
+@@ -508,0 +532,15 @@ void bovy_dopr54(void (*func)(double t, double *q, double *a,
++  const char *fixture_path= getenv("ASTRODRIFT_GALPY_FIXTURE");
++  FILE *fixture_f= fixture_path == NULL ? NULL : fopen(fixture_path, "w");
++  if ( fixture_path != NULL && fixture_f == NULL )
++    perror("could not open ASTRODRIFT_GALPY_FIXTURE");
++  if ( fixture_f != NULL ) {
++    fprintf(fixture_f, "dim %d\n", dim);
++    fprintf(fixture_f, "nt %d\n", nt);
++    fprintf(fixture_f, "dt_one %.17g\n", dt_one);
++    fprintf(fixture_f, "rtol %.17g\n", rtol);
++    fprintf(fixture_f, "atol %.17g\n", atol);
++    dump_f64_hex_row(fixture_f, "t_hex", nt, t);
++    dump_f64_hex_row(fixture_f, "yo_hex", dim, yo);
++    fprintf(fixture_f, "nargs %d\n", potentialArgs == NULL ? 0 : potentialArgs->nargs);
++    fprintf(fixture_f, "states_hex\n");
++  }
+@@ -526,0 +565 @@ void bovy_dopr54(void (*func)(double t, double *q, double *a,
++  dump_dopr54_state_hex(fixture_f, 0, dim, yo);
+@@ -562,0 +602 @@ void bovy_dopr54(void (*func)(double t, double *q, double *a,
++    dump_dopr54_state_hex(fixture_f, ii+1, dim, yn);
+@@ -581,0 +622 @@ void bovy_dopr54(void (*func)(double t, double *q, double *a,
++  if ( fixture_f != NULL ) fclose(fixture_f);
+diff --git a/galpy/util/leung_dop853.c b/galpy/util/leung_dop853.c
+index c7ff1b0..ff63381 100644
+--- a/galpy/util/leung_dop853.c
++++ b/galpy/util/leung_dop853.c
+@@ -34,0 +35,3 @@ POSSIBILITY OF SUCH DAMAGE.
++#include <inttypes.h>
++#include <stdint.h>
++#include <string.h>
+@@ -40,0 +44,20 @@ POSSIBILITY OF SUCH DAMAGE.
++static void dump_f64_hex(FILE *file, double value){
++	uint64_t bits;
++	memcpy(&bits, &value, sizeof(bits));
++	fprintf(file, " %016" PRIx64, bits);
++}
++
++static void dump_f64_hex_row(FILE *file, const char *label, int n, const double *values){
++	if (file == NULL) return;
++	fprintf(file, "%s", label);
++	for (int i = 0; i < n; i++) dump_f64_hex(file, values[i]);
++	fprintf(file, "\n");
++}
++
++static void dump_dop853_state_hex(FILE *file, int step, int dim, const double *state){
++	if (file == NULL) return;
++	fprintf(file, "state_hex %d", step);
++	for (int i = 0; i < dim; i++) dump_f64_hex(file, state[i]);
++	fprintf(file, "\n");
++}
++
+@@ -243,0 +267,16 @@ void dop853(void(*func)(double t, double *q, double *a, int nargs, struct potent
++	const char *fixture_path = getenv("ASTRODRIFT_GALPY_FIXTURE");
++	FILE *fixture_f = fixture_path == NULL ? NULL : fopen(fixture_path, "w");
++	if (fixture_path != NULL && fixture_f == NULL)
++		perror("could not open ASTRODRIFT_GALPY_FIXTURE");
++	if (fixture_f != NULL) {
++		fprintf(fixture_f, "dim %d\n", dim);
++		fprintf(fixture_f, "nt %d\n", nt);
++		fprintf(fixture_f, "dt_one %.17g\n", dt);
++		fprintf(fixture_f, "rtol %.17g\n", rtol);
++		fprintf(fixture_f, "atol %.17g\n", atol);
++		dump_f64_hex_row(fixture_f, "t_hex", nt, t);
++		dump_f64_hex_row(fixture_f, "yo_hex", dim, y0);
++		fprintf(fixture_f, "nargs %d\n", potentialArgs == NULL ? 0 : potentialArgs->nargs);
++		fprintf(fixture_f, "states_hex\n");
++	}
++
+@@ -285,0 +325 @@ void dop853(void(*func)(double t, double *q, double *a, int nargs, struct potent
++	dump_dop853_state_hex(fixture_f, 0, dim, y0);
+@@ -471,0 +512 @@ void dop853(void(*func)(double t, double *q, double *a, int nargs, struct potent
++				dump_dop853_state_hex(fixture_f, finished_user_t_ii + 1, dim, yy_temp);
+@@ -515,0 +557 @@ void dop853(void(*func)(double t, double *q, double *a, int nargs, struct potent
++	if (fixture_f != NULL) fclose(fixture_f);
