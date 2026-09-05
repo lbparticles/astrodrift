@@ -1,6 +1,6 @@
 use numpy::PyArray1;
 use numpy::PyArrayMethods;
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyNotImplementedError, PyValueError};
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyList, PyModule, PyTuple};
@@ -20,7 +20,7 @@ pub use engine::PyEngine;
 pub use flag::Modern;
 pub use method::PyMethod;
 pub use recipe::PyRecipe;
-use shared::{Config, Index, Linspace, Model, Real, Tolerance};
+use shared::{Config, Index, Linspace, Model, OUTPUT_STATE_DIM, Real, Tolerance};
 pub use variant::PyVariant;
 
 #[derive(Default, Clone, Debug)]
@@ -174,21 +174,44 @@ impl PyConfig {
             let container: PyRef<Container> = obj.extract()?;
             containers.push(Box::new(container.clone()));
         }
+        let group_sizes: Vec<Option<usize>> = containers
+            .iter()
+            .map(|c| c.state.as_ref().map(|s| s.num_particles as usize))
+            .collect();
         let (meal, istates) = self.build_tree(containers);
         let results = run_integration(self.inner, meal, istates).unwrap();
-        let items: Vec<Py<PyAny>> = results
-            .0
-            .iter()
-            .filter_map(|opt| opt.as_ref())
-            .map(|arr| {
-                // Build a Python list for each Some(...)
-                // PyList::new -> PyResult<Bound<PyList>>
-                // .into_any() -> Bound<PyAny>
-                // .unbind() -> Py<PyAny>
-                PyList::new(py, arr.data.as_slice()).map(|lst| lst.into_any().unbind())
-            })
-            .collect::<PyResult<Vec<_>>>()?;
-        let items: Vec<Py<PyAny>> = Vec::new();
+
+        // Align outputs with the containers passed to run(). Background
+        // containers carry no particle state and contribute `None`; a group
+        // container that produced no output means the engine/method/variant
+        // combination is not implemented.
+        let mut items: Vec<Py<PyAny>> = Vec::with_capacity(group_sizes.len());
+        for (result, group_size) in results.0.iter().zip(group_sizes.iter()) {
+            let num_particles = match group_size {
+                Some(n) => *n,
+                None => {
+                    items.push(py.None());
+                    continue;
+                }
+            };
+            let state = match result {
+                Some(state) => state,
+                None => {
+                    return Err(PyNotImplementedError::new_err(
+                        "run() produced no output for a particle group: this \
+                         engine/method/variant combination is not implemented \
+                         (implemented: Engine.CPU or Engine.GPU with \
+                         Method.DOPR54 and Variant.Compatible)",
+                    ));
+                }
+            };
+            let values = &state.data[..num_particles * OUTPUT_STATE_DIM];
+            let array = PyArray1::from_slice(py, values)
+                .reshape([num_particles, OUTPUT_STATE_DIM])?
+                .into_any()
+                .unbind();
+            items.push(array);
+        }
         PyList::new(py, items)
     }
 
