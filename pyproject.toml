@@ -36,5 +36,16 @@ addopts = "--maxfail=1 --cov=drift --cov-report=term-missing"
 cache-keys = [{file = "pyproject.toml"}, {file = "rust/Cargo.toml"}, {file = "**/*.rs"}]
 
 
+[tool.basedpyright]
+# "standard" is pyright's default ruleset; basedpyright's own default
+# ("recommended") bans `Any` outright, which the compiled-module stub
+# cannot satisfy.
+typeCheckingMode = "standard"
+pythonVersion = "3.13"
+venvPath = "."
+venv = ".venv"
+include = ["python", "tests"]
+
+
 
 
