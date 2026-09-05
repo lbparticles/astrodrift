@@ -56,12 +56,20 @@ class Config:
     def info(self) -> None: ...
 
 # Module-level functions
-def test_group(istate: npt.NDArray[np.float64]) -> Container: ...
-def part_group(
+def test_particles(istate: npt.NDArray[np.float64]) -> Container:
+    """Create particles without an attached potential."""
+    ...
+
+def particles(
     potential: Potential,
     istate: npt.NDArray[np.float64],
-) -> Container: ...
-def bg_feature(potential: Potential) -> Container: ...
+) -> Container:
+    """Create particles with an attached potential."""
+    ...
+
+def background(potential: Potential) -> Container:
+    """Create a stationary background potential."""
+    ...
 
 # Optional: minimal numpy typing without hard dependency
 # If you prefer to avoid importing numpy.typing at runtime, alias a Protocol
@@ -71,7 +79,7 @@ __all__ = [
     "Recipe",
     "Container",
     "Config",
-    "test_group",
-    "part_group",
-    "bg_feature",
+    "particles",
+    "test_particles",
+    "background",
 ]
