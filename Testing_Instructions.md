@@ -1,46 +1,51 @@
 # Testing Instructions
 
-**Note:** VS Code terminals receive the required NVVM loader path from the devcontainer configuration. If you enter the container directly, set it before building either backend:
+VS Code terminals receive the required NVVM loader path from the devcontainer configuration. When entering the container directly, set it before building either backend:
 
 ```bash
 export LD_LIBRARY_PATH="/usr/local/cuda/nvvm/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ```
----
 
-Build the cuda-oxide codegen backend after creating the container or updating the cuda-oxide checkout:
+## cuda-oxide
 
-```bash
-cd /workspaces/cuda-oxide
-cargo oxide setup
-```
-
-Build the Rust-CUDA kernel and run the galpy DOPR54 tests:
+cuda-oxide is the default backend and uses the repository's `nightly-2026-08-28` toolchain. Build the kernels and run the galpy DOPR54 tests with:
 
 ```bash
 cd /workspaces/astrodrift
-cargo clean
-cargo test --release --features galpy-kepler-reference --test dopr54_tests -- --nocapture
+/workspaces/cuda-oxide/target/debug/cargo-oxide test \
+    --arch sm_80 --materialize-cubin --no-fmad -- \
+    --release --features galpy-kepler-reference --test dopr54_tests -- --nocapture
 ```
 
-Build the same kernel with cuda-oxide and run the same tests:
+Use `--test dop853_tests` to run the DOP853 suite.
+
+## Rust-CUDA
+
+Rust-CUDA requires `nightly-2026-04-02`, so select it explicitly and opt out of the default cuda-oxide feature:
 
 ```bash
 cd /workspaces/astrodrift
-cargo clean
-./build-cuda-oxide-kernels.sh --galpy-kepler-reference
-cargo test --release --features cuda-oxide-kernel,galpy-kepler-reference --test dopr54_tests -- --nocapture
+cargo +nightly-2026-04-02 test \
+    --release --no-default-features --features rust-cuda,galpy-kepler-reference \
+    --test dopr54_tests -- --nocapture
 ```
 
-Run the longer diagnostic as follows (you can also switch this to Rust-CUDA as above):
+Use `--test dop853_tests` to run the DOP853 suite.
+
+## Fixture Diagnostics
+
+Run the 100-case cuda-oxide DOPR54 diagnostic with:
 
 ```bash
-cargo test --release \
-    --features cuda-oxide-kernel,galpy-kepler-reference \
-    --test dopr54_tests \
+/workspaces/cuda-oxide/target/debug/cargo-oxide test \
+    --arch sm_80 --materialize-cubin --no-fmad -- \
+    --release --features galpy-kepler-reference --test dopr54_tests \
     tests::dopr54_gpu_native_galpy_fixture_error_summary -- \
     --ignored --exact --nocapture
 ```
 
+The equivalent DOP853 test is `tests::dop853_gpu_native_galpy_fixture_error_summary`. To run either diagnostic through Rust-CUDA, use the Rust-CUDA command above and append the test name before `--` with `--ignored --exact --nocapture` after it.
+
 ## TODO
 
-- Migrate the cuda-oxide path from the Rust-CUDA `cust` host runtime to cuda-oxide's `cuda-core`/`cuda-host` APIs. cuda-oxide currently builds the cubin, but we still use `cust` to execute it. Once migrated, we should feature gate it (this was just to test both at the same time in a straightforward way).
+- Replace the localized raw time-major output writer with a proof-carrying cuda-device view once a runtime-sized strided representation is available without changing the trajectory allocation or layout.
