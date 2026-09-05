@@ -202,7 +202,6 @@ impl PyConfig {
             adjacency_matrix: AdjacencyMatrix(0),
             containers: Mutex::new(Vec::new()),
         };
-        println!("newpyconfig");
         thing
     }
 
