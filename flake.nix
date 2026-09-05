@@ -15,8 +15,7 @@
 # rustup installs them on the first Rust invocation. Install the older
 # toolchain once before using Rust-CUDA:
 #
-#   rustup toolchain install nightly-2026-04-02 --profile minimal \
-#     --component rust-src rustc-dev rust-analyzer rustfmt clippy llvm-tools
+#   rustup toolchain install nightly-2026-04-02 --profile minimal --component rust-src --component rustc-dev --component rust-analyzer --component rustfmt --component clippy --component llvm-tools
 #
 # Build and test commands are documented in Testing_Instructions.md.
 #
@@ -42,7 +41,13 @@
           };
 
           llvm21 = pkgs.llvmPackages_21;
+          llvm21BinPath = pkgs.lib.makeBinPath [
+            llvm21.llvm
+            llvm21.lld
+            llvm21.clang
+          ];
           cuda = pkgs.cudaPackages_13_0;
+          nvjitlink = cuda.libnvjitlink.lib;
           cudaOxideRev =
             (builtins.fromTOML (builtins.readFile ./Cargo.toml)).dependencies."cuda-host".rev;
 
@@ -136,13 +141,12 @@
               libxinerama
               libxrandr
 
-              llvm21.llvm
-              llvm21.lld
-              llvm21.clang
-              llvm21.libclang
+              # Keep LLVM 21 headers out of NIX_CFLAGS_COMPILE. Rust-CUDA's
+              # LLVM 7 shim otherwise sees incompatible LLVM 21 headers.
               llvm7
 
               cuda.cudatoolkit
+              nvjitlink
             ];
 
             env = {
@@ -150,6 +154,7 @@
               CUDA_PATH = "${cuda.cudatoolkit}";
               CUDA_TOOLKIT_PATH = "${cuda.cudatoolkit}";
               CUDA_OXIDE_LLC = "${llvm21.llvm}/bin/llc";
+              LIBNVJITLINK_PATH = "${nvjitlink}/lib/libnvJitLink.so";
 
               # Rust-CUDA uses LLVM 7; bindgen and cuda-oxide use LLVM 21.
               LLVM_CONFIG = "${llvm7}/bin/llvm-config";
@@ -157,6 +162,7 @@
               LIBCLANG_PATH = "${llvm21.libclang.lib}/lib";
               LLVM_CONFIG_PATH = "${llvm21.llvm.dev}/bin/llvm-config";
 
+              PYTHON = "${pkgs.python313}/bin/python3.13";
               UV_PYTHON = "${pkgs.python313}/bin/python3.13";
               UV_PYTHON_DOWNLOADS = "never";
               UV_LINK_MODE = "copy";
@@ -164,7 +170,7 @@
 
             shellHook = ''
               export CARGO_HOME="''${CARGO_HOME:-$HOME/.cargo}"
-              export PATH="$CARGO_HOME/bin:$PATH"
+              export PATH="${llvm21BinPath}:$CARGO_HOME/bin:$PATH"
 
               if [ -z "''${ASTRODRIFT_QUIET:-}" ] && ! command -v cargo-oxide >/dev/null 2>&1; then
                 echo "Installing cargo-oxide ${cudaOxideRev}..." >&2
@@ -176,7 +182,7 @@
 
               # NixOS exposes the proprietary driver outside the store. NVVM
               # also needs an explicit runtime loader path.
-              export LD_LIBRARY_PATH="${cuda.cudatoolkit}/nvvm/lib64:/run/opengl-driver/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              export LD_LIBRARY_PATH="${nvjitlink}/lib:${cuda.cudatoolkit}/nvvm/lib64:/run/opengl-driver/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
               export LIBRARY_PATH="/run/opengl-driver/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
 
               if [ -z "''${ASTRODRIFT_QUIET:-}" ] && [ -t 1 ]; then
