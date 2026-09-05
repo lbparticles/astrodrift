@@ -305,14 +305,32 @@ impl PyConfig {
         PyList::new(py, items)
     }
 
-    #[pyo3(signature = (node,*args))]
-    fn dependency<'py>(&mut self, node: Container, args: &Bound<'py, PyTuple>) -> PyResult<()> {
-        for i in 0..args.len() {
-            let obj = args.get_item(i)?;
+    /// Register that ``node`` is integrated with ``requires`` as inputs.
+    #[pyo3(signature = (node, *requires))]
+    fn add<'py>(&mut self, node: Container, requires: &Bound<'py, PyTuple>) -> PyResult<()> {
+        for i in 0..requires.len() {
+            let obj = requires.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
             self.dependencies.push((container.identity, node.identity));
         }
         Ok(())
+    }
+
+    #[pyo3(signature = (node, *args))]
+    fn dependency<'py>(
+        &mut self,
+        py: Python<'py>,
+        node: Container,
+        args: &Bound<'py, PyTuple>,
+    ) -> PyResult<()> {
+        py.import("warnings")?.call_method1(
+            "warn",
+            (
+                "Config.dependency() is deprecated, use Config.add(node, *requires)",
+                py.get_type::<pyo3::exceptions::PyDeprecationWarning>(),
+            ),
+        )?;
+        self.add(node, args)
     }
     #[pyo3(signature = ())]
     fn info(&self) {
