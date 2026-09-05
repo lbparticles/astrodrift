@@ -43,6 +43,4 @@ fn main() {
 }
 
 #[cfg(all(feature = "cuda-oxide", not(feature = "rust-cuda")))]
-fn main() {
-    println!("cargo::rerun-if-changed=build.rs");
-}
+fn main() {}

@@ -1,6 +1,10 @@
 /target
 /shared/target
 /kernels/target
+/.oxide-artifacts/
+/kernels.ll
+/kernels.options
+/kernels.target
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
