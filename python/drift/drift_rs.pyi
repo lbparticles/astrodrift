@@ -57,12 +57,13 @@ class Recipe:
 
 
 class Container:
-    # Public attributes (as seen in your Rust class)
+    """A group of particles or a background potential feature."""
+
+    # Public read-only attributes
+    num_particles: int | None  # particle count; None for background containers
+    dependency_label: int  # creation-order id used to wire dependencies
     recipe: Recipe | None
     state: Any | None  # shared::InputState – treat as opaque
-    dependency_label: int  # shared::Index
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None: ...
 
 
 class Config:
