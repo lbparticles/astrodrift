@@ -191,6 +191,8 @@ pub struct CustomKeplerRecipe {
 }
 
 impl Construct for CustomKeplerRecipe {
+    // FIXME: Construct `PotentialEnum::CustomKepler` from `_ptr` and the
+    // trajectory metadata instead of returning a static Kepler potential.
     fn construct(&self, _ptr: *const f64) -> PotentialEnum {
         PotentialEnum::Kepler(KeplerPotential { amp: self.amp })
     }
@@ -221,6 +223,8 @@ pub struct CustomPlummerRecipe {
     pub final_time: f64,
 }
 impl Construct for CustomPlummerRecipe {
+    // FIXME: Construct `PotentialEnum::CustomPlummer` from `_ptr` and the
+    // trajectory metadata instead of returning a static Plummer potential.
     fn construct(&self, _ptr: *const f64) -> PotentialEnum {
         PotentialEnum::Plummer(PlummerPotential {
             amp: self.amp,

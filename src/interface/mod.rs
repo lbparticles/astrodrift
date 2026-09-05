@@ -172,12 +172,7 @@ impl PyConfig {
     }
 
     #[pyo3(signature = (node,*args))]
-    fn dependency<'py>(
-        &mut self,
-        _py: Python<'py>,
-        node: Container,
-        args: &Bound<'py, PyTuple>,
-    ) -> PyResult<()> {
+    fn dependency<'py>(&mut self, node: Container, args: &Bound<'py, PyTuple>) -> PyResult<()> {
         for i in 0..args.len() {
             let obj = args.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;

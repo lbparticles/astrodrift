@@ -91,7 +91,7 @@ pub fn part_group<'py>(
 
 #[pyfunction]
 #[pyo3(signature = (potential))]
-pub fn bg_feature<'py>(_py: Python<'py>, potential: PyRecipe) -> Container {
+pub fn bg_feature(potential: PyRecipe) -> Container {
     Container {
         num_particles: None,
         recipe: Some(potential),

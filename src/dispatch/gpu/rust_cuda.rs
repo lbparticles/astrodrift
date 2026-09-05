@@ -15,6 +15,7 @@ pub(super) fn launch(
     output_state: &mut OutputState,
     tolerance: Tolerance,
 ) -> Result<(), GPUDispatchError> {
+    // Keep the CUDA context alive until all device work in this launch completes.
     let _context = cust::quick_init()?;
     let module = Module::from_ptx(PTX, &[])?;
     let stream = Stream::new(StreamFlags::DEFAULT, None)?;

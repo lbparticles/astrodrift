@@ -92,6 +92,9 @@ pub unsafe fn dopr54_cpu_port(
 #[allow(clippy::too_many_arguments)]
 /// Runs DOP853 for one particle per CUDA thread.
 ///
+/// `_dt_one_init` keeps the launch interface consistent with DOPR54; DOP853
+/// derives its own initial step.
+///
 /// # Safety
 ///
 /// `state0`, `times`, and `state_out` must be valid, aligned device pointers to
@@ -185,6 +188,8 @@ pub mod oxide {
         )
     )]
     #[allow(clippy::too_many_arguments)]
+    /// `_dt_one_init` keeps the launch interface consistent with DOPR54;
+    /// DOP853 derives its own initial step.
     pub fn dop853_cpu_port(
         state0: &[f64],
         times: &[f64],

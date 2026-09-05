@@ -118,8 +118,8 @@ impl Potential for BovyPotential {
     // fn evaluate(&self, t: f64, x: f64, y: f64, z: f64) -> f64 {
     //     combine_potentials!(&self.bulge, &self.disk, &self.halo).evaluate(t, x, y, z)
     // }
-    fn force(&self, _t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-        combine_potentials!(&self.bulge, &self.disk, &self.halo).force(_t, x, y, z)
+    fn force(&self, t: f64, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+        combine_potentials!(&self.bulge, &self.disk, &self.halo).force(t, x, y, z)
     }
 }
 
