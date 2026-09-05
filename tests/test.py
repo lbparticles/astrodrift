@@ -9,7 +9,7 @@ def main():
     gal = dft.bg_feature(kp)
     gmc = dft.part_group(kp, gmc_istate)
     iso = dft.test_group(iso_istate)
-    sim = dft.Config(variant=dft.Variant("Compatible"))
+    sim = dft.Config(variant=dft.Variant.Compatible)
     sim.dependency(gmc, gal)
     sim.dependency(iso, gmc, gal)
     out = sim.run(gal, gmc, iso)

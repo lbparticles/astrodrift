@@ -17,22 +17,24 @@ from typing import (
 
 
 class Engine:
-    def __init__(self, name: str) -> None: ...
+    """Execution backend. Members: CPU (default), GPU."""
 
-    # "GPU" | "CPU"
-    # inner is not exposed in Python
+    CPU: Engine
+    GPU: Engine
 
 
 class Method:
-    def __init__(self, name: str) -> None: ...
+    """Integration scheme. Members: DOPR54 (default), DOP853."""
 
-    # "DOP853" | "DOPR54"
+    DOPR54: Method
+    DOP853: Method
 
 
 class Variant:
-    def __init__(self, name: str) -> None: ...
+    """Kernel variant. Members: Compatible (default), Modern (experimental)."""
 
-    # "Modern" | "Compatible"
+    Compatible: Variant
+    Modern: Variant
 
 
 class Potential:

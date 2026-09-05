@@ -1,18 +1,23 @@
 use pyo3::prelude::*;
-#[pyclass(name = "Variant")]
-#[derive(Default, Clone)]
-pub struct PyVariant {
-    pub inner: shared::Variant,
+
+/// Kernel variant selection.
+///
+/// Access members as attributes, e.g. ``Variant.Compatible``.
+#[pyclass(eq, eq_int, name = "Variant")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum PyVariant {
+    /// Conservative code path shared by the CPU and GPU backends.
+    #[default]
+    Compatible,
+    /// Experimental fast path (dispatch pending).
+    Modern,
 }
-#[pymethods]
-impl PyVariant {
-    #[new]
-    fn new(name: &str) -> PyResult<Self> {
-        let inner = match name {
-            "Modern" => shared::Variant::Modern,
-            "Compatible" => shared::Variant::Compatible,
-            _ => return Err(pyo3::exceptions::PyValueError::new_err("Invalid Variant")),
-        };
-        Ok(Self { inner })
+
+impl From<PyVariant> for shared::Variant {
+    fn from(value: PyVariant) -> Self {
+        match value {
+            PyVariant::Compatible => shared::Variant::Compatible,
+            PyVariant::Modern => shared::Variant::Modern,
+        }
     }
 }
