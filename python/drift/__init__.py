@@ -3,9 +3,9 @@ from .drift_rs import (  # pyright: ignore[reportMissingModuleSource]
     Potential,
     Container,
     Config,
-    test_group,
-    part_group,
-    bg_feature,
+    particles,
+    test_particles,
+    background,
 )
 
 __all__ = [
@@ -15,7 +15,7 @@ __all__ = [
     "Variant",
     "Method",
     "Engine",
-    "test_group",
-    "part_group",
-    "bg_feature",
+    "particles",
+    "test_particles",
+    "background",
 ]

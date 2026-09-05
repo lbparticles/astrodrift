@@ -88,18 +88,20 @@ fn initialize_container<'py>(
     Py::new(py, container)
 }
 
+/// A state-bearing particle group without an attached potential.
 #[pyfunction]
 #[pyo3(signature = (istate))]
-pub fn test_group<'py>(
+pub fn test_particles<'py>(
     py: Python<'py>,
     istate: PyReadonlyArrayDyn<Real>,
 ) -> PyResult<Py<Container>> {
     initialize_container(py, istate, None)
 }
 
+/// A state-bearing particle group with an attached potential.
 #[pyfunction]
-#[pyo3(signature = (potential,istate))]
-pub fn part_group<'py>(
+#[pyo3(signature = (potential, istate))]
+pub fn particles<'py>(
     py: Python<'py>,
     potential: PyRecipe,
     istate: PyReadonlyArrayDyn<Real>,
@@ -135,9 +137,10 @@ pub fn part_group<'py>(
     initialize_container(py, istate, Some(recipe))
 }
 
+/// A stationary background potential for use as a force source.
 #[pyfunction]
 #[pyo3(signature = (potential))]
-pub fn bg_feature(potential: PyRecipe) -> Container {
+pub fn background(potential: PyRecipe) -> Container {
     Container {
         num_particles: None,
         recipe: Some(potential),
