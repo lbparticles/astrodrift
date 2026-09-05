@@ -84,9 +84,10 @@ fn initialize_container<'py>(
     Ok(Py::new(_py, container)?)
 }
 
+/// A group of test particles integrated in the given potential.
 #[pyfunction]
 #[pyo3(signature = (istate))]
-pub fn test_group<'py>(
+pub fn test_particles<'py>(
     _py: Python<'py>,
     istate: PyReadonlyArrayDyn<Real>,
 ) -> PyResult<Py<Container>> {
@@ -94,8 +95,19 @@ pub fn test_group<'py>(
 }
 
 #[pyfunction]
-#[pyo3(signature = (potential,istate))]
-pub fn part_group<'py>(
+#[pyo3(signature = (istate))]
+pub fn test_group<'py>(
+    py: Python<'py>,
+    istate: PyReadonlyArrayDyn<Real>,
+) -> PyResult<Py<Container>> {
+    deprecate(py, "test_group", "test_particles")?;
+    test_particles(py, istate)
+}
+
+/// A group of particles moving in the given potential.
+#[pyfunction]
+#[pyo3(signature = (potential, istate))]
+pub fn particles<'py>(
     _py: Python<'py>,
     potential: PyRecipe,
     istate: PyReadonlyArrayDyn<Real>,
@@ -133,8 +145,20 @@ pub fn part_group<'py>(
 }
 
 #[pyfunction]
+#[pyo3(signature = (potential, istate))]
+pub fn part_group<'py>(
+    py: Python<'py>,
+    potential: PyRecipe,
+    istate: PyReadonlyArrayDyn<Real>,
+) -> PyResult<Py<Container>> {
+    deprecate(py, "part_group", "particles")?;
+    particles(py, potential, istate)
+}
+
+/// A background potential feature shared by every particle group.
+#[pyfunction]
 #[pyo3(signature = (potential))]
-pub fn bg_feature<'py>(_py: Python<'py>, potential: PyRecipe) -> PyResult<Py<Container>> {
+pub fn background<'py>(_py: Python<'py>, potential: PyRecipe) -> PyResult<Py<Container>> {
     let container = Container {
         num_particles: None,
         recipe: Some(potential),
@@ -142,4 +166,22 @@ pub fn bg_feature<'py>(_py: Python<'py>, potential: PyRecipe) -> PyResult<Py<Con
         dependency_label: next_dep_label()?,
     };
     Py::new(_py, container)
+}
+
+#[pyfunction]
+#[pyo3(signature = (potential))]
+pub fn bg_feature<'py>(py: Python<'py>, potential: PyRecipe) -> PyResult<Py<Container>> {
+    deprecate(py, "bg_feature", "background")?;
+    background(py, potential)
+}
+
+fn deprecate(py: Python<'_>, old: &str, new: &str) -> PyResult<()> {
+    py.import("warnings")?.call_method1(
+        "warn",
+        (
+            format!("{old}() is deprecated, use {new}()"),
+            py.get_type::<pyo3::exceptions::PyDeprecationWarning>(),
+        ),
+    )?;
+    Ok(())
 }

@@ -88,12 +88,33 @@ class Config:
 
 
 # Module-level functions
-def test_group(istate: "npt.NDArray[Any] | Sequence[float]") -> Container: ...
+def test_particles(istate: "npt.NDArray[Any] | Sequence[float]") -> Container:
+    """Create a group of test particles from an (N, 6) initial state."""
+    ...
+
+def particles(potential: Potential, istate: "npt.NDArray[Any] | Sequence[float]") -> Container:
+    """Create a group of particles moving in ``potential``."""
+    ...
+
+def background(potential: Potential) -> Container:
+    """Create a background potential feature shared by every group."""
+    ...
+
+# Deprecated names, kept until the 1.0 API freeze.
+def test_group(istate: "npt.NDArray[Any] | Sequence[float]") -> Container:
+    """Deprecated alias for :func:`test_particles`."""
+    ...
+
 def part_group(
     potential: Potential,
     istate: "npt.NDArray[Any] | Sequence[float]",
-) -> Container: ...
-def bg_feature(potential: Potential) -> Container: ...
+) -> Container:
+    """Deprecated alias for :func:`particles`."""
+    ...
+
+def bg_feature(potential: Potential) -> Container:
+    """Deprecated alias for :func:`background`."""
+    ...
 
 
 # Optional: minimal numpy typing without hard dependency
