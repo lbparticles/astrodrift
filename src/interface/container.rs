@@ -32,6 +32,20 @@ pub struct Container {
     pub(crate) identity: u64,
 }
 
+#[pymethods]
+impl Container {
+    fn __repr__(&self) -> String {
+        let kind = match &self.recipe {
+            Some(recipe) => format!("potential={:?}", recipe.inner),
+            None => "test particles".to_string(),
+        };
+        format!(
+            "Container(identity={}, particles={:?}, {})",
+            self.identity, self.num_particles, kind
+        )
+    }
+}
+
 /// Validate an initial-state array and return the particle count.
 ///
 /// Accepts an (N, 6) array or a flat length-6N array. Columns are the
