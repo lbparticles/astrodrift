@@ -5,7 +5,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::super::GPUDispatchError;
+use crate::dispatch::DispatchError;
 
 const KERNEL_BUNDLE_NAME: &str = "kernels";
 
@@ -13,26 +13,26 @@ const KERNEL_BUNDLE_NAME: &str = "kernels";
 // loader can read a caller-supplied binary path or directly bound artifact bytes.
 // Its current `load()` searches the Python executable rather than `drift_rs.so`.
 #[inline(never)]
-fn artifact_binary_path() -> Result<PathBuf, GPUDispatchError> {
+fn artifact_binary_path() -> Result<PathBuf, DispatchError> {
     let mut info = std::mem::MaybeUninit::<libc::Dl_info>::zeroed();
     let address = artifact_binary_path as *const () as *const libc::c_void;
 
     // SAFETY: `address` points to this function and `info` points to writable storage.
     let found = unsafe { libc::dladdr(address, info.as_mut_ptr()) };
     if found == 0 {
-        return Err(GPUDispatchError::ArtifactBinaryNotFound);
+        return Err(DispatchError::ArtifactBinaryNotFound);
     }
 
     // SAFETY: a successful `dladdr` call initialized `info`.
     let info = unsafe { info.assume_init() };
     if info.dli_fname.is_null() {
-        return Err(GPUDispatchError::ArtifactBinaryNotFound);
+        return Err(DispatchError::ArtifactBinaryNotFound);
     }
 
     // SAFETY: `dladdr` returns a NUL-terminated filename owned by the dynamic loader.
     let filename = unsafe { CStr::from_ptr(info.dli_fname) };
     if filename.to_bytes().is_empty() {
-        return Err(GPUDispatchError::ArtifactBinaryNotFound);
+        return Err(DispatchError::ArtifactBinaryNotFound);
     }
 
     Ok(PathBuf::from(std::ffi::OsStr::from_bytes(
@@ -42,7 +42,7 @@ fn artifact_binary_path() -> Result<PathBuf, GPUDispatchError> {
 
 pub(super) fn load_module(
     context: &Arc<CudaContext>,
-) -> Result<kernels::oxide::LoadedModule, GPUDispatchError> {
+) -> Result<kernels::oxide::LoadedModule, DispatchError> {
     let path = artifact_binary_path()?;
     let bundles =
         artifact_bundles_from_binary_path(&path).map_err(cuda_host::EmbeddedModuleError::Core)?;
@@ -50,7 +50,7 @@ pub(super) fn load_module(
         .into_iter()
         .filter(|bundle| bundle.name == KERNEL_BUNDLE_NAME);
     let Some(bundle) = matching_bundles.next() else {
-        return Err(GPUDispatchError::ArtifactBundleCount {
+        return Err(DispatchError::ArtifactBundleCount {
             path,
             name: KERNEL_BUNDLE_NAME,
             count: 0,
@@ -58,7 +58,7 @@ pub(super) fn load_module(
     };
     let duplicate_count = matching_bundles.count();
     if duplicate_count != 0 {
-        return Err(GPUDispatchError::ArtifactBundleCount {
+        return Err(DispatchError::ArtifactBundleCount {
             path,
             name: KERNEL_BUNDLE_NAME,
             count: duplicate_count + 1,
@@ -70,7 +70,7 @@ pub(super) fn load_module(
         .iter()
         .filter(|payload| payload.kind == ArtifactPayloadKind::Cubin);
     let Some(cubin) = cubins.next() else {
-        return Err(GPUDispatchError::ArtifactCubinCount {
+        return Err(DispatchError::ArtifactCubinCount {
             path,
             name: KERNEL_BUNDLE_NAME,
             count: 0,
@@ -78,7 +78,7 @@ pub(super) fn load_module(
     };
     let duplicate_count = cubins.count();
     if duplicate_count != 0 {
-        return Err(GPUDispatchError::ArtifactCubinCount {
+        return Err(DispatchError::ArtifactCubinCount {
             path,
             name: KERNEL_BUNDLE_NAME,
             count: duplicate_count + 1,

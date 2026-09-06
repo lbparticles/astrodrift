@@ -1,5 +1,5 @@
 use crate::{
-    dispatch::{cpu::cpu_dispatch, gpu::GPUDispatchError, gpu_dispatch},
+    dispatch::{DispatchError, cpu::cpu_dispatch, gpu_dispatch},
     state::{InputFrame, OutputFrame},
 };
 use shared::{Config, Engine, Method, Model, Variant};
@@ -11,7 +11,7 @@ pub fn run_integration(
     config: Config,
     model: Model,
     input_frame: InputFrame,
-) -> Result<OutputFrame, GPUDispatchError> {
+) -> Result<OutputFrame, DispatchError> {
     match (config.engine, config.method, config.variant) {
         (Engine::GPU, Method::DOPR54, Variant::Modern) => {
             Ok(OutputFrame(core::array::from_fn(|_| None)))
@@ -22,7 +22,7 @@ pub fn run_integration(
         (Engine::GPU, Method::DOPR54 | Method::DOP853, Variant::Compatible) => {
             gpu_dispatch(config, model, input_frame)
         }
-        (Engine::CPU, Method::DOPR54, Variant::Compatible) => {
+        (Engine::CPU, Method::DOPR54 | Method::DOP853, Variant::Compatible) => {
             cpu_dispatch(config, model, input_frame)
         }
         _ => Ok(OutputFrame(core::array::from_fn(|_| None))),

@@ -14,6 +14,9 @@
 use libc;
 // use libm::{ceil, exp, fabs, fmax, log, pow, sqrt};
 use libc::{c_double, c_int};
+use std::ptr;
+
+const KEPLER_DIM: usize = 6;
 
 // opaque stand-in for the C struct potentialArg
 #[repr(C)]
@@ -47,6 +50,92 @@ pub type FuncPtr = Option<
         potentialArgs: *mut potentialArg,
     ),
 >;
+
+extern "C" fn kepler_rhs(
+    _time: c_double,
+    q: *mut c_double,
+    a: *mut c_double,
+    _nargs: c_int,
+    _potential_args: *mut potentialArg,
+) {
+    unsafe {
+        let q = core::slice::from_raw_parts(q, KEPLER_DIM);
+        let a = core::slice::from_raw_parts_mut(a, KEPLER_DIM);
+        let (ax, ay, az) = reference_kepler_force(q[0], q[1], q[2]);
+
+        a.copy_from_slice(&[q[3], q[4], q[5], ax, ay, az]);
+    }
+}
+
+#[cfg(not(feature = "galpy-kepler-reference"))]
+fn reference_kepler_force(x: c_double, y: c_double, z: c_double) -> (c_double, c_double, c_double) {
+    let radius_squared = x * x + y * y + z * z;
+    let safe_radius_squared = if radius_squared == 0.0 {
+        1.0e-16
+    } else {
+        radius_squared
+    };
+    let radius = unsafe { sqrt(safe_radius_squared) };
+    let inverse_radius_cubed = 1.0 / (safe_radius_squared * radius);
+
+    (
+        -x * inverse_radius_cubed,
+        -y * inverse_radius_cubed,
+        -z * inverse_radius_cubed,
+    )
+}
+
+#[cfg(feature = "galpy-kepler-reference")]
+fn reference_kepler_force(x: c_double, y: c_double, z: c_double) -> (c_double, c_double, c_double) {
+    let cylindrical_radius = unsafe { sqrt(x * x + y * y) };
+    let sin_phi = y / cylindrical_radius;
+    let cos_phi = x / cylindrical_radius;
+    let radius_squared = cylindrical_radius * cylindrical_radius + z * z;
+    let radial_force = -cylindrical_radius * radius_squared.powf(-1.5);
+    let phi_torque = 0.0;
+
+    (
+        cos_phi * radial_force - 1.0 / cylindrical_radius * sin_phi * phi_torque,
+        sin_phi * radial_force + 1.0 / cylindrical_radius * cos_phi * phi_torque,
+        -z * radius_squared.powf(-1.5),
+    )
+}
+
+/// Runs the reference Kepler problem through the exact CPU port.
+pub fn integrate_kepler(
+    initial_state: [c_double; KEPLER_DIM],
+    times: &[c_double],
+    initial_step: c_double,
+    potential_argument_count: c_int,
+    rtol: c_double,
+    atol: c_double,
+) -> Result<Vec<c_double>, c_int> {
+    assert!(times.len() >= 2, "at least two output times are required");
+    let mut initial_state = initial_state;
+    let mut times = times.to_vec();
+    let mut result = vec![0.0; times.len() * KEPLER_DIM];
+    let mut error = 0;
+    let time_count = c_int::try_from(times.len()).expect("time count must fit in c_int");
+
+    unsafe {
+        dopr54(
+            Some(kepler_rhs),
+            KEPLER_DIM as c_int,
+            initial_state.as_mut_ptr(),
+            time_count,
+            initial_step,
+            times.as_mut_ptr(),
+            potential_argument_count,
+            ptr::null_mut(),
+            rtol,
+            atol,
+            result.as_mut_ptr(),
+            &mut error,
+        );
+    }
+
+    if error == 0 { Ok(result) } else { Err(error) }
+}
 
 #[inline]
 unsafe fn save_rk(dim: c_int, mut yo: *mut c_double, mut result: *mut c_double) {

@@ -133,9 +133,11 @@ impl PyLinspace {
     }
 }
 
+// Python accepts conventional positive tolerances; reference kernels consume
+// their natural logarithms.
 #[derive(Default, Clone, Debug)]
-pub struct BoundTolerance(pub Tolerance);
-impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance {
+pub struct PyTolerance(pub Tolerance);
+impl<'a, 'py> FromPyObject<'a, 'py> for PyTolerance {
     type Error = PyErr;
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         if let Ok(tup) = obj.cast::<PyTuple>()
@@ -143,20 +145,29 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance {
         {
             let rtol: f64 = tup.get_item(0)?.extract()?;
             let atol: f64 = tup.get_item(1)?.extract()?;
-            return Ok(BoundTolerance(Tolerance { rtol, atol }));
+            return Self::new(rtol, atol);
         }
 
         // Accept single float for convenience
         if let Ok(val) = obj.extract::<f64>() {
-            return Ok(BoundTolerance(Tolerance {
-                rtol: val,
-                atol: val,
-            }));
+            return Self::new(val, val);
         }
 
         Err(PyValueError::new_err(
             "Expected (rtol, atol) tuple or single float tolerance value",
         ))
+    }
+}
+
+impl PyTolerance {
+    fn new(rtol: Real, atol: Real) -> PyResult<Self> {
+        if !rtol.is_finite() || !atol.is_finite() || rtol <= 0.0 || atol <= 0.0 {
+            return Err(PyValueError::new_err(
+                "rtol and atol must be finite and greater than zero",
+            ));
+        }
+
+        Ok(Self(Tolerance::from_linear(rtol, atol)))
     }
 }
 
@@ -213,7 +224,7 @@ impl PyConfig {
         variant: Option<PyVariant>,
         flags: Option<Modern>,
         ts: Option<PyLinspace>,
-        tolerance: Option<BoundTolerance>,
+        tolerance: Option<PyTolerance>,
     ) -> Self {
         let thing = Self {
             inner: Config::new(
@@ -289,7 +300,8 @@ impl PyConfig {
                 (None, false) => Ok(py.None()),
                 (None, true) => Err(PyNotImplementedError::new_err(
                     "run() produced no output for a particle group: the supported combinations \
-                     are Engine.GPU with Method.DOPR54 or Method.DOP853 and Variant.Compatible",
+                     are Engine.CPU or Engine.GPU with Method.DOPR54 or Method.DOP853 and \
+                     Variant.Compatible",
                 )),
             })
             .collect::<PyResult<Vec<_>>>()?;
