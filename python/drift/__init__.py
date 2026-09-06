@@ -1,4 +1,4 @@
-from .drift_rs import (
+from .drift_rs import (  # pyright: ignore[reportMissingModuleSource]
     Potential,
     Container,
     Config,
