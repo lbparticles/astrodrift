@@ -28,10 +28,10 @@ index 9e72ab6..b991ce3 100644
 +  fprintf(file, "\n");
 +}
 @@ -508,0 +532,15 @@ void bovy_dopr54(void (*func)(double t, double *q, double *a,
-+  const char *fixture_path= getenv("ASTRODRIFT_GALPY_FIXTURE");
++  const char *fixture_path= getenv("DRIFT_GALPY_FIXTURE");
 +  FILE *fixture_f= fixture_path == NULL ? NULL : fopen(fixture_path, "w");
 +  if ( fixture_path != NULL && fixture_f == NULL )
-+    perror("could not open ASTRODRIFT_GALPY_FIXTURE");
++    perror("could not open DRIFT_GALPY_FIXTURE");
 +  if ( fixture_f != NULL ) {
 +    fprintf(fixture_f, "dim %d\n", dim);
 +    fprintf(fixture_f, "nt %d\n", nt);
@@ -79,10 +79,10 @@ index c7ff1b0..ff63381 100644
 +}
 +
 @@ -243,0 +267,16 @@ void dop853(void(*func)(double t, double *q, double *a, int nargs, struct potent
-+	const char *fixture_path = getenv("ASTRODRIFT_GALPY_FIXTURE");
++	const char *fixture_path = getenv("DRIFT_GALPY_FIXTURE");
 +	FILE *fixture_f = fixture_path == NULL ? NULL : fopen(fixture_path, "w");
 +	if (fixture_path != NULL && fixture_f == NULL)
-+		perror("could not open ASTRODRIFT_GALPY_FIXTURE");
++		perror("could not open DRIFT_GALPY_FIXTURE");
 +	if (fixture_f != NULL) {
 +		fprintf(fixture_f, "dim %d\n", dim);
 +		fprintf(fixture_f, "nt %d\n", nt);

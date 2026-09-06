@@ -24,7 +24,7 @@ pre-push:
         if command -v just >/dev/null 2>&1 && command -v uv >/dev/null 2>&1; then
           just lint python
         elif command -v nix >/dev/null 2>&1; then
-          ASTRODRIFT_QUIET=1 nix develop -c just lint python
+          DRIFT_QUIET=1 nix develop -c just lint python
         else
           echo "pre-push checks require just and uv, or nix" >&2
           exit 127

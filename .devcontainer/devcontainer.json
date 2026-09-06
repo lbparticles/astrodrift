@@ -1,5 +1,5 @@
 {
-  "name": "astrodrift-cuda",
+  "name": "drift-cuda",
   "build": {
     "dockerfile": "../container/ubuntu24-cuda13/Dockerfile",
     "context": ".."
@@ -24,7 +24,7 @@
     "LLVM_CONFIG": "/usr/local/bin/llvm-config-7",
     "LLVM_LINK_STATIC": "1",
     "NVIDIA_DRIVER_CAPABILITIES": "all",
-    "UV_PROJECT_ENVIRONMENT": "/opt/astrodrift-venv"
+    "UV_PROJECT_ENVIRONMENT": "/opt/drift-venv"
   },
   "customizations": {
     "vscode": {
@@ -39,7 +39,7 @@
           "/workspaces/astrodrift/Cargo.toml",
           "/workspaces/cuda-oxide/Cargo.toml"
         ],
-        "python.defaultInterpreterPath": "/opt/astrodrift-venv/bin/python"
+        "python.defaultInterpreterPath": "/opt/drift-venv/bin/python"
       }
     }
   }

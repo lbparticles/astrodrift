@@ -54,7 +54,7 @@ FIXTURE_DIRS = {
     "dopr54": Path("tests/fixtures/dopr54_galpy_native"),
     "dop853": Path("tests/fixtures/dop853_galpy_native"),
 }
-FIXTURE_ENV = "ASTRODRIFT_GALPY_FIXTURE"
+FIXTURE_ENV = "DRIFT_GALPY_FIXTURE"
 SEED = 0xA57D0F54
 N_CASES = 100
 REFERENCE_STEPS = 1001

@@ -1,4 +1,4 @@
-# Source this file from ~/.config/fish/config.fish on the Astrodrift host:
+# Source this file from ~/.config/fish/config.fish on the Drift host:
 # test -f /software/astrodrift/nix/remote-shell/fish.fish; and source /software/astrodrift/nix/remote-shell/fish.fish
 
 # Interactive SSH sessions enter the development environment and remain in
@@ -16,7 +16,7 @@ if not status is-interactive; and set -q SSH_CONNECTION; and not set -q IN_NIX_S
     set -l cmd (string split0 </proc/self/cmdline)[3]
     if set -q cmd[1]; and string match -q -- '*zed*' $cmd
         if command -q nix; and test -f /software/astrodrift/flake.nix; and nix flake metadata /software/astrodrift >/dev/null 2>&1
-            exec env ASTRODRIFT_QUIET=1 nix develop /software/astrodrift -c bash -c $cmd
+            exec env DRIFT_QUIET=1 nix develop /software/astrodrift -c bash -c $cmd
         else
             exec /bin/sh -c $cmd
         end

@@ -121,7 +121,7 @@ mod tests {
     #[ignore = "diagnostic report for host libm versus CUDA device math drift"]
     fn dop853_gpu_native_galpy_fixture_error_summary() {
         let mut summary = ErrorSummary::default();
-        let mut output_dump = std::env::var_os("ASTRODRIFT_DOP853_GPU_DUMP").map(|path| {
+        let mut output_dump = std::env::var_os("DRIFT_DOP853_GPU_DUMP").map(|path| {
             BufWriter::new(
                 File::create(&path)
                     .unwrap_or_else(|error| panic!("failed to create {}: {error}", path.display())),
