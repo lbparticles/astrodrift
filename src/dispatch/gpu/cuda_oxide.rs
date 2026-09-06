@@ -3,7 +3,7 @@ use shared::Tolerance;
 
 mod embedded;
 
-use super::{GPUDispatchError, Kernel, grid_size};
+use super::{DispatchError, Kernel, grid_size};
 use crate::state::{InputState, OutputState};
 
 pub(super) fn launch(
@@ -12,7 +12,7 @@ pub(super) fn launch(
     times: &[f64],
     output_state: &mut OutputState,
     tolerance: Tolerance,
-) -> Result<(), GPUDispatchError> {
+) -> Result<(), DispatchError> {
     let context = CudaContext::new(0)?;
     let stream = context.default_stream();
     let module = embedded::load_module(&context)?;
