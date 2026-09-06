@@ -267,7 +267,9 @@ impl PyConfig {
             adjacency_matrix.set(dependency_label, node_label, true);
         }
 
-        Ok(adjacency_matrix.build(containers_by_label))
+        adjacency_matrix.build(containers_by_label).ok_or_else(|| {
+            PyValueError::new_err("container dependencies must form an acyclic graph")
+        })
     }
 }
 
@@ -329,12 +331,16 @@ impl PyConfig {
                 selected.len()
             )));
         }
+        let requested_identities: Vec<u64> = selected
+            .iter()
+            .map(|container| container.identity)
+            .collect();
         let has_state: Vec<bool> = selected.iter().map(|c| c.state.is_some()).collect();
         let plan = self.build_tree(selected)?;
         let IntegrationPlan {
             model,
             input_frame,
-            container_label_by_stage,
+            container_identity_by_stage,
         } = plan;
         let results = run_integration(self.inner, model, input_frame)
             .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
@@ -342,18 +348,22 @@ impl PyConfig {
         let mut items: Vec<Option<Py<PyAny>>> = core::iter::repeat_with(|| None)
             .take(has_state.len())
             .collect();
-        for (result, container_label) in results.0.iter().zip(container_label_by_stage) {
+        for (result, container_identity) in results.0.iter().zip(container_identity_by_stage) {
             let Some(state) = result else { continue };
-            let Some(container_label) = container_label else {
+            let Some(container_identity) = container_identity else {
                 return Err(PyRuntimeError::new_err(
                     "integration returned an output without a source container",
                 ));
             };
-            let Some(item) = items.get_mut(container_label) else {
+            let Some(requested_index) = requested_identities
+                .iter()
+                .position(|&identity| identity == container_identity)
+            else {
                 return Err(PyRuntimeError::new_err(
                     "integration returned an output for an unknown container",
                 ));
             };
+            let item = &mut items[requested_index];
             let array = PyArray1::from_slice(py, &state.data)
                 .reshape([state.num_times, state.num_particles, INPUT_STATE_DIM])?
                 .into_any()
