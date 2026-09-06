@@ -46,20 +46,20 @@ def _run_gpu(
     )
     sim.add(model.gmc, model.gal)
     sim.add(model.iso, model.gmc, model.gal)
-    return sim.run(model.iso, model.gal, model.gmc)
+    return sim.run()
 
 
 def _run_cpu(model: SmokeModel, method: dft.Method) -> IntegrationResult:
     sim = dft.Config(engine=dft.Engine.CPU, method=method)
     sim.add(model.gmc, model.gal)
     sim.add(model.iso, model.gmc, model.gal)
-    return sim.run(model.iso, model.gal, model.gmc)
+    return sim.run()
 
 
 def _particle_trajectories(
     result: IntegrationResult,
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-    iso_trajectory, _, gmc_trajectory = result
+    gmc_trajectory, _, iso_trajectory = result
     assert isinstance(iso_trajectory, np.ndarray)
     assert isinstance(gmc_trajectory, np.ndarray)
     return iso_trajectory, gmc_trajectory
@@ -85,16 +85,30 @@ def cpu_compatible_results(
 
 
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
-def test_results_follow_caller_order(
+def test_results_follow_registration_order(
     compatible_results: dict[dft.Method, IntegrationResult], method: dft.Method
 ) -> None:
-    iso_trajectory, background_result, gmc_trajectory = compatible_results[
+    gmc_trajectory, background_result, iso_trajectory = compatible_results[
         method
     ]
 
     assert isinstance(iso_trajectory, np.ndarray)
     assert background_result is None
     assert isinstance(gmc_trajectory, np.ndarray)
+
+
+def test_empty_config_returns_no_results() -> None:
+    assert dft.Config().run() == []
+
+
+def test_particle_group_requires_a_registered_force_source(
+    model: SmokeModel,
+) -> None:
+    sim = dft.Config()
+    sim.add(model.iso, model.gmc)
+
+    with pytest.raises(ValueError, match="registered with add"):
+        sim.run()
 
 
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
@@ -133,7 +147,7 @@ def test_unimplemented_cpu_variant_is_rejected(model: SmokeModel) -> None:
     sim.add(model.iso, model.gal)
 
     with pytest.raises(NotImplementedError, match="Engine.CPU or Engine.GPU"):
-        sim.run(model.iso, model.gal)
+        sim.run()
 
 
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
@@ -163,7 +177,7 @@ def test_default_config_uses_cpu_compatible_path(
     sim.add(model.gmc, model.gal)
     sim.add(model.iso, model.gmc, model.gal)
 
-    default = _particle_trajectories(sim.run(model.iso, model.gal, model.gmc))
+    default = _particle_trajectories(sim.run())
     explicit = _particle_trajectories(cpu_compatible_results[dft.Method.DOPR54])
     for default_trajectory, explicit_trajectory in zip(
         default, explicit, strict=True
@@ -197,10 +211,10 @@ def test_add_rejects_empty_and_cyclic_dependencies(model: SmokeModel) -> None:
 
     # Rejected edges leave the existing graph usable, and duplicates are harmless.
     sim.add(model.gmc, model.gal, model.gal)
-    result = sim.run(model.iso, model.gmc, model.gal)
+    result = sim.run()
     assert isinstance(result[0], np.ndarray)
-    assert isinstance(result[1], np.ndarray)
-    assert result[2] is None
+    assert result[1] is None
+    assert isinstance(result[2], np.ndarray)
 
 
 def test_dependency_alias_warns_at_the_call_site(model: SmokeModel) -> None:

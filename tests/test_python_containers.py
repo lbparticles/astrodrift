@@ -61,14 +61,18 @@ def test_container_creation_is_not_limited_by_process_lifetime() -> None:
 
 def test_run_rejects_more_containers_than_one_model_can_hold() -> None:
     potential = dft.Potential.kepler(1.0)
-    containers = [
-        dft.bg_feature(potential) for _ in range(MAX_MODEL_COMPONENTS + 1)
-    ]
+    background = dft.bg_feature(potential)
+    state = np.array([[1.0, 0.0, 0.0, 0.0, 1.0, 0.0]], dtype=np.float64)
+    particles = [dft.test_group(state) for _ in range(MAX_MODEL_COMPONENTS)]
+    config = dft.Config()
+
+    for group in particles[:-1]:
+        config.add(group, background)
 
     with pytest.raises(ValueError, match="at most 11"):
-        dft.Config().run(*containers)
+        config.add(particles[-1], background)
 
-    assert dft.Config().run(dft.bg_feature(potential)) == [None]
+    assert len(config.run()) == MAX_MODEL_COMPONENTS
 
 
 def test_separate_configs_can_use_distinct_high_identity_containers() -> None:
