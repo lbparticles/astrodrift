@@ -176,10 +176,7 @@ fn launch_kernel_named(
 ) -> Result<OutputState, GPUDispatchError> {
     let times: Vec<Real> = times.unwrap_or_else(|| {
         (0..linspace.steps)
-            .map(|i| {
-                linspace.start
-                    + (linspace.end - linspace.start) * (i as Real) / (linspace.steps as Real)
-            })
+            .map(|index| linspace.sample(index))
             .collect()
     });
 
