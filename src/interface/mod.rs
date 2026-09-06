@@ -3,7 +3,6 @@ use numpy::PyArrayMethods;
 use pyo3::exceptions::{PyDeprecationWarning, PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyList, PyModule, PyTuple};
-use std::sync::Mutex;
 
 mod container;
 mod engine;
@@ -174,15 +173,15 @@ impl PyTolerance {
 #[derive(Debug)]
 pub struct PyConfig {
     inner: Config,
-    // Dependencies use stable identities until build_tree assigns dense labels.
+    // Edges are (potential source, integrated dependent) stable identities.
+    // build_tree assigns dense labels only for a particular run.
     dependencies: Vec<(u64, u64)>,
-    // Containers are retained for zero-argument run().
-    containers: Mutex<Vec<Container>>,
+    // add() deliberately retains model components for zero-argument run().
+    containers: Vec<Container>,
 }
 
 impl PyConfig {
-    fn register(&self, container: &Container) {
-        let mut containers = self.containers.lock().unwrap();
+    fn register(containers: &mut Vec<Container>, container: &Container) {
         if !containers
             .iter()
             .any(|candidate| candidate.identity == container.identity)
@@ -191,6 +190,10 @@ impl PyConfig {
         }
     }
 
+    /// Depth-first reachability over the edge list.
+    ///
+    /// This is O(VE + V^2) time and O(V) space because visited identities use
+    /// a linear set. Both are deliberately simple with V bounded at 11.
     fn dependency_path_exists(&self, start: u64, target: u64) -> bool {
         let mut pending = vec![start];
         let mut visited = Vec::new();
@@ -213,6 +216,11 @@ impl PyConfig {
         false
     }
 
+    /// Validate all incoming edges before mutating the graph.
+    ///
+    /// Every proposed edge ends at `node`, so it creates a cycle exactly when
+    /// `node` already reaches that requirement. For R requirements this is
+    /// O(R(VE + V^2)); R and V are both at most 11.
     fn add_dependencies(&mut self, node: u64, requires: Vec<u64>) -> PyResult<()> {
         if requires.is_empty() {
             return Err(PyValueError::new_err(
@@ -237,6 +245,21 @@ impl PyConfig {
         Ok(())
     }
 
+    fn validate_registered_model(&self) -> PyResult<()> {
+        if self.containers.iter().any(|container| {
+            container.state.is_some()
+                && !self
+                    .dependencies
+                    .iter()
+                    .any(|&(_, dependent)| dependent == container.identity)
+        }) {
+            return Err(PyValueError::new_err(
+                "each particle container must be registered with add(node, *requires) before integration",
+            ));
+        }
+        Ok(())
+    }
+
     fn build_tree(&self, containers: Vec<Container>) -> PyResult<IntegrationPlan> {
         let mut containers_by_label = core::array::from_fn(|_| None);
         let mut identity_by_label = [None; MAX_STATES];
@@ -253,17 +276,14 @@ impl PyConfig {
 
         let mut adjacency_matrix = AdjacencyMatrix(0);
         for &(dependency, node) in &self.dependencies {
-            let dependency_label = identity_by_label
-                .iter()
-                .position(|&identity| identity == Some(dependency));
             let node_label = identity_by_label
                 .iter()
-                .position(|&identity| identity == Some(node));
-            let (Some(dependency_label), Some(node_label)) = (dependency_label, node_label) else {
-                return Err(PyValueError::new_err(
-                    "every container used in add() must be passed to run()",
-                ));
-            };
+                .position(|&identity| identity == Some(node))
+                .ok_or_else(|| PyRuntimeError::new_err("registered node is missing"))?;
+            let dependency_label = identity_by_label
+                .iter()
+                .position(|&identity| identity == Some(dependency))
+                .ok_or_else(|| PyRuntimeError::new_err("registered dependency is missing"))?;
             adjacency_matrix.set(dependency_label, node_label, true);
         }
 
@@ -294,49 +314,26 @@ impl PyConfig {
                 tolerance.unwrap_or_default().0,
             ),
             dependencies: Vec::new(),
-            containers: Mutex::new(Vec::new()),
+            containers: Vec::new(),
         };
         println!("newpyconfig");
         thing
     }
 
-    #[pyo3(signature = (*args))]
-    fn run<'py>(
-        &self,
-        py: Python<'py>,
-        args: &Bound<'py, PyTuple>,
-    ) -> PyResult<Bound<'py, PyList>> {
-        if args.len() > MAX_MODEL_COMPONENTS {
-            return Err(PyValueError::new_err(format!(
-                "run() received {} containers but a model supports at most \
-                 {MAX_MODEL_COMPONENTS}",
-                args.len()
-            )));
-        }
-        let mut containers = Vec::with_capacity(args.len().min(MAX_STATES));
-        for i in 0..args.len() {
-            let obj = args.get_item(i)?;
-            let container: PyRef<Container> = obj.extract()?;
-            self.register(&container);
-            containers.push(container.clone());
-        }
-        let selected = if args.is_empty() {
-            self.containers.lock().unwrap().clone()
-        } else {
-            containers
-        };
-        if selected.len() > MAX_MODEL_COMPONENTS {
-            return Err(PyValueError::new_err(format!(
-                "run() resolved {} containers but a model supports at most {MAX_MODEL_COMPONENTS}",
-                selected.len()
-            )));
-        }
-        let requested_identities: Vec<u64> = selected
+    #[pyo3(signature = ())]
+    fn run<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
+        self.validate_registered_model()?;
+        let output_identities: Vec<u64> = self
+            .containers
             .iter()
             .map(|container| container.identity)
             .collect();
-        let has_state: Vec<bool> = selected.iter().map(|c| c.state.is_some()).collect();
-        let plan = self.build_tree(selected)?;
+        let has_state: Vec<bool> = self
+            .containers
+            .iter()
+            .map(|container| container.state.is_some())
+            .collect();
+        let plan = self.build_tree(self.containers.clone())?;
         let IntegrationPlan {
             model,
             input_frame,
@@ -355,7 +352,7 @@ impl PyConfig {
                     "integration returned an output without a source container",
                 ));
             };
-            let Some(requested_index) = requested_identities
+            let Some(output_index) = output_identities
                 .iter()
                 .position(|&identity| identity == container_identity)
             else {
@@ -363,7 +360,7 @@ impl PyConfig {
                     "integration returned an output for an unknown container",
                 ));
             };
-            let item = &mut items[requested_index];
+            let item = &mut items[output_index];
             let array = PyArray1::from_slice(py, &state.data)
                 .reshape([state.num_times, state.num_particles, INPUT_STATE_DIM])?
                 .into_any()
@@ -400,11 +397,20 @@ impl PyConfig {
                 dependency_containers.push(container.clone());
             }
         }
-        self.add_dependencies(node.identity, dependency_ids)?;
+        let mut containers = self.containers.clone();
+        Self::register(&mut containers, &node);
         for dependency in &dependency_containers {
-            self.register(dependency);
+            Self::register(&mut containers, dependency);
         }
-        self.register(&node);
+        if containers.len() > MAX_MODEL_COMPONENTS {
+            return Err(PyValueError::new_err(format!(
+                "add() would register {} containers but a model supports at most {MAX_MODEL_COMPONENTS}",
+                containers.len()
+            )));
+        }
+
+        self.add_dependencies(node.identity, dependency_ids)?;
+        self.containers = containers;
         Ok(())
     }
 

@@ -4,7 +4,10 @@ use numpy::PyReadonlyArrayDyn;
 use pyo3::exceptions::PyNotImplementedError;
 use pyo3::prelude::*;
 use shared::{CustomKeplerRecipe, CustomPlummerRecipe, Index, PotentialName, Real, Recipe};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 static NEXT_IDENTITY: AtomicU64 = AtomicU64::new(0);
 
@@ -19,7 +22,8 @@ pub struct Container {
     #[pyo3(get)]
     pub num_particles: Option<Index>,
     pub recipe: Option<PyRecipe>,
-    pub state: Option<InputState>,
+    // Container registration and integration plans share this immutable buffer.
+    pub state: Option<Arc<InputState>>,
     // Object identity is stable; bounded graph labels are assigned per run.
     pub(crate) identity: u64,
 }
@@ -35,7 +39,7 @@ fn initialize_container<'py>(
     let container = Container {
         num_particles: Some(num_particles),
         recipe,
-        state: Some(state),
+        state: Some(Arc::new(state)),
         identity: next_identity(),
     };
     Py::new(py, container)

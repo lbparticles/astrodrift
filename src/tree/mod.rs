@@ -1,19 +1,17 @@
 use core::fmt;
 
-use crate::{
-    interface::Container,
-    state::{InputFrame, InputState},
-};
+use crate::{interface::Container, state::InputFrame};
 use shared::{MAX_MODEL_COMPONENTS, MAX_RECIPES, MAX_STATES, Model, Recipe};
 
 pub struct IntegrationPlan {
     pub model: Model,
     pub input_frame: InputFrame,
     // Dispatch outputs are stage ordered; retain stable identities so the
-    // interface can restore the requested container order.
+    // interface can restore container registration order.
     pub container_identity_by_stage: [Option<u64>; MAX_STATES],
 }
 
+/// Packed row-major graph where `(source, dependent)` denotes a force input.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AdjacencyMatrix(pub u128);
 
@@ -43,6 +41,10 @@ impl AdjacencyMatrix {
         }
     }
 
+    /// Stable Kahn topological sort, choosing the lowest dense label on ties.
+    ///
+    /// The packed adjacency matrix is scanned directly, giving O(N^2) time and
+    /// O(N) auxiliary space. `None` means the registered graph has a cycle.
     fn topological_order(&self, present: &[bool; Self::N]) -> Option<Vec<usize>> {
         let mut indegree = [0; Self::N];
         for source in 0..Self::N {
@@ -70,12 +72,17 @@ impl AdjacencyMatrix {
         Some(order)
     }
 
+    /// Build state-bearing dispatch stages in dependency order.
+    ///
+    /// Background-only containers occupy graph nodes and provide recipes but
+    /// do not consume dispatch stages. Building recipes is O(N^2), and cloned
+    /// input states share their immutable allocation through `Arc`.
     pub fn build(&self, containers: [Option<Container>; MAX_STATES]) -> Option<IntegrationPlan> {
         let present = std::array::from_fn(|index| containers[index].is_some());
         let order = self.topological_order(&present)?;
         let mut meal_by_stage: [Option<[Option<Recipe>; MAX_RECIPES]>; MAX_MODEL_COMPONENTS] =
             std::array::from_fn(|_| None);
-        let mut istates_by_stage: [Option<InputState>; MAX_STATES] = std::array::from_fn(|_| None);
+        let mut istates_by_stage = std::array::from_fn(|_| None);
         let mut container_identity_by_stage = [None; MAX_STATES];
         let mut stage = 0;
 
@@ -112,13 +119,10 @@ impl AdjacencyMatrix {
 
 impl fmt::Debug for AdjacencyMatrix {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Header with the raw value (trim to used 121 bits)
         let raw = self.0 & Self::VALID_MASK;
-        // Print 11 rows, each with 11 columns as 0/1
         for r in 0..Self::N {
             for c in 0..Self::N {
                 let bit = ((raw >> Self::idx(r, c)) & 1) as u8;
-                // '0' + bit
                 let ch = (b'0' + bit) as char;
                 write!(f, "{ch}")?;
             }

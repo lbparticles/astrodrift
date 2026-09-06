@@ -6,4 +6,4 @@
 # )
 
 
-# sim.run(gal, gmc, iso)
+# sim.run()
