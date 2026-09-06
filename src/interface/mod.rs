@@ -11,7 +11,7 @@ mod recipe;
 mod selector;
 mod variant;
 
-use crate::integrators::run_integration;
+use crate::integrators::{IntegrationError, run_integration};
 use crate::tree::{AdjacencyMatrix, IntegrationPlan};
 pub use container::Container;
 use engine::PyEngine;
@@ -347,8 +347,13 @@ impl PyConfig {
             input_frame,
             container_identity_by_stage,
         } = plan;
-        let results = run_integration(self.inner, model, input_frame)
-            .map_err(|error| PyNotImplementedError::new_err(error.to_string()))?;
+        let results =
+            run_integration(self.inner, model, input_frame).map_err(|error| match error {
+                error @ IntegrationError::UnsupportedConfiguration { .. } => {
+                    PyNotImplementedError::new_err(error.to_string())
+                }
+                IntegrationError::Dispatch(error) => PyRuntimeError::new_err(error.to_string()),
+            })?;
 
         let mut items: Vec<Option<Py<PyAny>>> = core::iter::repeat_with(|| None)
             .take(has_state.len())
@@ -382,10 +387,8 @@ impl PyConfig {
             .map(|(item, has_state)| match (item, has_state) {
                 (Some(item), _) => Ok(item),
                 (None, false) => Ok(py.None()),
-                (None, true) => Err(PyNotImplementedError::new_err(
-                    "run() produced no output for a particle group: the supported combinations \
-                     are Engine.CPU or Engine.GPU with Method.DOPR54 or Method.DOP853 and \
-                     Variant.Compatible",
+                (None, true) => Err(PyRuntimeError::new_err(
+                    "integration returned no output for a particle container",
                 )),
             })
             .collect::<PyResult<Vec<_>>>()?;
