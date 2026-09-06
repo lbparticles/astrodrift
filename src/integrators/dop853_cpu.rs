@@ -3,6 +3,9 @@
 #![allow(clippy::assign_op_pattern, clippy::excessive_precision)]
 
 use libc::{c_double, c_int};
+use std::ptr;
+
+const KEPLER_DIM: usize = 6;
 
 #[repr(C)]
 pub struct potentialArg {
@@ -18,6 +21,70 @@ pub type FuncPtr = Option<
         potential_args: *mut potentialArg,
     ),
 >;
+
+extern "C" fn kepler_rhs(
+    _time: c_double,
+    q: *mut c_double,
+    a: *mut c_double,
+    _nargs: c_int,
+    _potential_args: *mut potentialArg,
+) {
+    unsafe {
+        let q = core::slice::from_raw_parts(q, KEPLER_DIM);
+        let a = core::slice::from_raw_parts_mut(a, KEPLER_DIM);
+        let radius = sqrt(q[0] * q[0] + q[1] * q[1]);
+        let sin_phi = q[1] / radius;
+        let cos_phi = q[0] / radius;
+        let radius_squared = radius * radius + q[2] * q[2];
+        let radial_force = -radius * pow(radius_squared, -1.5);
+        let phi_torque = 0.0;
+
+        a.copy_from_slice(&[
+            q[3],
+            q[4],
+            q[5],
+            cos_phi * radial_force - 1.0 / radius * sin_phi * phi_torque,
+            sin_phi * radial_force + 1.0 / radius * cos_phi * phi_torque,
+            -q[2] * pow(radius_squared, -1.5),
+        ]);
+    }
+}
+
+/// Runs the reference Kepler problem through the exact CPU port.
+pub fn integrate_kepler(
+    initial_state: [c_double; KEPLER_DIM],
+    times: &[c_double],
+    initial_step: c_double,
+    potential_argument_count: c_int,
+    rtol: c_double,
+    atol: c_double,
+) -> Vec<c_double> {
+    assert!(times.len() >= 2, "at least two output times are required");
+    let mut initial_state = initial_state;
+    let mut times = times.to_vec();
+    let mut result = vec![0.0; times.len() * KEPLER_DIM];
+    let mut error = 0;
+    let time_count = c_int::try_from(times.len()).expect("time count must fit in c_int");
+
+    unsafe {
+        dop853(
+            Some(kepler_rhs),
+            KEPLER_DIM as c_int,
+            initial_state.as_mut_ptr(),
+            time_count,
+            initial_step,
+            times.as_mut_ptr(),
+            potential_argument_count,
+            ptr::null_mut(),
+            rtol,
+            atol,
+            result.as_mut_ptr(),
+            &mut error,
+        );
+    }
+
+    result
+}
 
 #[link(name = "m")]
 unsafe extern "C" {

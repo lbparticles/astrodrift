@@ -1,10 +1,9 @@
 #[cfg(test)]
 mod tests {
     use drift_rs::dispatch::gpu::launch_kernel;
-    use drift_rs::integrators::dopr54_cpu::*;
+    use drift_rs::integrators::dopr54_cpu::integrate_kepler;
     use drift_rs::state::InputState;
-    use libc::{self, c_double, c_int};
-    use libm::sqrt;
+    use libc::{c_double, c_int};
     use shared::{Config, Index, ModelComponent, Tolerance};
     #[cfg(feature = "galpy-kepler-reference")]
     use std::fs;
@@ -15,67 +14,6 @@ mod tests {
     use std::path::Path;
     #[cfg(feature = "galpy-kepler-reference")]
     use std::path::PathBuf;
-    use std::ptr;
-
-    extern "C" fn kepler_rhs(
-        _t: c_double,
-        q: *mut c_double,
-        a: *mut c_double,
-        _nargs: c_int,
-        _pot_args: *mut potentialArg,
-    ) {
-        unsafe {
-            let x = *q.add(0);
-            let y = *q.add(1);
-            let z = *q.add(2);
-            let vx = *q.add(3);
-            let vy = *q.add(4);
-            let vz = *q.add(5);
-
-            let (ax, ay, az) = reference_kepler_force(x, y, z);
-
-            *a.add(0) = vx;
-            *a.add(1) = vy;
-            *a.add(2) = vz;
-
-            *a.add(3) = ax;
-            *a.add(4) = ay;
-            *a.add(5) = az;
-        }
-    }
-
-    #[cfg(not(feature = "galpy-kepler-reference"))]
-    fn reference_kepler_force(
-        x: c_double,
-        y: c_double,
-        z: c_double,
-    ) -> (c_double, c_double, c_double) {
-        let r2 = x * x + y * y + z * z;
-        let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
-        let r = sqrt(r2_safe);
-        let inv_r3 = 1.0 / (r2_safe * r);
-
-        (-x * inv_r3, -y * inv_r3, -z * inv_r3)
-    }
-
-    #[cfg(feature = "galpy-kepler-reference")]
-    fn reference_kepler_force(
-        x: c_double,
-        y: c_double,
-        z: c_double,
-    ) -> (c_double, c_double, c_double) {
-        let r = sqrt(x * x + y * y);
-        let sinphi = y / r;
-        let cosphi = x / r;
-        let r2 = r * r + z * z;
-        let rforce = -r * r2.powf(-1.5);
-        let phitorque = 0.0;
-        let ax = cosphi * rforce - 1.0 / r * sinphi * phitorque;
-        let ay = sinphi * rforce + 1.0 / r * cosphi * phitorque;
-        let az = -z * r2.powf(-1.5);
-
-        (ax, ay, az)
-    }
 
     #[cfg(not(feature = "galpy-kepler-reference"))]
     fn expected_tail_bits() -> [u64; 6] {
@@ -314,37 +252,19 @@ mod tests {
     }
 
     fn integrate_cpu(init: &DumpData) -> Vec<c_double> {
-        let dim = init.dim;
-        let nt = init.nt;
-        let nargs = init.nargs;
-        assert_eq!(init.t.len(), nt as usize, "t length != nt");
-        assert_eq!(init.yo.len(), dim as usize, "yo length != dim");
+        assert_eq!(init.dim, 6, "reference state dimension != 6");
+        assert_eq!(init.t.len(), init.nt as usize, "t length != nt");
+        let initial_state = init.yo.as_slice().try_into().expect("yo length != dim");
 
-        let mut t = init.t.clone();
-        let mut yo = init.yo.clone();
-        let mut result = vec![0.0 as c_double; (nt as usize) * (dim as usize)];
-        let mut err: c_int = 0;
-        let pot_ptr: *mut potentialArg = ptr::null_mut();
-
-        unsafe {
-            dopr54(
-                Some(kepler_rhs),
-                dim,
-                yo.as_mut_ptr(),
-                nt,
-                init.dt_one,
-                t.as_mut_ptr(),
-                nargs,
-                pot_ptr,
-                init.rtol,
-                init.atol,
-                result.as_mut_ptr(),
-                &mut err,
-            );
-        }
-        assert_eq!(err, 0, "dopr54 returned err={err}");
-
-        result
+        integrate_kepler(
+            initial_state,
+            &init.t,
+            init.dt_one,
+            init.nargs,
+            init.rtol,
+            init.atol,
+        )
+        .unwrap_or_else(|error| panic!("dopr54 returned err={error}"))
     }
 
     fn integrate_gpu(init: &DumpData) -> Vec<c_double> {

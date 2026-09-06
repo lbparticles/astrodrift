@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use drift_rs::dispatch::gpu::launch_dop853_kernel;
-    use drift_rs::integrators::dop853_cpu::{dop853, potentialArg};
+    use drift_rs::integrators::dop853_cpu::integrate_kepler;
     use drift_rs::state::InputState;
     use libc::{c_double, c_int};
     use shared::{Config, Index, ModelComponent, Tolerance};
@@ -9,48 +9,9 @@ mod tests {
     use std::io::{self, Read};
     use std::io::{BufWriter, Write};
     use std::path::{Path, PathBuf};
-    use std::ptr;
 
     const GALPY_NATIVE_FIXTURE_DIR: &str = "tests/fixtures/dop853_galpy_native";
     const GALPY_NATIVE_REFERENCE: &str = "tests/fixtures/dop853_galpy_native/reference.fixture";
-
-    #[link(name = "m")]
-    unsafe extern "C" {
-        fn pow(x: c_double, y: c_double) -> c_double;
-        fn sqrt(x: c_double) -> c_double;
-    }
-
-    extern "C" fn galpy_kepler_rhs(
-        _t: c_double,
-        q: *mut c_double,
-        a: *mut c_double,
-        _nargs: c_int,
-        _potential_args: *mut potentialArg,
-    ) {
-        unsafe {
-            let x = *q.add(0);
-            let y = *q.add(1);
-            let z = *q.add(2);
-            let vx = *q.add(3);
-            let vy = *q.add(4);
-            let vz = *q.add(5);
-
-            *a.add(0) = vx;
-            *a.add(1) = vy;
-            *a.add(2) = vz;
-
-            let radius = sqrt(x * x + y * y);
-            let sin_phi = y / radius;
-            let cos_phi = x / radius;
-            let radius_squared = radius * radius + z * z;
-            let radial_force = -radius * pow(radius_squared, -1.5);
-            let phi_torque = 0.0;
-
-            *a.add(3) = cos_phi * radial_force - 1.0 / radius * sin_phi * phi_torque;
-            *a.add(4) = sin_phi * radial_force + 1.0 / radius * cos_phi * phi_torque;
-            *a.add(5) = -z * pow(radius_squared, -1.5);
-        }
-    }
 
     #[test]
     #[ignore = "requires ./scripts/generate_galpy_fixtures.py reference"]
@@ -167,38 +128,23 @@ mod tests {
     }
 
     fn integrate_cpu(dump: &DumpData) -> Vec<c_double> {
+        assert_eq!(dump.dim, 6, "reference state dimension != 6");
         assert_eq!(dump.t.len(), dump.nt as usize, "t length != nt");
-        assert_eq!(dump.y0.len(), dump.dim as usize, "y0 length != dim");
         assert_eq!(
             dump.expected_state_bits.len(),
             dump.nt as usize * dump.dim as usize,
             "native state length mismatch"
         );
+        let initial_state = dump.y0.as_slice().try_into().expect("y0 length != dim");
 
-        let mut t = dump.t.clone();
-        let mut y0 = dump.y0.clone();
-        let mut result = vec![0.0; dump.nt as usize * dump.dim as usize];
-        let mut err = 0;
-
-        unsafe {
-            dop853(
-                Some(galpy_kepler_rhs),
-                dump.dim,
-                y0.as_mut_ptr(),
-                dump.nt,
-                dump.dt_one,
-                t.as_mut_ptr(),
-                dump.nargs,
-                ptr::null_mut(),
-                dump.rtol,
-                dump.atol,
-                result.as_mut_ptr(),
-                &mut err,
-            );
-        }
-        assert_eq!(err, 0, "dop853 returned err={err}");
-
-        result
+        integrate_kepler(
+            initial_state,
+            &dump.t,
+            dump.dt_one,
+            dump.nargs,
+            dump.rtol,
+            dump.atol,
+        )
     }
 
     fn integrate_gpu(dump: &DumpData) -> Vec<c_double> {

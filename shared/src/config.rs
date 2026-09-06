@@ -1,6 +1,7 @@
 use core::f64::consts::PI;
 #[cfg(feature = "rust-cuda")]
 use cust_core::DeviceCopy;
+use libm::log;
 
 use crate::{Index, MIN_ATOL, MIN_RTOL, ModernFlags, Real};
 
@@ -92,24 +93,31 @@ mod tests {
         }
     }
 }
+/// Error tolerances in the logarithmic representation consumed by the
+/// galpy-compatible integrators.
 #[derive(Clone, Copy, Debug)]
 pub struct Tolerance {
     pub atol: Real,
     pub rtol: Real,
 }
+
+impl Tolerance {
+    pub fn from_linear(rtol: Real, atol: Real) -> Self {
+        Self {
+            atol: log(atol),
+            rtol: log(rtol),
+        }
+    }
+}
+
 impl Default for Tolerance {
     fn default() -> Self {
-        Self {
-            atol: MIN_ATOL,
-            rtol: MIN_RTOL,
-        }
+        Self::from_linear(MIN_RTOL, MIN_ATOL)
     }
 }
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum Engine {
-    // CPU is the default so that a bare Config works on every machine;
-    // GPU must be requested explicitly and fails visibly without a device.
     #[default]
     CPU,
     GPU,
@@ -124,8 +132,7 @@ pub enum Method {
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum Variant {
-    // Compatible is the default: it is the only variant with a working
-    // dispatch path today (see integrators::run_integration).
+    // This is currently the only implemented general-dispatch variant.
     #[default]
     Compatible,
     Modern,

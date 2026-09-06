@@ -3,7 +3,7 @@ use cust::memory::CopyDestination;
 use cust::prelude::{DeviceBuffer, Module, Stream, StreamFlags};
 use shared::Tolerance;
 
-use super::{GPUDispatchError, Kernel, grid_size};
+use super::{DispatchError, Kernel, grid_size};
 use crate::state::{InputState, OutputState};
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
@@ -14,7 +14,7 @@ pub(super) fn launch(
     times: &[f64],
     output_state: &mut OutputState,
     tolerance: Tolerance,
-) -> Result<(), GPUDispatchError> {
+) -> Result<(), DispatchError> {
     // Keep the CUDA context alive until all device work in this launch completes.
     let _context = cust::quick_init()?;
     let module = Module::from_ptx(PTX, &[])?;

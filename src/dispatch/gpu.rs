@@ -1,9 +1,6 @@
 use shared::{Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance};
-use std::io;
-#[cfg(feature = "cuda-oxide")]
-use std::path::PathBuf;
-use thiserror::Error;
 
+use crate::dispatch::{DispatchError, dispatch_stages, sample_times};
 use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
 
 #[cfg(feature = "cuda-oxide")]
@@ -77,48 +74,6 @@ pub fn gather_states_nested_extended(
     all
 }
 
-#[derive(Debug, Error)]
-pub enum GPUDispatchError {
-    #[cfg(feature = "rust-cuda")]
-    #[error("CUDA error: {0:?}")]
-    Cuda(#[from] cust::error::CudaError),
-
-    #[cfg(feature = "cuda-oxide")]
-    #[error("CUDA error: {0}")]
-    Cuda(#[from] cuda_core::DriverError),
-
-    #[cfg(feature = "cuda-oxide")]
-    #[error("embedded CUDA module error: {0}")]
-    EmbeddedModule(#[from] cuda_host::EmbeddedModuleError),
-
-    #[cfg(feature = "cuda-oxide")]
-    #[error("CUDA launch contract error: {0}")]
-    LaunchContract(#[from] cuda_core::LaunchContractError),
-
-    #[cfg(feature = "cuda-oxide")]
-    #[error("could not locate the binary containing the embedded CUDA module")]
-    ArtifactBinaryNotFound,
-
-    #[cfg(feature = "cuda-oxide")]
-    #[error("expected one embedded CUDA module '{name}' in {}, found {count}", path.display())]
-    ArtifactBundleCount {
-        path: PathBuf,
-        name: &'static str,
-        count: usize,
-    },
-
-    #[cfg(feature = "cuda-oxide")]
-    #[error("expected one cubin payload in embedded CUDA module '{name}' in {}, found {count}", path.display())]
-    ArtifactCubinCount {
-        path: PathBuf,
-        name: &'static str,
-        count: usize,
-    },
-
-    #[error("I/O error: {0}")]
-    IO(#[from] io::Error),
-}
-
 #[derive(Clone, Copy)]
 pub(super) enum Kernel {
     Dopr54,
@@ -132,7 +87,7 @@ pub fn launch_kernel(
     tolerance: Tolerance,
     linspace: Linspace,
     times: Option<Vec<Real>>,
-) -> Result<OutputState, GPUDispatchError> {
+) -> Result<OutputState, DispatchError> {
     launch_kernel_named(
         Kernel::Dopr54,
         model_component,
@@ -151,7 +106,7 @@ pub fn launch_dop853_kernel(
     tolerance: Tolerance,
     linspace: Linspace,
     times: Option<Vec<Real>>,
-) -> Result<OutputState, GPUDispatchError> {
+) -> Result<OutputState, DispatchError> {
     launch_kernel_named(
         Kernel::Dop853,
         model_component,
@@ -173,12 +128,8 @@ fn launch_kernel_named(
     tolerance: Tolerance,
     linspace: Linspace,
     times: Option<Vec<Real>>,
-) -> Result<OutputState, GPUDispatchError> {
-    let times: Vec<Real> = times.unwrap_or_else(|| {
-        (0..linspace.steps)
-            .map(|index| linspace.sample(index))
-            .collect()
-    });
+) -> Result<OutputState, DispatchError> {
+    let times = times.unwrap_or_else(|| sample_times(linspace));
 
     let mut output_state = OutputState::new_zeroed(times.len(), input_state.num_particles);
     backend::launch(kernel, input_state, &times, &mut output_state, tolerance)?;
@@ -190,33 +141,27 @@ pub fn gpu_dispatch(
     config: Config,
     model: Model,
     input_frame: InputFrame,
-) -> Result<OutputFrame, GPUDispatchError> {
-    let mut output_frame = OutputFrame(core::array::from_fn(|_| None));
-    for (stage, (model_component_opt, input_state_opt)) in
-        model.into_iter().zip(&input_frame).enumerate()
-    {
-        if let (Some(model_component), Some(input_state)) = (model_component_opt, input_state_opt) {
-            let output_state = match config.method {
-                Method::DOPR54 => launch_kernel(
-                    model_component,
-                    input_state,
-                    config.flags,
-                    config.settings.tolerance,
-                    config.settings.ts,
-                    None,
-                ),
-                Method::DOP853 => launch_dop853_kernel(
-                    model_component,
-                    input_state,
-                    config.flags,
-                    config.settings.tolerance,
-                    config.settings.ts,
-                    None,
-                ),
-            }?;
-            output_frame.0[stage] = Some(output_state);
-        }
-    }
-
-    Ok(output_frame)
+) -> Result<OutputFrame, DispatchError> {
+    dispatch_stages(
+        model,
+        input_frame,
+        |model_component, input_state| match config.method {
+            Method::DOPR54 => launch_kernel(
+                model_component,
+                input_state,
+                config.flags,
+                config.settings.tolerance,
+                config.settings.ts,
+                None,
+            ),
+            Method::DOP853 => launch_dop853_kernel(
+                model_component,
+                input_state,
+                config.flags,
+                config.settings.tolerance,
+                config.settings.ts,
+                None,
+            ),
+        },
+    )
 }
