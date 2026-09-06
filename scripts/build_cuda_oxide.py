@@ -23,14 +23,14 @@ OXIDE_ARGS = (
 # The temporary `cargo` symlink receives both cargo-oxide's prepared build and
 # Maturin's ordinary Cargo calls. Replace only the former.
 if Path(sys.argv[0]).name == "cargo":
-    cargo = os.environ["ASTRODRIFT_REAL_CARGO"]
+    cargo = os.environ["DRIFT_REAL_CARGO"]
     prepared = os.environ.get(FINGERPRINT_ENV)
-    inside_maturin = os.environ.get("ASTRODRIFT_MATURIN_ACTIVE")
+    inside_maturin = os.environ.get("DRIFT_MATURIN_ACTIVE")
     if prepared and not inside_maturin:
         environment = os.environ.copy()
-        environment.update(ASTRODRIFT_MATURIN_ACTIVE="1", CARGO=cargo)
-        maturin = environment["ASTRODRIFT_MATURIN"]
-        mode = environment["ASTRODRIFT_MATURIN_MODE"]
+        environment.update(DRIFT_MATURIN_ACTIVE="1", CARGO=cargo)
+        maturin = environment["DRIFT_MATURIN"]
+        mode = environment["DRIFT_MATURIN_MODE"]
         args = [maturin, MODES[mode], *sys.argv[2:]]
         if mode == "develop":
             args.append("--uv")
@@ -38,9 +38,9 @@ if Path(sys.argv[0]).name == "cargo":
             args.extend(
                 (
                     "--interpreter",
-                    environment["ASTRODRIFT_PYTHON"],
+                    environment["DRIFT_PYTHON"],
                     "--out",
-                    str(Path(environment["ASTRODRIFT_REPO_ROOT"]) / "dist"),
+                    str(Path(environment["DRIFT_REPO_ROOT"]) / "dist"),
                 )
             )
         os.execve(
@@ -76,17 +76,15 @@ if not python:
 if mode == "develop" and not project_python.is_file():
     raise SystemExit("error: project environment not found; run 'just sync'")
 
-with tempfile.TemporaryDirectory(
-    prefix="astrodrift-cargo-bridge-"
-) as directory:
+with tempfile.TemporaryDirectory(prefix="drift-cargo-bridge-") as directory:
     Path(directory, "cargo").symlink_to(Path(__file__).resolve())
     environment = os.environ.copy()
     environment.update(
-        ASTRODRIFT_REAL_CARGO=cargo,
-        ASTRODRIFT_MATURIN=maturin,
-        ASTRODRIFT_MATURIN_MODE=mode,
-        ASTRODRIFT_PYTHON=python,
-        ASTRODRIFT_REPO_ROOT=str(repo_root),
+        DRIFT_REAL_CARGO=cargo,
+        DRIFT_MATURIN=maturin,
+        DRIFT_MATURIN_MODE=mode,
+        DRIFT_PYTHON=python,
+        DRIFT_REPO_ROOT=str(repo_root),
         PATH=f"{directory}{os.pathsep}{environment['PATH']}",
         VIRTUAL_ENV=str(virtual_env),
     )

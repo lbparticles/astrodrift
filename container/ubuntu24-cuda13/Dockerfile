@@ -15,7 +15,7 @@ ENV CUDA_HOME=/usr/local/cuda \
     UV_PYTHON_INSTALL_DIR=/opt/uv/python \
     UV_TOOL_DIR=/opt/uv/tools \
     UV_TOOL_BIN_DIR=/usr/local/bin \
-    UV_PROJECT_ENVIRONMENT=/opt/astrodrift-venv \
+    UV_PROJECT_ENVIRONMENT=/opt/drift-venv \
     PATH=/home/ubuntu/.cargo/bin:/home/ubuntu/.local/bin:/usr/lib/llvm-21/bin:/usr/local/cuda/bin:${PATH} \
     TERM=xterm
 
@@ -133,10 +133,10 @@ RUN uv python install 3.13.15 \
     && uv tool install ruff@0.16.5 \
     && uv tool install ty@0.0.75
 
-WORKDIR /tmp/astrodrift-python
-RUN install -d -m 0777 /opt/astrodrift-venv
-RUN --mount=type=bind,source=uv.lock,target=/tmp/astrodrift-python/uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=/tmp/astrodrift-python/pyproject.toml \
+WORKDIR /tmp/drift-python
+RUN install -d -m 0777 /opt/drift-venv
+RUN --mount=type=bind,source=uv.lock,target=/tmp/drift-python/uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=/tmp/drift-python/pyproject.toml \
     umask 000 \
     && uv sync --locked --no-install-project
 

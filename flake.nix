@@ -1,4 +1,4 @@
-# Astrodrift CUDA development environment.
+# Drift CUDA development environment.
 #
 # This shell supplies the system dependencies for both the default cuda-oxide
 # backend and the optional Rust-CUDA reference backend. Enter it from the
@@ -21,7 +21,7 @@
 #
 # The first shell entry builds LLVM 7.1.0 from source. Nix caches that result.
 {
-  description = "Astrodrift CUDA development shell";
+  description = "Drift CUDA development shell";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -103,7 +103,7 @@
         in
         {
           default = pkgs.mkShell {
-            name = "astrodrift-cuda";
+            name = "drift-cuda";
 
             packages = with pkgs; [
               rustup
@@ -175,7 +175,7 @@
               export CARGO_HOME="''${CARGO_HOME:-$HOME/.cargo}"
               export PATH="${llvm21BinPath}:$CARGO_HOME/bin:$PATH"
 
-              if [ -z "''${ASTRODRIFT_QUIET:-}" ] && ! command -v cargo-oxide >/dev/null 2>&1; then
+              if [ -z "''${DRIFT_QUIET:-}" ] && ! command -v cargo-oxide >/dev/null 2>&1; then
                 echo "Installing cargo-oxide ${cudaOxideRev}..." >&2
                 cargo +nightly-2026-08-28 install \
                   --git https://github.com/NVlabs/cuda-oxide.git \
@@ -192,9 +192,9 @@
               export LD_LIBRARY_PATH="${nvjitlink}/lib:${cuda.cudatoolkit}/nvvm/lib64:/run/opengl-driver/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
               export LIBRARY_PATH="/run/opengl-driver/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
 
-              if [ -z "''${ASTRODRIFT_QUIET:-}" ] && [ -t 1 ]; then
+              if [ -z "''${DRIFT_QUIET:-}" ] && [ -t 1 ]; then
                 {
-                  echo "Astrodrift CUDA development shell:"
+                  echo "Drift CUDA development shell:"
                   echo "  cuda      : $(nvcc --version | tail -1 | awk '{print $NF}')"
                   echo "  llvm-7    : $(\"$LLVM_CONFIG\" --version) (targets: $(\"$LLVM_CONFIG\" --targets-built))"
                   echo "  llvm-21   : $(clang --version 2>/dev/null | head -1 || echo 'clang not on PATH')"

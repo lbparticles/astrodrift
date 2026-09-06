@@ -1,3 +1,3 @@
 #!/bin/bash
 
-apptainer build astrodrift.sif docker-daemon://$DOCKER_ID
+apptainer build drift.sif docker-daemon://$DOCKER_ID
