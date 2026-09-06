@@ -1,8 +1,25 @@
+from collections.abc import Callable
+
 import drift as dft
 import numpy as np
 import pytest
 
 INITIAL_STATE = np.zeros((1, 6), dtype=np.float64)
+
+
+@pytest.mark.parametrize(
+    ("factory", "args"),
+    (
+        (dft.Potential.kepler, ()),
+        (dft.Potential.plummer, ()),
+        (dft.Potential.plummer, (1.0,)),
+    ),
+)
+def test_potential_parameters_are_required(
+    factory: Callable[..., dft.Potential], args: tuple[float, ...]
+) -> None:
+    with pytest.raises(TypeError):
+        factory(*args)
 
 
 @pytest.mark.parametrize(
