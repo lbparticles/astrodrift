@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 INITIAL_STATE = np.zeros((1, 6), dtype=np.float64)
+MAX_MODEL_COMPONENTS = 11
 
 
 @pytest.mark.parametrize(
@@ -37,3 +38,32 @@ def test_supported_potentials_can_be_attached_to_particles(
 def test_unsupported_potential_cannot_be_attached_to_particles() -> None:
     with pytest.raises(NotImplementedError, match="only Kepler and Plummer"):
         dft.part_group(dft.Potential.bovy(), INITIAL_STATE)
+
+
+def test_container_creation_is_not_limited_by_process_lifetime() -> None:
+    potential = dft.Potential.kepler(1.0)
+
+    for _ in range(2 * MAX_MODEL_COMPONENTS):
+        dft.bg_feature(potential)
+
+
+def test_run_rejects_more_containers_than_one_model_can_hold() -> None:
+    potential = dft.Potential.kepler(1.0)
+    containers = [
+        dft.bg_feature(potential) for _ in range(MAX_MODEL_COMPONENTS + 1)
+    ]
+
+    with pytest.raises(ValueError, match="at most 11"):
+        dft.Config().run(*containers)
+
+    assert dft.Config().run(dft.bg_feature(potential)) == [None]
+
+
+def test_separate_configs_can_use_distinct_high_identity_containers() -> None:
+    potential = dft.Potential.kepler(1.0)
+
+    for _ in range(2):
+        background = dft.bg_feature(potential)
+        particles = dft.test_group(INITIAL_STATE)
+        config = dft.Config()
+        config.dependency(particles, background)
