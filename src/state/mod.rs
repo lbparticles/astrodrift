@@ -41,17 +41,17 @@ impl InputState {
         }
     }
 
-    pub fn from_py_array(istate: &PyReadonlyArrayDyn<Real>) -> Self {
+    pub fn from_validated_py_array(
+        istate: &PyReadonlyArrayDyn<Real>,
+        num_particles: Index,
+    ) -> Self {
         let mut data = vec![0.0; INPUT_LENGTH];
-
         let istate_array = istate.as_array();
-        let num_particles = istate_array.len() / INPUT_STATE_DIM;
+        debug_assert_eq!(istate_array.len(), num_particles * INPUT_STATE_DIM);
+        debug_assert!(istate_array.len() <= INPUT_LENGTH);
 
-        for (i, v) in istate_array.iter().copied().enumerate() {
-            if i >= INPUT_LENGTH {
-                break;
-            }
-            data[i] = v;
+        for (output, input) in data.iter_mut().zip(istate_array.iter()) {
+            *output = *input;
         }
 
         InputState {

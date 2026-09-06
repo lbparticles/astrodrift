@@ -3,7 +3,6 @@ from .selectors import Engine, Method, Variant
 import numpy as np
 import numpy.typing as npt
 from typing import (
-    Any,
     Sequence,
 )
 
@@ -57,10 +56,10 @@ class Config:
     def info(self) -> None: ...
 
 # Module-level functions
-def test_group(istate: "npt.NDArray[Any] | Sequence[float]") -> Container: ...
+def test_group(istate: npt.NDArray[np.float64]) -> Container: ...
 def part_group(
     potential: Potential,
-    istate: "npt.NDArray[Any] | Sequence[float]",
+    istate: npt.NDArray[np.float64],
 ) -> Container: ...
 def bg_feature(potential: Potential) -> Container: ...
 

@@ -39,7 +39,10 @@ fn validate_istate(istate: &PyReadonlyArrayDyn<Real>) -> PyResult<Index> {
     let view = istate.as_array();
     let shape = view.shape();
     let (particles, well_formed) = match shape.len() {
-        1 => (shape[0] / INPUT_STATE_DIM, shape[0] % INPUT_STATE_DIM == 0),
+        1 => (
+            shape[0] / INPUT_STATE_DIM,
+            shape[0].is_multiple_of(INPUT_STATE_DIM),
+        ),
         2 => (shape[0], shape[1] == INPUT_STATE_DIM),
         _ => (0, false),
     };
@@ -60,6 +63,11 @@ fn validate_istate(istate: &PyReadonlyArrayDyn<Real>) -> PyResult<Index> {
              at most {MAX_PARTICLES}; split the group into multiple containers"
         )));
     }
+    if view.iter().any(|value| !value.is_finite()) {
+        return Err(PyValueError::new_err(
+            "istate positions and velocities must be finite",
+        ));
+    }
     Ok(particles)
 }
 
@@ -69,8 +77,7 @@ fn initialize_container<'py>(
     recipe: Option<PyRecipe>,
 ) -> PyResult<Py<Container>> {
     let num_particles = validate_istate(&istate)?;
-    let state = InputState::from_py_array(&istate);
-    debug_assert_eq!(state.num_particles, num_particles);
+    let state = InputState::from_validated_py_array(&istate, num_particles);
 
     let container = Container {
         num_particles: Some(num_particles),

@@ -6,6 +6,7 @@ import pytest
 
 INITIAL_STATE = np.zeros((1, 6), dtype=np.float64)
 MAX_MODEL_COMPONENTS = 11
+MAX_PARTICLES = 1000
 
 
 @pytest.mark.parametrize(
@@ -33,6 +34,65 @@ def test_supported_potentials_can_be_attached_to_particles(
     container = dft.part_group(potential, INITIAL_STATE)
 
     assert isinstance(container, dft.Container)
+
+
+@pytest.mark.parametrize(
+    "state",
+    (
+        np.zeros((2, 6), dtype=np.float64),
+        np.zeros(12, dtype=np.float64),
+    ),
+)
+def test_initial_state_accepts_particle_records(state: np.ndarray) -> None:
+    assert dft.test_group(state).num_particles == 2
+
+
+@pytest.mark.parametrize(
+    "state",
+    (
+        np.zeros(7, dtype=np.float64),
+        np.zeros((2, 5), dtype=np.float64),
+        np.zeros((1, 2, 3), dtype=np.float64),
+    ),
+)
+def test_initial_state_rejects_partial_or_misdimensioned_records(
+    state: np.ndarray,
+) -> None:
+    with pytest.raises(ValueError, match=r"shape \(N, 6\)"):
+        dft.test_group(state)
+
+
+@pytest.mark.parametrize(
+    "state",
+    (
+        np.empty((0, 6), dtype=np.float64),
+        np.empty(0, dtype=np.float64),
+    ),
+)
+def test_initial_state_rejects_empty_particle_groups(state: np.ndarray) -> None:
+    with pytest.raises(ValueError, match="at least one particle"):
+        dft.test_group(state)
+
+
+def test_initial_state_enforces_particle_capacity() -> None:
+    assert (
+        dft.test_group(
+            np.zeros((MAX_PARTICLES, 6), dtype=np.float64)
+        ).num_particles
+        == MAX_PARTICLES
+    )
+
+    with pytest.raises(ValueError, match="at most 1000"):
+        dft.test_group(np.zeros((MAX_PARTICLES + 1, 6), dtype=np.float64))
+
+
+@pytest.mark.parametrize("value", (np.nan, np.inf, -np.inf))
+def test_initial_state_rejects_non_finite_values(value: float) -> None:
+    state = INITIAL_STATE.copy()
+    state[0, 0] = value
+
+    with pytest.raises(ValueError, match="must be finite"):
+        dft.test_group(state)
 
 
 def test_container_particle_counts_are_read_only() -> None:
