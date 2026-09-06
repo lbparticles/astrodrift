@@ -3,9 +3,7 @@ use crate::state::InputState;
 use numpy::PyReadonlyArrayDyn;
 use pyo3::exceptions::PyNotImplementedError;
 use pyo3::prelude::*;
-use shared::{
-    CustomKeplerRecipe, CustomPlummerRecipe, INPUT_STATE_DIM, Index, PotentialName, Real, Recipe,
-};
+use shared::{CustomKeplerRecipe, CustomPlummerRecipe, Index, PotentialName, Real, Recipe};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_IDENTITY: AtomicU64 = AtomicU64::new(0);
@@ -17,7 +15,7 @@ fn next_identity() -> u64 {
 #[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct Container {
-    /// Number of particles in this group (0 for background containers).
+    /// Number of particles in this group (`None` for background containers).
     #[pyo3(get)]
     pub num_particles: Option<Index>,
     pub recipe: Option<PyRecipe>,
@@ -31,13 +29,11 @@ fn initialize_container<'py>(
     istate: PyReadonlyArrayDyn<Real>,
     recipe: Option<PyRecipe>,
 ) -> PyResult<Py<Container>> {
-    // num_particles is a particle count, not an element count: istate holds
-    // INPUT_STATE_DIM (6) numbers per particle.
-    let n = istate.as_array().len() / INPUT_STATE_DIM;
     let state = InputState::from_py_array(&istate);
+    let num_particles = state.num_particles;
 
     let container = Container {
-        num_particles: Some(n),
+        num_particles: Some(num_particles),
         recipe,
         state: Some(state),
         identity: next_identity(),
