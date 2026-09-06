@@ -26,9 +26,6 @@
     "NVIDIA_DRIVER_CAPABILITIES": "all",
     "UV_PROJECT_ENVIRONMENT": "/opt/astrodrift-venv"
   },
-  "remoteEnv": {
-    "LD_LIBRARY_PATH": "/usr/local/cuda/nvvm/lib64:${containerEnv:LD_LIBRARY_PATH}"
-  },
   "customizations": {
     "vscode": {
       "extensions": [

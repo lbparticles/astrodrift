@@ -1,58 +1,96 @@
-# Astrodrift task runner.
-#
-# `just --list` shows every recipe. GPU/CUDA recipes assume the nix dev shell
-# (`nix develop`) or the devcontainer, which provide cargo-oxide, maturin, uv,
-# ruff, and the CUDA/LLVM toolchains.
-#
-# Lefthook runs `just lint` on every push and staged-file ruff checks on every
-# commit (see lefthook.yml). Run `just test` before opening a PR; it executes
-# the full sequence the old GitHub Actions workflow ran.
+# Drift development tasks. Run `just --list` to list the public recipes.
+
+fixture_args := "--ignored --test-threads=1 --nocapture"
+fixture_skips := "--skip tests::dopr54_gpu_matches_native_galpy_fixtures --skip tests::dop853_gpu_matches_native_galpy_dump --skip tests::dop853_gpu_matches_native_galpy_fixtures"
 
 default:
     @just --list
 
-# Sync the Python venv from uv.lock
+# Install the locked Python development dependencies without building drift.
 sync:
-    uv sync
+    uv sync --locked --no-install-project
 
-# Build the drift extension into the venv (cuda-oxide backend)
-build:
-    uv run maturin develop
+# Build an editable Python extension for oxide (default) or rust-cuda.
+develop backend="oxide": sync
+    just _develop-{{backend}}
 
-# Fast checks: formatting, lint, and types (no Rust compile).
-# This is the gate lefthook runs on push.
-lint:
-    ruff check .
-    ruff format --check .
-    uvx ty check
-    uvx basedpyright python tests
+_develop-oxide:
+    uv run --no-sync ./scripts/build_cuda_oxide.py develop
 
-# Compile the Rust test binaries without running them
-build-tests:
-    cargo oxide test --materialize-cubin -- --release --tests --no-run
+_develop-rust-cuda:
+    RUSTUP_TOOLCHAIN=nightly-2026-04-02 uv run --no-sync maturin develop \
+        --release --locked --no-default-features --features rust-cuda --uv
 
-# Ordinary Rust test suite (non-ignored, cuda-oxide backend)
-test-rust:
-    cargo oxide test --materialize-cubin -- --release --tests
+# Build the selected extension, run its Python smoke tests, and run ordinary Rust tests.
+test backend="oxide": sync
+    just _develop-{{backend}}
+    uv run --no-sync pytest tests
+    just _test-{{backend}}
 
-# Galpy fixture test suite (serial; run scripts/generate_galpy_fixtures.py first)
-test-rust-fixtures:
+_test-oxide:
+    cargo oxide test --materialize-cubin -- --release --locked --tests
+
+_test-rust-cuda:
+    cargo +nightly-2026-04-02 test --release --locked \
+        --no-default-features --features rust-cuda --tests
+
+# Run the passing galpy fixture suite for oxide (default) or rust-cuda.
+fixtures backend="oxide":
+    just _fixtures-{{backend}} passing
+
+# Run all galpy fixture tests, including the known exact device-math failures.
+diagnostics backend="oxide":
+    just _fixtures-{{backend}} all
+
+_fixtures-oxide mode:
     cargo oxide test --materialize-cubin -- \
-        --release --features galpy-kepler-reference --tests -- \
-        --ignored --test-threads=1 --nocapture \
-        --skip tests::dopr54_gpu_matches_native_galpy_fixtures \
-        --skip tests::dop853_gpu_matches_native_galpy_dump \
-        --skip tests::dop853_gpu_matches_native_galpy_fixtures
+        --release --locked --features galpy-kepler-reference --tests -- \
+        {{fixture_args}} {{ if mode == "passing" { fixture_skips } else { "" } }}
 
-# Python test suite
-test-py:
-    uv run pytest
+_fixtures-rust-cuda mode:
+    cargo +nightly-2026-04-02 test --release --locked \
+        --no-default-features --features rust-cuda,galpy-kepler-reference \
+        --tests -- {{fixture_args}} \
+        {{ if mode == "passing" { fixture_skips } else { "" } }}
 
-# Full pre-PR sequence: sync, build, python + rust tests, lint.
-# Equivalent to what the GitHub Actions workflow ran per PR.
-test: sync build test-py test-rust lint
+# Generate the complete pinned galpy fixture set under tests/fixtures.
+generate-fixtures:
+    ./scripts/generate_galpy_fixtures.py
 
-# Format Python sources and Rust sources
-fmt:
-    ruff format .
-    cargo fmt
+# Check everything (default) or only Python with `just lint python`.
+lint scope="all": sync
+    just _lint-{{scope}}
+
+_lint-python:
+    uv run --no-sync ruff check .
+    uv run --no-sync ruff format --check .
+    uv run --no-sync ty check python tests
+    uv run --no-sync basedpyright python tests
+    uv run --no-sync pyrefly check
+
+_lint-all: _lint-python
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+    cargo clippy --workspace --all-targets --locked \
+        --features galpy-kepler-reference -- -D warnings
+    cargo +nightly-2026-04-02 clippy --workspace --all-targets --locked \
+        --no-default-features --features rust-cuda -- \
+        -D warnings -A clippy::duplicated-attributes -A unused-attributes
+    cargo +nightly-2026-04-02 clippy --workspace --all-targets --locked \
+        --no-default-features --features rust-cuda,galpy-kepler-reference -- \
+        -D warnings -A clippy::duplicated-attributes -A unused-attributes
+
+# Alias for the complete lint gate.
+check: lint
+
+# Regenerate fixtures and run both backends, passing fixtures, and all linters.
+verify: generate-fixtures
+    just test oxide
+    just test rust-cuda
+    just fixtures oxide
+    just fixtures rust-cuda
+    just lint
+
+# Format Python and Rust sources.
+fmt: sync
+    uv run --no-sync ruff format .
+    cargo fmt --all

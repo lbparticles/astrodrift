@@ -1,29 +1,31 @@
-# Local git gates replacing the old GitHub Actions CI.
+# Local git hooks.
 #
 # pre-commit : fast, staged-file ruff checks only.
-# pre-push   : full `just lint` (ruff + ty + basedpyright) across the repo.
+# pre-push   : locked Python lint and type checks.
 #
 # Bypass with `LEFTHOOK=0 git push ...` or `git push --no-verify`; the
-# reviewer-side equivalent is running `just check` on a PR branch. Full
-# verification before opening a PR is `just test`.
+# same checks can be run directly with `just lint python`. For full verification
+# before opening a PR, use `just verify`.
 
 pre-commit:
   commands:
     ruff-format:
-      glob: "*.py"
+      glob: "*.{py,pyi}"
       run: ruff format --check {staged_files}
     ruff-lint:
-      glob: "*.py"
+      glob: "*.{py,pyi}"
       run: ruff check {staged_files}
 
 pre-push:
   commands:
     lint:
-      # Use the dev shell when pushing from outside `nix develop`, so the
-      # gate works from any shell.
+      # Enter the dev shell only when the local tools are unavailable.
       run: |
-        if command -v just >/dev/null 2>&1; then
-          just lint
+        if command -v just >/dev/null 2>&1 && command -v uv >/dev/null 2>&1; then
+          just lint python
+        elif command -v nix >/dev/null 2>&1; then
+          ASTRODRIFT_QUIET=1 nix develop -c just lint python
         else
-          ASTRODRIFT_QUIET=1 nix develop -c just lint
+          echo "pre-push checks require just and uv, or nix" >&2
+          exit 127
         fi

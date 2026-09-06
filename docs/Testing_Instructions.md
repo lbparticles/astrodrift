@@ -4,15 +4,21 @@ Run the commands below from the repository root.
 
 ## Just Recipes
 
-`just --list` shows the common commands. `just lint` runs formatting, lint, and type checks and is what lefthook runs on push; `just test` runs the full sequence the former GitHub Actions workflow executed per PR (sync, build, Python tests, Rust tests, lint). The raw commands are documented below.
+`just --list` shows the common commands. Recipes that accept a backend use `oxide` by default and also accept `rust-cuda`:
+
+```bash
+just develop
+just test
+just test rust-cuda
+just fixtures oxide
+just fixtures rust-cuda
+```
+
+`just lint python` runs Ruff, ty, basedpyright, and Pyrefly. `just lint` adds all four Rust Clippy configurations. `just verify` regenerates the galpy fixtures and runs the tests, passing fixtures, and linters for both backends. The underlying commands and environment requirements are documented below.
 
 ## Devcontainer
 
-The repository is mounted at `/workspaces/astrodrift` in the devcontainer. VS Code terminals receive the required NVVM loader path from the devcontainer configuration. When entering the container directly, set it before building either backend:
-
-```bash
-export LD_LIBRARY_PATH="/usr/local/cuda/nvvm/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-```
+The repository is mounted at `/workspaces/astrodrift` in the devcontainer. The image registers CUDA's NVVM library directory with the system loader, so both backends also work when entering the container directly rather than through VS Code.
 
 cuda-oxide is the default backend and uses the repository's `nightly-2026-08-28` toolchain. Install the `cargo-oxide` frontend from the mounted sibling checkout after creating the devcontainer:
 
@@ -106,8 +112,7 @@ cargo +nightly-2026-04-02 clippy \
     -D warnings -A clippy::duplicated-attributes -A unused-attributes
 ```
 
-The two Rust-CUDA allowances cover `cuda_builder` injecting `no_std` into the
-already-`no_std` shared crate. All other warnings remain errors.
+The two Rust-CUDA allowances cover `cuda_builder` injecting `no_std` into the already-`no_std` shared crate. All other warnings remain errors.
 
 ## Local cuda-oxide Development
 
@@ -119,14 +124,15 @@ cuda-device = { path = "../cuda-oxide/crates/cuda-device" }
 cuda-host = { path = "../cuda-oxide/crates/cuda-host" }
 ```
 
-Cargo will update the lockfile while the path override is active; do not commit that source change. Reinstall the frontend after changing `cargo-oxide` itself. Remove the override to return to Astrodrift's pinned cuda-oxide revision.
+Cargo will update the lockfile while the path override is active; do not commit that source change. Reinstall the frontend after changing `cargo-oxide` itself. Remove the override to return to drift's pinned cuda-oxide revision.
 
 ## Wheel Builds
 
-Build a cuda-oxide wheel with the temporary Maturin bridge:
+Build a cuda-oxide wheel with the temporary Maturin bridge. The dependency-only sync and `--no-sync` invocation prevent uv from rebuilding the project outside cargo-oxide's prepared environment:
 
 ```bash
-./scripts/build_cuda_oxide_wheel.py
+uv sync --locked --no-install-project
+uv run --no-sync ./scripts/build_cuda_oxide.py wheel
 ```
 
 The wheel is written to `dist/`. The bridge can be removed once cargo-oxide can run Maturin inside its prepared codegen environment.
@@ -134,8 +140,7 @@ The wheel is written to `dist/`. The bridge can be removed once cargo-oxide can 
 Rust-CUDA does not require the bridge:
 
 ```bash
-RUSTUP_TOOLCHAIN=nightly-2026-04-02 \
-maturin build \
+RUSTUP_TOOLCHAIN=nightly-2026-04-02 uv run --no-sync maturin build \
     --release \
     --locked \
     --no-default-features \
