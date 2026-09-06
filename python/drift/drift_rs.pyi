@@ -77,7 +77,10 @@ class Config:
         method: Method | None = ...,
         variant: Variant | None = ...,
         flags: Modern | None = ...,
-        ts: tuple[float, float, int] | Sequence[float] | None = ...,
+        ts: tuple[float, float, int]
+        | Sequence[float]
+        | npt.NDArray[np.float64]
+        | None = ...,
         tolerance: tuple[float, float] | float | None = ...,
     ) -> None: ...
     def run(self, *args: Container) -> list[npt.NDArray[np.float64] | None]: ...

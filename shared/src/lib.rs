@@ -25,6 +25,8 @@ pub const MAX_RECIPES: Index = MAX_MODEL_COMPONENTS;
 pub const MAX_CONTAINERS: Index = MAX_MODEL_COMPONENTS;
 pub const MAX_STATES: Index = MAX_MODEL_COMPONENTS;
 pub const MAX_PARTICLES: Index = 1000;
+// The reference kernels currently use fixed per-particle output storage.
+pub const MAX_OUTPUT_TIMES: Index = 1024;
 pub const MAX_ORDER: Index = 5000;
 pub const MIN_RTOL: Real = 1e-12;
 pub const MIN_ATOL: Real = 1e-12;
