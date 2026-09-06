@@ -324,7 +324,7 @@ impl PyConfig {
 // Python Module Declaration
 //
 #[pymodule]
-fn drift_rs(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+fn drift_rs(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PyConfig>()?;
     m.add_class::<PyRecipe>()?;
     m.add_class::<Container>()?;
