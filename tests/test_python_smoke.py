@@ -164,16 +164,16 @@ def test_gpu_trajectories_are_accurate_over_one_orbit(
         )
 
 
-def test_unimplemented_gpu_variant_is_rejected(model: SmokeModel) -> None:
-    with pytest.raises(NotImplementedError, match="Engine.GPU"):
-        _run_gpu(model, dft.Method.DOPR54, dft.Variant.Modern)
-
-
-def test_unimplemented_cpu_variant_is_rejected(model: SmokeModel) -> None:
-    sim = dft.Config(engine=dft.Engine.CPU, variant=dft.Variant.Modern)
+@pytest.mark.parametrize("engine", dft.Engine)
+@pytest.mark.parametrize("method", SUPPORTED_METHODS)
+def test_unimplemented_variant_is_rejected(
+    model: SmokeModel, engine: dft.Engine, method: dft.Method
+) -> None:
+    sim = dft.Config(engine=engine, method=method, variant=dft.Variant.Modern)
     sim.add(model.iso, model.gal)
 
-    with pytest.raises(NotImplementedError, match="Engine.CPU or Engine.GPU"):
+    message = rf"{engine.value} \+ {method.value} \+ Modern is not implemented"
+    with pytest.raises(NotImplementedError, match=message):
         sim.run()
 
 
