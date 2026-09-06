@@ -60,6 +60,8 @@ logging.getLogger("drift").setLevel(logging.INFO)
 
 Use `DEBUG` to include stage progress and detailed dispatch information.
 
+See [GPU Execution](docs/GPU_Execution.md) for the GPU stages and the scope of each timing record.
+
 # Contribution
 
 To install from source:

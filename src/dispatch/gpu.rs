@@ -1,3 +1,6 @@
+use std::time::Instant;
+
+use log::{debug, info};
 use shared::{Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance};
 
 use crate::dispatch::{DispatchError, dispatch_stages, sample_times};
@@ -14,6 +17,7 @@ use cuda_oxide as backend;
 use rust_cuda as backend;
 
 const BLOCK_SIZE: u32 = 128;
+const LOG_TARGET: &str = "drift::dispatch::gpu";
 
 fn grid_size(n: usize) -> (u32, u32) {
     let blocks = (n as u32).div_ceil(BLOCK_SIZE);
@@ -74,7 +78,7 @@ pub fn gather_states_nested_extended(
     all
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(super) enum Kernel {
     Dopr54,
     Dop853,
@@ -130,6 +134,13 @@ fn launch_kernel_named(
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, DispatchError> {
     let times = times.unwrap_or_else(|| sample_times(linspace));
+    let (grid, block) = grid_size(input_state.num_particles);
+    debug!(
+        target: LOG_TARGET,
+        "launching {kernel:?}: {} particles, grid={grid}, block={block}, {} output times",
+        input_state.num_particles,
+        times.len(),
+    );
 
     let mut output_state = OutputState::new_zeroed(times.len(), input_state.num_particles);
     backend::launch(kernel, input_state, &times, &mut output_state, tolerance)?;
@@ -142,10 +153,32 @@ pub fn gpu_dispatch(
     model: Model,
     input_frame: InputFrame,
 ) -> Result<OutputFrame, DispatchError> {
-    dispatch_stages(
-        model,
-        input_frame,
-        |model_component, input_state| match config.method {
+    let ts = config.settings.ts;
+    info!(
+        target: LOG_TARGET,
+        "GPU integration starting: method={:?}, {} output times over [{}, {}], rtol={:.2e}, atol={:.2e}",
+        config.method,
+        ts.steps,
+        ts.start,
+        ts.end,
+        config.settings.tolerance.rtol.exp(),
+        config.settings.tolerance.atol.exp(),
+    );
+
+    let started = Instant::now();
+    let mut stage = 0usize;
+    let mut total_particles = 0usize;
+    let output_frame = dispatch_stages(model, input_frame, |model_component, input_state| {
+        stage += 1;
+        let particle_count = input_state.num_particles;
+        total_particles += particle_count;
+        debug!(
+            target: LOG_TARGET,
+            "stage {stage}: dispatching {particle_count} particles to the GPU"
+        );
+
+        let stage_started = Instant::now();
+        let result = match config.method {
             Method::DOPR54 => launch_kernel(
                 model_component,
                 input_state,
@@ -162,6 +195,21 @@ pub fn gpu_dispatch(
                 config.settings.ts,
                 None,
             ),
-        },
-    )
+        };
+        if result.is_ok() {
+            debug!(
+                target: LOG_TARGET,
+                "stage {stage}: {particle_count} particles finished in {:.3?}",
+                stage_started.elapsed()
+            );
+        }
+        result
+    })?;
+
+    info!(
+        target: LOG_TARGET,
+        "GPU integration finished: {stage} stage(s), {total_particles} particle trajectories in {:.3?}",
+        started.elapsed()
+    );
+    Ok(output_frame)
 }

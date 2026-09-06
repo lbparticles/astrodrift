@@ -7,7 +7,12 @@ import drift as dft
 import numpy as np
 import pytest
 
-LOGGER_NAME = "drift.dispatch.cpu"
+CPU_LOGGER_NAME = "drift.dispatch.cpu"
+GPU_LOGGER_NAME = "drift.dispatch.gpu"
+GPU_BACKEND_LOGGERS = {
+    f"{GPU_LOGGER_NAME}.cuda_oxide",
+    f"{GPU_LOGGER_NAME}.rust_cuda",
+}
 N_PARTICLES = 50
 INITIAL_STATE = np.tile(
     np.array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=np.float64),
@@ -15,15 +20,15 @@ INITIAL_STATE = np.tile(
 )
 
 
-def _run_cpu() -> None:
-    _cpu_config().run()
-
-
-def _cpu_config() -> dft.Config:
+def _config(engine: dft.Engine) -> dft.Config:
     kepler = dft.Potential.kepler(1.0)
-    sim = dft.Config(engine=dft.Engine.CPU, ts=(0.0, 2.0 * np.pi, 16))
+    sim = dft.Config(engine=engine, ts=(0.0, 2.0 * np.pi, 16))
     sim.add(dft.test_particles(INITIAL_STATE), dft.background(kepler))
     return sim
+
+
+def _run(engine: dft.Engine) -> None:
+    _config(engine).run()
 
 
 @pytest.fixture(autouse=True)
@@ -42,10 +47,10 @@ def test_cpu_run_emits_info_records_on_the_drift_logger(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.INFO, logger="drift"):
-        _run_cpu()
+        _run(dft.Engine.CPU)
 
     records = [
-        record for record in caplog.records if record.name == LOGGER_NAME
+        record for record in caplog.records if record.name == CPU_LOGGER_NAME
     ]
     messages = [record.getMessage() for record in records]
     assert any(
@@ -57,16 +62,79 @@ def test_cpu_run_emits_info_records_on_the_drift_logger(
     assert all(record.filename == "cpu.rs" for record in records)
 
 
+def test_gpu_run_emits_info_records_on_the_drift_logger(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO, logger="drift"):
+        _run(dft.Engine.GPU)
+
+    records = [
+        record for record in caplog.records if record.name == GPU_LOGGER_NAME
+    ]
+    messages = [record.getMessage() for record in records]
+    assert any(
+        message.startswith("GPU integration starting") for message in messages
+    )
+    assert any(
+        message.startswith("GPU integration finished") for message in messages
+    )
+    assert all(record.levelno == logging.INFO for record in records)
+    assert all(record.filename == "gpu.rs" for record in records)
+
+
+def test_gpu_debug_records_include_dispatch_and_backend_phases(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.DEBUG, logger="drift"):
+        _run(dft.Engine.GPU)
+
+    dispatch_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == GPU_LOGGER_NAME
+    ]
+    assert any(
+        message.startswith("launching Dopr54") for message in dispatch_messages
+    )
+    assert any(
+        message.startswith("stage 1: dispatching")
+        for message in dispatch_messages
+    )
+    assert any(
+        message.startswith("stage 1: 50 particles finished")
+        for message in dispatch_messages
+    )
+
+    backend_records = [
+        record
+        for record in caplog.records
+        if record.name in GPU_BACKEND_LOGGERS
+    ]
+    assert len({record.name for record in backend_records}) == 1
+    backend_messages = [record.getMessage() for record in backend_records]
+    assert any(
+        "context initialized and kernel module loaded" in message
+        for message in backend_messages
+    )
+    assert any(
+        "bytes of host data to the device" in message
+        for message in backend_messages
+    )
+    assert any(
+        "result bytes to the host" in message for message in backend_messages
+    )
+
+
 def test_cpu_progress_is_ordered_and_rate_limited(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.DEBUG, logger="drift"):
-        _run_cpu()
+        _run(dft.Engine.CPU)
 
     messages = [
         record.getMessage()
         for record in caplog.records
-        if record.name == LOGGER_NAME
+        if record.name == CPU_LOGGER_NAME
     ]
     progress = [
         index
@@ -92,17 +160,17 @@ def test_standard_python_levels_can_be_reconfigured(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.DEBUG, logger="drift"):
-        _run_cpu()
+        _run(dft.Engine.CPU)
     assert any(
-        record.name == LOGGER_NAME and record.levelno == logging.DEBUG
+        record.name == CPU_LOGGER_NAME and record.levelno == logging.DEBUG
         for record in caplog.records
     )
 
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="drift"):
-        _run_cpu()
+        _run(dft.Engine.CPU)
     assert [
-        record for record in caplog.records if record.name == LOGGER_NAME
+        record for record in caplog.records if record.name == CPU_LOGGER_NAME
     ] == []
 
 
@@ -117,6 +185,6 @@ def test_broken_handler_does_not_abort_integration() -> None:
     logger.propagate = False
     logger.setLevel(logging.INFO)
 
-    trajectory, _ = _cpu_config().run()
+    trajectory, _ = _config(dft.Engine.CPU).run()
     assert trajectory is not None
     assert trajectory.shape == (16, N_PARTICLES, 6)
