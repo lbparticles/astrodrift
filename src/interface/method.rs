@@ -1,23 +1,26 @@
 use pyo3::prelude::*;
 
-/// Integration scheme.
-///
-/// Access members as attributes, e.g. ``Method.DOPR54``.
-#[pyclass(eq, eq_int, name = "Method")]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum PyMethod {
-    /// Dormand-Prince 5(4): the CUDA-accelerated fixed-step scheme.
-    #[default]
-    DOPR54,
-    /// Dormand-Prince 8(5) 3: high-order CPU scheme (dispatch pending).
-    DOP853,
+use super::selector::extract_value;
+
+#[derive(Default)]
+pub struct PyMethod(shared::Method);
+
+impl<'a, 'py> FromPyObject<'a, 'py> for PyMethod {
+    type Error = PyErr;
+
+    fn extract(object: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        match extract_value(object, "Method")?.as_str() {
+            "DOPR54" => Ok(Self(shared::Method::DOPR54)),
+            "DOP853" => Ok(Self(shared::Method::DOP853)),
+            _ => Err(pyo3::exceptions::PyValueError::new_err(
+                "invalid Method value",
+            )),
+        }
+    }
 }
 
 impl From<PyMethod> for shared::Method {
     fn from(value: PyMethod) -> Self {
-        match value {
-            PyMethod::DOPR54 => shared::Method::DOPR54,
-            PyMethod::DOP853 => shared::Method::DOP853,
-        }
+        value.0
     }
 }

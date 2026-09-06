@@ -10,20 +10,21 @@ mod engine;
 mod flag;
 mod method;
 mod recipe;
+mod selector;
 mod variant;
 
 use crate::integrators::run_integration;
 use crate::tree::{AdjacencyMatrix, IntegrationPlan};
 pub use container::Container;
-pub use engine::PyEngine;
+use engine::PyEngine;
 pub use flag::Modern;
-pub use method::PyMethod;
+use method::PyMethod;
 pub use recipe::PyRecipe;
 use shared::{
     Config, INPUT_STATE_DIM, Linspace, MAX_MODEL_COMPONENTS, MAX_OUTPUT_TIMES, MAX_STATES, Real,
     Tolerance,
 };
-pub use variant::PyVariant;
+use variant::PyVariant;
 
 // Python extraction and validation live here so shared::Linspace remains usable
 // by GPU code without PyO3 or NumPy dependencies.
@@ -328,9 +329,6 @@ impl PyConfig {
 //
 #[pymodule]
 fn drift_rs(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
-    m.add_class::<PyEngine>()?;
-    m.add_class::<PyMethod>()?;
-    m.add_class::<PyVariant>()?;
     m.add_class::<PyConfig>()?;
     m.add_class::<PyRecipe>()?;
     m.add_class::<Modern>()?;
