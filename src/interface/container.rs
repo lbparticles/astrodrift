@@ -35,14 +35,20 @@ pub struct Container {
 #[pymethods]
 impl Container {
     fn __repr__(&self) -> String {
-        let kind = match &self.recipe {
-            Some(recipe) => format!("potential={:?}", recipe.inner),
-            None => "test particles".to_string(),
-        };
-        format!(
-            "Container(identity={}, particles={:?}, {})",
-            self.identity, self.num_particles, kind
-        )
+        match (self.num_particles, self.recipe.as_ref()) {
+            (Some(num_particles), Some(potential)) => format!(
+                "Container(kind='particles', num_particles={num_particles}, potential={})",
+                potential.representation(),
+            ),
+            (Some(num_particles), None) => {
+                format!("Container(kind='test_particles', num_particles={num_particles})")
+            }
+            (None, Some(potential)) => format!(
+                "Container(kind='background', potential={})",
+                potential.representation(),
+            ),
+            (None, None) => "Container(kind='background', potential=None)".to_string(),
+        }
     }
 }
 

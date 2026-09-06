@@ -101,7 +101,7 @@ def test_empty_config_returns_no_results() -> None:
     assert dft.Config().run() == []
 
 
-def test_info_returns_a_bounded_summary_without_printing(
+def test_info_and_repr_return_a_bounded_summary_without_printing(
     model: SmokeModel, capsys: pytest.CaptureFixture[str]
 ) -> None:
     sim = dft.Config()
@@ -111,6 +111,7 @@ def test_info_returns_a_bounded_summary_without_printing(
     summary = sim.info()
 
     assert capsys.readouterr().out == ""
+    assert repr(sim) == summary
     assert summary.startswith("Config(engine=CPU, method=DOPR54")
     assert "containers=2" in summary
     assert "dependencies=1" in summary

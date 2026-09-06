@@ -37,6 +37,38 @@ def test_supported_potentials_can_be_attached_to_particles(
 
 
 @pytest.mark.parametrize(
+    ("potential", "expected"),
+    (
+        (dft.Potential.kepler(2.5), "Potential.kepler(amp=2.5)"),
+        (
+            dft.Potential.plummer(3.5, 0.25),
+            "Potential.plummer(amp=3.5, radius=0.25)",
+        ),
+        (dft.Potential.bovy(), "Potential.bovy()"),
+    ),
+)
+def test_potential_reprs_use_public_constructors(
+    potential: dft.Potential, expected: str
+) -> None:
+    assert repr(potential) == expected
+
+
+def test_container_reprs_describe_only_public_properties() -> None:
+    potential = dft.Potential.kepler(1.0)
+
+    assert repr(dft.background(potential)) == (
+        "Container(kind='background', potential=Potential.kepler(amp=1.0))"
+    )
+    assert repr(dft.test_particles(np.zeros((2, 6), dtype=np.float64))) == (
+        "Container(kind='test_particles', num_particles=2)"
+    )
+    assert repr(dft.particles(potential, INITIAL_STATE)) == (
+        "Container(kind='particles', num_particles=1, "
+        "potential=Potential.kepler(amp=1.0))"
+    )
+
+
+@pytest.mark.parametrize(
     "state",
     (
         np.zeros((2, 6), dtype=np.float64),
