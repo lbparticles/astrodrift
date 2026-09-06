@@ -1,0 +1,41 @@
+version: 2
+
+updates:
+  # Rust workspace: root crate plus the shared and kernels members.
+  # Cargo.lock is kept in sync from the root manifest.
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    # Advance the CUDA compiler stacks manually as coordinated snapshots.
+    ignore:
+      - dependency-name: "cuda-*"
+      - dependency-name: "cuda_*"
+      - dependency-name: "cust*"
+    groups:
+      cargo-patch:
+        update-types:
+          - "patch"
+
+  # Python dependencies resolved through uv (pyproject.toml / uv.lock).
+  - package-ecosystem: uv
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      uv-patch:
+        update-types:
+          - "patch"
+
+  # Pinned action versions in .github/workflows (checkout, setup-uv, ...).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
