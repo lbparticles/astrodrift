@@ -309,7 +309,7 @@ impl PyConfig {
         ts: Option<PyLinspace>,
         tolerance: Option<PyTolerance>,
     ) -> Self {
-        let thing = Self {
+        Self {
             inner: Config::new(
                 engine.unwrap_or_default().into(),
                 method.unwrap_or_default().into(),
@@ -320,8 +320,7 @@ impl PyConfig {
             ),
             dependencies: Vec::new(),
             containers: Vec::new(),
-        };
-        thing
+        }
     }
 
     /// Integrate the registered model.
