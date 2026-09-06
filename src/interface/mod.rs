@@ -19,12 +19,14 @@ pub use engine::PyEngine;
 pub use flag::Modern;
 pub use method::PyMethod;
 pub use recipe::PyRecipe;
-use shared::{Config, INPUT_STATE_DIM, Linspace, MAX_STATES, Tolerance};
+use shared::{Config, INPUT_STATE_DIM, Linspace, MAX_OUTPUT_TIMES, MAX_STATES, Real, Tolerance};
 pub use variant::PyVariant;
 
+// Python extraction and validation live here so shared::Linspace remains usable
+// by GPU code without PyO3 or NumPy dependencies.
 #[derive(Default, Clone, Debug)]
-pub struct BoundLinspace(pub Linspace);
-impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
+pub struct PyLinspace(pub Linspace);
+impl<'a, 'py> FromPyObject<'a, 'py> for PyLinspace {
     type Error = PyErr;
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         // --- Case 1: (start, end, num) tuple ---
@@ -37,36 +39,21 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
             let start: f64 = tup.get_item(0)?.extract()?;
             let end: f64 = tup.get_item(1)?.extract()?;
             let steps: usize = tup.get_item(2)?.extract()?;
-            return Ok(BoundLinspace(Linspace { start, end, steps }));
+            return Self::new(start, end, steps);
         }
 
         // --- Case 2: NumPy array ---
         if let Ok(arr) = obj.cast::<PyArray1<f64>>() {
-            let slice = unsafe { arr.as_slice_mut()? };
-            let n = slice.len();
-
-            if n < 2 {
-                return Err(PyValueError::new_err(
-                    "NumPy linspace must contain at least two points",
-                ));
-            }
-            Self::validate_uniform(slice)?;
-            let start = slice.first().copied().unwrap_or(0.0);
-            let end = slice.last().copied().unwrap_or(start);
-            let steps = n;
-            return Ok(BoundLinspace(Linspace { start, end, steps }));
+            let readonly = arr.try_readonly().map_err(|_| {
+                PyValueError::new_err("NumPy time array is already mutably borrowed")
+            })?;
+            let slice = readonly
+                .as_slice()
+                .map_err(|_| PyValueError::new_err("NumPy time arrays must be contiguous"))?;
+            return Self::from_times(slice);
         }
         if let Ok(seq) = obj.extract::<Vec<f64>>() {
-            if seq.len() < 2 {
-                return Err(PyValueError::new_err(
-                    "List must have at least two elements to form Linspace",
-                ));
-            }
-            Self::validate_uniform(&seq)?;
-            let start = seq[0];
-            let end = *seq.last().unwrap();
-            let steps = seq.len();
-            return Ok(BoundLinspace(Linspace { start, end, steps }));
+            return Self::from_times(&seq);
         }
 
         Err(PyValueError::new_err(
@@ -75,28 +62,71 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundLinspace {
     }
 }
 
-impl BoundLinspace {
-    /// The engine stores output times as (start, end, steps), so an array
-    /// argument is rebuilt as a uniform grid between its endpoints. A
-    /// non-uniform grid would silently diverge from the caller's array, so
-    /// it is rejected instead.
-    fn validate_uniform(times: &[Real]) -> PyResult<()> {
-        let step = times[1] - times[0];
-        let matches = |a: Real, b: Real| {
-            (a - b).abs() <= 1e-9 * (a.abs() + b.abs() + 1.0)
-        };
-        for pair in times.windows(2) {
-            if !matches(pair[1] - pair[0], step) {
+impl PyLinspace {
+    const GRID_ULP_TOLERANCE: Real = 8.0;
+
+    fn new(start: Real, end: Real, steps: usize) -> PyResult<Self> {
+        if !(2..=MAX_OUTPUT_TIMES).contains(&steps) {
+            return Err(PyValueError::new_err(format!(
+                "ts must contain between 2 and {MAX_OUTPUT_TIMES} output times"
+            )));
+        }
+        if !start.is_finite() || !end.is_finite() {
+            return Err(PyValueError::new_err("ts endpoints must be finite"));
+        }
+        let span = end - start;
+        if span == 0.0 || !span.is_finite() {
+            return Err(PyValueError::new_err(
+                "ts must span a non-zero finite interval",
+            ));
+        }
+
+        Ok(Self(Linspace { start, end, steps }))
+    }
+
+    // FIXME: Store and pass arbitrary requested times directly, then remove
+    // this temporary affine-grid restriction and reconstruction check.
+    fn from_times(times: &[Real]) -> PyResult<Self> {
+        if !(2..=MAX_OUTPUT_TIMES).contains(&times.len()) {
+            return Err(PyValueError::new_err(format!(
+                "ts must contain between 2 and {MAX_OUTPUT_TIMES} output times"
+            )));
+        }
+        if times.iter().any(|time| !time.is_finite()) {
+            return Err(PyValueError::new_err("all ts values must be finite"));
+        }
+
+        let grid = Self::new(times[0], times[times.len() - 1], times.len())?;
+        let increasing = grid.0.end > grid.0.start;
+        if times.windows(2).any(|pair| {
+            if increasing {
+                pair[1] <= pair[0]
+            } else {
+                pair[1] >= pair[0]
+            }
+        }) {
+            return Err(PyValueError::new_err(
+                "ts values must be strictly increasing or strictly decreasing",
+            ));
+        }
+
+        let step = (grid.0.end - grid.0.start) / ((grid.0.steps - 1) as Real);
+        for (index, &actual) in times.iter().enumerate() {
+            let expected = grid.0.sample(index);
+            let scale = actual
+                .abs()
+                .max(expected.abs())
+                .max(step.abs())
+                .max(Real::MIN_POSITIVE);
+            let tolerance = Self::GRID_ULP_TOLERANCE * Real::EPSILON * scale;
+            if (actual - expected).abs() > tolerance {
                 return Err(PyValueError::new_err(
-                    "ts arrays must be uniformly spaced: output times are stored \
-                     as (start, stop, num), so a non-uniform grid such as \
-                     np.logspace would be silently replaced by \
-                     np.linspace(ts[0], ts[-1], len(ts)). Pass (start, stop, num) \
-                     for uniform output times.",
+                    "ts values must be uniformly spaced; arbitrary output times are not yet supported",
                 ));
             }
         }
-        Ok(())
+
+        Ok(grid)
     }
 }
 
@@ -176,7 +206,7 @@ impl PyConfig {
         method: Option<PyMethod>,
         variant: Option<PyVariant>,
         flags: Option<Modern>,
-        ts: Option<BoundLinspace>,
+        ts: Option<PyLinspace>,
         tolerance: Option<BoundTolerance>,
     ) -> Self {
         let thing = Self {

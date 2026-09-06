@@ -60,6 +60,38 @@ impl Default for Linspace {
         }
     }
 }
+
+impl Linspace {
+    /// Returns one point from the inclusive grid represented by this value.
+    pub fn sample(&self, index: Index) -> Real {
+        debug_assert!(self.steps >= 2);
+        debug_assert!(index < self.steps);
+
+        if index == self.steps - 1 {
+            self.end
+        } else {
+            self.start + (self.end - self.start) * (index as Real) / ((self.steps - 1) as Real)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Linspace;
+
+    #[test]
+    fn linspace_includes_endpoints_in_either_direction() {
+        for (start, end, expected) in [(0.0, 1.0, [0.0, 0.5, 1.0]), (1.0, -1.0, [1.0, 0.0, -1.0])] {
+            let grid = Linspace {
+                start,
+                end,
+                steps: 3,
+            };
+
+            assert_eq!([grid.sample(0), grid.sample(1), grid.sample(2)], expected);
+        }
+    }
+}
 #[derive(Clone, Copy, Debug)]
 pub struct Tolerance {
     pub atol: Real,
