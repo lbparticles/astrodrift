@@ -10,23 +10,46 @@ pub struct PyRecipe {
     pub inner: shared::Recipe,
 }
 
-#[pymethods]
 impl PyRecipe {
-    fn __repr__(&self) -> String {
+    pub(crate) fn representation(&self) -> String {
         match &self.inner {
-            shared::Recipe::Kepler(p) => format!("Potential.kepler(amp={})", p.amp),
-            shared::Recipe::Plummer(p) => {
-                format!("Potential.plummer(amp={}, radius={})", p.amp, p.radius)
+            shared::Recipe::Kepler(recipe) => {
+                format!("Potential.kepler(amp={})", python_float(recipe.amp))
             }
-            shared::Recipe::CustomKepler(p) => {
-                format!("Potential.kepler(amp={}, custom=true)", p.amp)
+            shared::Recipe::CustomKepler(recipe) => {
+                format!("Potential.kepler(amp={})", python_float(recipe.amp))
             }
-            shared::Recipe::CustomPlummer(p) => format!(
-                "Potential.plummer(amp={}, radius={}, custom=true)",
-                p.amp, p.radius
+            shared::Recipe::Plummer(recipe) => format!(
+                "Potential.plummer(amp={}, radius={})",
+                python_float(recipe.amp),
+                python_float(recipe.radius),
+            ),
+            shared::Recipe::CustomPlummer(recipe) => format!(
+                "Potential.plummer(amp={}, radius={})",
+                python_float(recipe.amp),
+                python_float(recipe.radius),
             ),
             shared::Recipe::Bovy(_) => "Potential.bovy()".to_string(),
         }
+    }
+}
+
+fn python_float(value: shared::Real) -> String {
+    if value.is_nan() {
+        "float('nan')".to_string()
+    } else if value == shared::Real::INFINITY {
+        "float('inf')".to_string()
+    } else if value == shared::Real::NEG_INFINITY {
+        "float('-inf')".to_string()
+    } else {
+        format!("{value:?}")
+    }
+}
+
+#[pymethods]
+impl PyRecipe {
+    fn __repr__(&self) -> String {
+        self.representation()
     }
 
     /// Point-mass potential. Units follow the codebase convention (G = 1).

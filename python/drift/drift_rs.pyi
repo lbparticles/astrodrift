@@ -9,6 +9,7 @@ from typing import (
 class Potential:
     """A gravitational potential definition."""
 
+    def __repr__(self) -> str: ...
     @staticmethod
     def kepler(amp: float) -> Potential:
         """Point-mass potential (G = 1). ``amp`` is the total mass."""
@@ -31,6 +32,7 @@ class Recipe:
 class Container:
     """A group of particles or a background potential feature."""
 
+    def __repr__(self) -> str: ...
     @property
     def num_particles(self) -> int | None:
         """Particle count, or ``None`` for a background container."""
@@ -39,6 +41,7 @@ class Container:
 class Config:
     """Configuration and registered container graph for an integration."""
 
+    def __repr__(self) -> str: ...
     def __init__(
         self,
         engine: Engine | None = ...,
