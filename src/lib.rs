@@ -5,5 +5,5 @@ pub mod state;
 mod tree;
 
 pub use interface::Container;
-pub use interface::{PyConfig, PyEngine, PyMethod, PyRecipe, PyVariant};
+pub use interface::{PyConfig, PyRecipe};
 pub use tree::AdjacencyMatrix;

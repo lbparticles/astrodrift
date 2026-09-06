@@ -9,7 +9,7 @@ IntegrationResult = list[npt.NDArray[np.float64] | None]
 
 # At 100 timesteps this exceeds the legacy 11 * MAX_PARTICLES allocation.
 N_PARTICLES = 20
-SUPPORTED_METHODS = ("DOPR54", "DOP853")
+SUPPORTED_METHODS = (dft.Method.DOPR54, dft.Method.DOP853)
 GMC_INITIAL_STATE = np.tile(
     np.array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=np.float64),
     (N_PARTICLES, 1),
@@ -36,21 +36,21 @@ def _make_model() -> SmokeModel:
 
 def _run_gpu(
     model: SmokeModel,
-    method: str,
-    variant: str = "Compatible",
+    method: dft.Method,
+    variant: dft.Variant = dft.Variant.Compatible,
 ) -> IntegrationResult:
     sim = dft.Config(
-        engine=dft.Engine("GPU"),
-        method=dft.Method(method),
-        variant=dft.Variant(variant),
+        engine=dft.Engine.GPU,
+        method=method,
+        variant=variant,
     )
     sim.dependency(model.gmc, model.gal)
     sim.dependency(model.iso, model.gmc, model.gal)
     return sim.run(model.iso, model.gal, model.gmc)
 
 
-def _run_cpu(model: SmokeModel, method: str) -> IntegrationResult:
-    sim = dft.Config(engine=dft.Engine("CPU"), method=dft.Method(method))
+def _run_cpu(model: SmokeModel, method: dft.Method) -> IntegrationResult:
+    sim = dft.Config(engine=dft.Engine.CPU, method=method)
     sim.dependency(model.gmc, model.gal)
     sim.dependency(model.iso, model.gmc, model.gal)
     return sim.run(model.iso, model.gal, model.gmc)
@@ -71,18 +71,22 @@ def model() -> SmokeModel:
 
 
 @pytest.fixture(scope="module")
-def compatible_results(model: SmokeModel) -> dict[str, IntegrationResult]:
+def compatible_results(
+    model: SmokeModel,
+) -> dict[dft.Method, IntegrationResult]:
     return {method: _run_gpu(model, method) for method in SUPPORTED_METHODS}
 
 
 @pytest.fixture(scope="module")
-def cpu_compatible_results(model: SmokeModel) -> dict[str, IntegrationResult]:
+def cpu_compatible_results(
+    model: SmokeModel,
+) -> dict[dft.Method, IntegrationResult]:
     return {method: _run_cpu(model, method) for method in SUPPORTED_METHODS}
 
 
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
 def test_results_follow_caller_order(
-    compatible_results: dict[str, IntegrationResult], method: str
+    compatible_results: dict[dft.Method, IntegrationResult], method: dft.Method
 ) -> None:
     iso_trajectory, background_result, gmc_trajectory = compatible_results[
         method
@@ -95,7 +99,7 @@ def test_results_follow_caller_order(
 
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
 def test_particle_results_are_time_major_trajectories(
-    compatible_results: dict[str, IntegrationResult], method: str
+    compatible_results: dict[dft.Method, IntegrationResult], method: dft.Method
 ) -> None:
     for trajectory in _particle_trajectories(compatible_results[method]):
         assert trajectory.shape == (100, N_PARTICLES, 6)
@@ -104,7 +108,7 @@ def test_particle_results_are_time_major_trajectories(
 
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
 def test_gpu_trajectories_are_accurate_over_one_orbit(
-    compatible_results: dict[str, IntegrationResult], method: str
+    compatible_results: dict[dft.Method, IntegrationResult], method: dft.Method
 ) -> None:
     trajectories = _particle_trajectories(compatible_results[method])
     initial_states = (ISO_INITIAL_STATE, GMC_INITIAL_STATE)
@@ -121,11 +125,11 @@ def test_gpu_trajectories_are_accurate_over_one_orbit(
 
 def test_unimplemented_gpu_variant_is_rejected(model: SmokeModel) -> None:
     with pytest.raises(NotImplementedError, match="Engine.GPU"):
-        _run_gpu(model, "DOPR54", "Modern")
+        _run_gpu(model, dft.Method.DOPR54, dft.Variant.Modern)
 
 
 def test_unimplemented_cpu_variant_is_rejected(model: SmokeModel) -> None:
-    sim = dft.Config(engine=dft.Engine("CPU"), variant=dft.Variant("Modern"))
+    sim = dft.Config(engine=dft.Engine.CPU, variant=dft.Variant.Modern)
     sim.dependency(model.iso, model.gal)
 
     with pytest.raises(NotImplementedError, match="Engine.CPU or Engine.GPU"):
@@ -134,7 +138,8 @@ def test_unimplemented_cpu_variant_is_rejected(model: SmokeModel) -> None:
 
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
 def test_cpu_compatible_results_are_time_major_trajectories(
-    cpu_compatible_results: dict[str, IntegrationResult], method: str
+    cpu_compatible_results: dict[dft.Method, IntegrationResult],
+    method: dft.Method,
 ) -> None:
     trajectories = _particle_trajectories(cpu_compatible_results[method])
 
@@ -159,7 +164,7 @@ def test_default_config_uses_cpu_compatible_path(
     sim.dependency(model.iso, model.gmc, model.gal)
 
     default = _particle_trajectories(sim.run(model.iso, model.gal, model.gmc))
-    explicit = _particle_trajectories(cpu_compatible_results["DOPR54"])
+    explicit = _particle_trajectories(cpu_compatible_results[dft.Method.DOPR54])
     for default_trajectory, explicit_trajectory in zip(
         default, explicit, strict=True
     ):
@@ -178,7 +183,7 @@ def test_invalid_tolerances_are_rejected(
 
 
 def run_gpu_smoke() -> IntegrationResult:
-    return _run_gpu(_make_model(), "DOPR54")
+    return _run_gpu(_make_model(), dft.Method.DOPR54)
 
 
 if __name__ == "__main__":
