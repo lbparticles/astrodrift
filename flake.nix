@@ -118,6 +118,7 @@
               gcc
               cmake
               ninja
+              patchelf
               pkg-config
               git
               ripgrep

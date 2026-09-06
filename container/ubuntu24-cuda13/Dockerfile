@@ -29,6 +29,7 @@ RUN apt-get update \
         curl \
         git \
         gnupg \
+        just \
         libedit-dev \
         libffi-dev \
         libfontconfig-dev \
@@ -43,6 +44,7 @@ RUN apt-get update \
         libxml2-dev \
         libxrandr-dev \
         ninja-build \
+        patchelf \
         pkg-config \
         python3 \
         python3-dev \
@@ -65,6 +67,11 @@ RUN apt-get update \
         llvm-21-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Nested Rust-CUDA builds must be able to load libnvvm even when Cargo rewrites
+# LD_LIBRARY_PATH for a rustc target probe.
+RUN echo "/usr/local/cuda/nvvm/lib64" > /etc/ld.so.conf.d/cuda-nvvm.conf \
+    && ldconfig
 
 # Rust-CUDA emits the legacy LLVM 7 NVVM dialect. Install it separately so
 # cuda-oxide continues to use the LLVM 21 tools above.
