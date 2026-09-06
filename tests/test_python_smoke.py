@@ -101,6 +101,16 @@ def test_empty_config_returns_no_results() -> None:
     assert dft.Config().run() == []
 
 
+def test_config_construction_does_not_print(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    dft.Config()
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
 def test_info_and_repr_return_a_bounded_summary_without_printing(
     model: SmokeModel, capsys: pytest.CaptureFixture[str]
 ) -> None:
