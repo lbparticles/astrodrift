@@ -9,16 +9,16 @@ use shared::{MAX_MODEL_COMPONENTS, MAX_RECIPES, MAX_STATES, Model, Recipe};
 pub struct IntegrationPlan {
     pub model: Model,
     pub input_frame: InputFrame,
-    // Dispatch outputs are stage ordered; retain each source group label so
-    // the interface can restore the caller's container order.
-    pub container_label_by_stage: [Option<usize>; MAX_STATES],
+    // Dispatch outputs are stage ordered; retain stable identities so the
+    // interface can restore the requested container order.
+    pub container_identity_by_stage: [Option<u64>; MAX_STATES],
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AdjacencyMatrix(pub u128);
 
 impl AdjacencyMatrix {
-    const N: usize = 11;
+    const N: usize = MAX_MODEL_COMPONENTS;
     const VALID_MASK: u128 = (1u128 << (Self::N * Self::N)) - 1;
 
     #[inline]
@@ -43,238 +43,77 @@ impl AdjacencyMatrix {
         }
     }
 
-    #[inline]
-    pub fn row_bits(&self, r: usize) -> u128 {
-        debug_assert!(r < Self::N);
-        (self.0 >> (r * Self::N)) & ((1u128 << Self::N) - 1)
-    }
-
-    // Build a bitmask that has the j-th bit set for each row i where A[i, j] is 1.
-    // That is, the column as a vertical bitset aligned so that row i maps to bit i.
-    fn column_rows_mask(&self, col: usize) -> u16 {
-        // We only need 11 bits to represent which rows have a 1 in this column.
-        let mut mask: u16 = 0;
-        let mut r = 0;
-        // Unrolled-ish loop for clarity/perf; simple loop is fine too.
-        while r < Self::N {
-            let bit = ((self.0 >> Self::idx(r, col)) & 1) as u16;
-            mask |= bit << r;
-            r += 1;
-        }
-        mask
-    }
-
-    // Square over boolean semiring: C = A ⊙ A (OR/AND).
-    // For each (i, j): c[i,j] = any k s.t. A[i,k] & A[k,j].
-    pub fn mul_self(&self) -> AdjacencyMatrix {
-        // Precompute row bitsets: row[i] is 11-bit word for row i
-        let mut row_bits: [u16; 11] = [0; 11];
-        for (i, row) in row_bits.iter_mut().enumerate() {
-            *row = (self.row_bits(i) as u16) & 0x7FF;
-        }
-
-        // Precompute column-as-rows masks: col_rows[j] has bit k set iff A[k, j] == 1
-        let mut col_rows: [u16; 11] = [0; 11];
-        for (j, column) in col_rows.iter_mut().enumerate() {
-            *column = self.column_rows_mask(j); // 11-bit
-        }
-
-        // For each pair (i, j), c[i,j] = (row_bits[i] & col_rows[j]) != 0
-        let mut out: u128 = 0;
-        for (i, row) in row_bits.iter().enumerate() {
-            for (j, column) in col_rows.iter().enumerate() {
-                let has = (row & column) != 0;
-                if has {
-                    out |= 1u128 << Self::idx(i, j);
+    fn topological_order(&self, present: &[bool; Self::N]) -> Option<Vec<usize>> {
+        let mut indegree = [0; Self::N];
+        for source in 0..Self::N {
+            for dependent in 0..Self::N {
+                if present[source] && present[dependent] && self.get(source, dependent) {
+                    indegree[dependent] += 1;
                 }
             }
         }
 
-        AdjacencyMatrix(out & Self::VALID_MASK)
-    }
-
-    // Trace as a boolean: true if any diagonal entry is 1
-    pub fn trace_any(&self) -> bool {
-        for i in 0..Self::N {
-            if self.get(i, i) {
-                return true;
-            }
-        }
-        false
-    }
-
-    // Trace as a count of 1s on the diagonal (0..=11)
-    pub fn trace_count(&self) -> u32 {
-        let mut cnt = 0u32;
-        for i in 0..Self::N {
-            if self.get(i, i) {
-                cnt += 1;
-            }
-        }
-        cnt
-    }
-    pub fn last_true_column_power(&self, cap: usize) -> [u8; 11] {
-        // assert!(cap > 0 && cap <= 255, "cap must be in 1..=255");
-        let n = Self::N;
-        let mut last: [u8; 11] = [0; 11];
-
-        let mut power = *self; // A^1
-        for p in 1..=cap {
-            // For each column j, check if any entry in column j is true in A^p
-            for (j, last_power) in last.iter_mut().enumerate() {
-                // build a quick "any bit in column j" test
-                // We can scan rows, since n=11 this is cheap.
-                let mut any = false;
-                let mut r = 0;
-                while r < n {
-                    if power.get(r, j) {
-                        any = true;
-                        break;
-                    }
-                    r += 1;
-                }
-                if any {
-                    *last_power = p as u8;
-                }
-            }
-
-            if p == cap {
-                break;
-            }
-            power = power.mul_self(); // A^(p+1)
-        }
-
-        last
-    }
-
-    // Efficient diagonal-nonzero test
-    #[inline]
-    fn has_nonzero_trace(&self) -> bool {
-        // Diagonal bits are at indices i*11 + i, for i=0..10
-        // Just scan them; n=11 so this is cheap.
-        for i in 0..Self::N {
-            if self.get(i, i) {
-                return true;
-            }
-        }
-        false
-    }
-
-    // General boolean matrix multiply: C = A · B over OR/AND
-    pub fn mul_bool(&self, rhs: &AdjacencyMatrix) -> AdjacencyMatrix {
-        // Row i of A as 11-bit masks
-        let mut a_rows: [u16; 11] = [0; 11];
-        for (i, row) in a_rows.iter_mut().enumerate() {
-            *row = (self.row_bits(i) as u16) & 0x7FF;
-        }
-
-        // For B, precompute column-as-rows masks: for each column j, bit k is B[k, j]
-        let mut b_col_rows: [u16; 11] = [0; 11];
-        for (j, column) in b_col_rows.iter_mut().enumerate() {
-            *column = rhs.column_rows_mask(j);
-        }
-
-        let mut out: u128 = 0;
-        for (i, row) in a_rows.iter().enumerate() {
-            for (j, column) in b_col_rows.iter().enumerate() {
-                if (row & column) != 0 {
-                    out |= 1u128 << Self::idx(i, j);
+        let count = present.iter().filter(|&&is_present| is_present).count();
+        let mut emitted = [false; Self::N];
+        let mut order = Vec::with_capacity(count);
+        while order.len() < count {
+            let next = (0..Self::N)
+                .find(|&node| present[node] && !emitted[node] && indegree[node] == 0)?;
+            emitted[next] = true;
+            order.push(next);
+            for dependent in 0..Self::N {
+                if present[dependent] && self.get(next, dependent) {
+                    indegree[dependent] -= 1;
                 }
             }
         }
-        AdjacencyMatrix(out & Self::VALID_MASK)
+        Some(order)
     }
 
-    // Final acyclicity method using A, A^2, ..., A^N
-    pub fn is_acyclic_by_traces(&self) -> bool {
-        let n = Self::N;
-
-        // A^1
-        if self.has_nonzero_trace() {
-            return false;
-        }
-
-        // Iteratively multiply by A to get A^p for p = 2..=N
-        let mut power = *self; // A^1
-        for _p in 2..=n {
-            power = power.mul_bool(self); // A^(p) = A^(p-1) · A
-            if power.has_nonzero_trace() {
-                return false;
-            }
-        }
-        true
-    }
-    pub fn build(&self, containers: [Option<Container>; MAX_STATES]) -> IntegrationPlan {
-        let last = self.last_true_column_power(11);
-
-        let mut with_deps: Vec<usize> = (0..11).filter(|&v| last[v] >= 1).collect();
-        with_deps.sort_by_key(|&v| (last[v], v));
-
-        let mut zeros: Vec<usize> = (0..11).filter(|&v| last[v] == 0).collect();
-        zeros.sort(); // stable deterministic tail
-
-        let mut order: [usize; 11] = [0; 11];
-        let split = with_deps.len();
-        for (i, v) in with_deps.into_iter().enumerate() {
-            order[i] = v;
-        }
-        for (i, v) in zeros.into_iter().enumerate() {
-            order[split + i] = v;
-        }
-
+    pub fn build(&self, containers: [Option<Container>; MAX_STATES]) -> Option<IntegrationPlan> {
+        let present = std::array::from_fn(|index| containers[index].is_some());
+        let order = self.topological_order(&present)?;
         let mut meal_by_stage: [Option<[Option<Recipe>; MAX_RECIPES]>; MAX_MODEL_COMPONENTS] =
             std::array::from_fn(|_| None);
         let mut istates_by_stage: [Option<InputState>; MAX_STATES] = std::array::from_fn(|_| None);
-        let mut container_label_by_stage = [None; MAX_STATES];
-        let mut rank: [usize; 11] = [0; 11];
-        for (s, &v) in order.iter().enumerate() {
-            rank[v] = s;
-        }
+        let mut container_identity_by_stage = [None; MAX_STATES];
+        let mut stage = 0;
 
-        for v in 0..11 {
-            let has_incoming = (0..11).any(|k| self.get(k, v));
-            if !(last[v] >= 1 && has_incoming) {
+        for container_label in order {
+            let container = containers[container_label].as_ref()?;
+            let Some(input_state) = container.state.as_ref() else {
                 continue;
-            }
+            };
 
-            let s = rank[v];
-
-            // Input state from v
-            if let Some(c) = containers[v].as_ref() {
-                istates_by_stage[s] = c.state.clone();
-                if c.state.is_some() {
-                    container_label_by_stage[s] = Some(v);
-                }
-            }
-
-            // Build the per-upstream array for this stage
-            let mut arr_k: [Option<Recipe>; 11] = std::array::from_fn(|_| None);
-            for (k, recipe) in arr_k.iter_mut().enumerate() {
-                if self.get(k, v)
-                    && let Some(py_recipe) = containers[k]
+            let mut recipes: [Option<Recipe>; MAX_RECIPES] = std::array::from_fn(|_| None);
+            for (source_label, recipe) in recipes.iter_mut().enumerate() {
+                if self.get(source_label, container_label)
+                    && let Some(source_recipe) = containers[source_label]
                         .as_ref()
                         .and_then(|source| source.recipe.as_ref())
                 {
-                    *recipe = Some(py_recipe.inner);
+                    *recipe = Some(source_recipe.inner);
                 }
             }
-            if arr_k.iter().any(|x| x.is_some()) {
-                meal_by_stage[s] = Some(arr_k);
-            }
+
+            meal_by_stage[stage] = Some(recipes);
+            istates_by_stage[stage] = Some(input_state.clone());
+            container_identity_by_stage[stage] = Some(container.identity);
+            stage += 1;
         }
 
-        IntegrationPlan {
+        Some(IntegrationPlan {
             model: meal_by_stage.into(),
             input_frame: InputFrame(istates_by_stage),
-            container_label_by_stage,
-        }
+            container_identity_by_stage,
+        })
     }
 }
 
 impl fmt::Debug for AdjacencyMatrix {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Header with the raw value (trim to used 121 bits)
-        let raw = self.0 & ((1u128 << (Self::N * Self::N)) - 1);
+        let raw = self.0 & Self::VALID_MASK;
         // Print 11 rows, each with 11 columns as 0/1
         for r in 0..Self::N {
             for c in 0..Self::N {
@@ -304,30 +143,26 @@ mod tests {
     }
 
     #[test]
-    fn identity_square_is_identity() {
-        let mut id = AM(0);
-        for i in 0..11 {
-            id.set(i, i, true);
-        }
-        let sq = id.mul_self();
-        for i in 0..11 {
-            for j in 0..11 {
-                assert_eq!(sq.get(i, j), i == j);
-            }
-        }
-        assert!(sq.trace_any());
-        assert_eq!(sq.trace_count(), 11);
+    fn topological_order_places_dependencies_first() {
+        let mut a = AM(0);
+        a.set(2, 0, true);
+        a.set(0, 1, true);
+
+        let mut present = [false; 11];
+        present[..3].fill(true);
+
+        assert_eq!(a.topological_order(&present), Some(vec![2, 0, 1]));
     }
 
     #[test]
-    fn path_of_length_two() {
-        // 0 -> 1, 1 -> 2, so A^2 has 0 -> 2
+    fn topological_order_rejects_cycles() {
         let mut a = AM(0);
         a.set(0, 1, true);
-        a.set(1, 2, true);
-        let a2 = a.mul_self();
-        assert!(a2.get(0, 2));
-        assert!(!a2.get(0, 1));
-        assert!(!a2.get(1, 2));
+        a.set(1, 0, true);
+
+        let mut present = [false; 11];
+        present[..2].fill(true);
+
+        assert_eq!(a.topological_order(&present), None);
     }
 }
