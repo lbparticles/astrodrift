@@ -66,7 +66,6 @@ class Container:
     # Public attributes (as seen in your Rust class)
     recipe: Recipe | None
     state: Any | None  # shared::InputState – treat as opaque
-    dependency_label: int  # shared::Index
 
     def __init__(self, *args: Any, **kwargs: Any) -> None: ...
 

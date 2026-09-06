@@ -20,7 +20,7 @@ pub use flag::Modern;
 pub use method::PyMethod;
 pub use recipe::PyRecipe;
 use shared::{
-    Config, INPUT_STATE_DIM, Linspace, MAX_CONTAINERS, MAX_OUTPUT_TIMES, MAX_STATES, Real,
+    Config, INPUT_STATE_DIM, Linspace, MAX_MODEL_COMPONENTS, MAX_OUTPUT_TIMES, MAX_STATES, Real,
     Tolerance,
 };
 pub use variant::PyVariant;
@@ -164,39 +164,42 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BoundTolerance {
 #[derive(Debug)]
 pub struct PyConfig {
     inner: Config,
-    adjacency_matrix: AdjacencyMatrix,
-}
-
-struct PyIntegrationPlan {
-    inner: IntegrationPlan,
-    argument_position_by_label: [Option<usize>; MAX_STATES],
+    // Dependencies use stable identities until build_tree assigns dense labels.
+    dependencies: Vec<(u64, u64)>,
 }
 
 impl PyConfig {
-    fn build_tree(&self, containers: Vec<Container>) -> PyResult<PyIntegrationPlan> {
+    fn build_tree(&self, containers: Vec<Container>) -> PyResult<IntegrationPlan> {
         let mut containers_by_label = core::array::from_fn(|_| None);
-        let mut argument_position_by_label = [None; MAX_STATES];
+        let mut identity_by_label = [None; MAX_STATES];
 
-        for (position, container) in containers.into_iter().enumerate() {
-            let label = container.dependency_label;
-            if label >= MAX_STATES {
-                return Err(PyValueError::new_err(format!(
-                    "container label {label} exceeds the current model capacity of {MAX_STATES}"
-                )));
-            }
-            if containers_by_label[label].is_some() {
+        for (label, container) in containers.into_iter().enumerate() {
+            if identity_by_label.contains(&Some(container.identity)) {
                 return Err(PyValueError::new_err(
                     "run() received the same container more than once",
                 ));
             }
-            argument_position_by_label[label] = Some(position);
+            identity_by_label[label] = Some(container.identity);
             containers_by_label[label] = Some(container);
         }
 
-        Ok(PyIntegrationPlan {
-            inner: self.adjacency_matrix.build(containers_by_label),
-            argument_position_by_label,
-        })
+        let mut adjacency_matrix = AdjacencyMatrix(0);
+        for &(dependency, node) in &self.dependencies {
+            let dependency_label = identity_by_label
+                .iter()
+                .position(|&identity| identity == Some(dependency));
+            let node_label = identity_by_label
+                .iter()
+                .position(|&identity| identity == Some(node));
+            let (Some(dependency_label), Some(node_label)) = (dependency_label, node_label) else {
+                return Err(PyValueError::new_err(
+                    "every container used in dependency() must be passed to run()",
+                ));
+            };
+            adjacency_matrix.set(dependency_label, node_label, true);
+        }
+
+        Ok(adjacency_matrix.build(containers_by_label))
     }
 }
 
@@ -221,7 +224,7 @@ impl PyConfig {
                 ts.unwrap_or_default().0,
                 tolerance.unwrap_or_default().0,
             ),
-            adjacency_matrix: AdjacencyMatrix(0),
+            dependencies: Vec::new(),
         };
         println!("newpyconfig");
         thing
@@ -233,25 +236,21 @@ impl PyConfig {
         py: Python<'py>,
         args: &Bound<'py, PyTuple>,
     ) -> PyResult<Bound<'py, PyList>> {
+        if args.len() > MAX_MODEL_COMPONENTS {
+            return Err(PyValueError::new_err(format!(
+                "run() received {} containers but a model supports at most \
+                 {MAX_MODEL_COMPONENTS}",
+                args.len()
+            )));
+        }
         let mut containers = Vec::with_capacity(args.len().min(MAX_STATES));
         for i in 0..args.len() {
             let obj = args.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
             containers.push(container.clone());
         }
-        if containers.len() > MAX_CONTAINERS {
-            return Err(PyValueError::new_err(format!(
-                "run() received {} containers but a model supports at most \
-                 {MAX_CONTAINERS}",
-                containers.len()
-            )));
-        }
         let has_state: Vec<bool> = containers.iter().map(|c| c.state.is_some()).collect();
         let plan = self.build_tree(containers)?;
-        let PyIntegrationPlan {
-            inner: plan,
-            argument_position_by_label,
-        } = plan;
         let IntegrationPlan {
             model,
             input_frame,
@@ -270,7 +269,7 @@ impl PyConfig {
                     "integration returned an output without a source container",
                 ));
             };
-            let Some(position) = argument_position_by_label[container_label] else {
+            let Some(item) = items.get_mut(container_label) else {
                 return Err(PyRuntimeError::new_err(
                     "integration returned an output for an unknown container",
                 ));
@@ -279,7 +278,7 @@ impl PyConfig {
                 .reshape([state.num_times, state.num_particles, INPUT_STATE_DIM])?
                 .into_any()
                 .unbind();
-            items[position] = Some(array);
+            *item = Some(array);
         }
 
         let items = items
@@ -302,8 +301,7 @@ impl PyConfig {
         for i in 0..args.len() {
             let obj = args.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
-            self.adjacency_matrix
-                .set(container.dependency_label, node.dependency_label, true);
+            self.dependencies.push((container.identity, node.identity));
         }
         Ok(())
     }
