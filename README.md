@@ -18,38 +18,9 @@
 
 # USAGE
 
-Build containers, wire them into a simulation, and integrate:
-
-```python
-import drift as dft
-import numpy as np
-
-# Potentials
-kepler = dft.Potential.kepler(amp=1.0)
-
-# Containers: a background feature plus groups of particles
-bg = dft.background(kepler)
-gmc = dft.particles(kepler, np.array([[1.0, 0.0, 0.0, 0.0, 1.0, 0.0]]))
-iso = dft.test_particles(np.array([[-1.0, 0.0, 0.0, 0.0, -1.0, 0.0]]))
-
-# Simulation: backend, scheme, output times
-test_sim = dft.Config(
-    engine=dft.Engine.CPU,
-    method=dft.Method.DOPR54,
-    variant=dft.Variant.Compatible,
-    ts=(0.0, 100.0, 201),
-)
-test_sim.add(gmc, bg)        # gmc is integrated with bg as an input
-test_sim.add(iso, gmc, bg)
-
-# Integrate: one (N, 11) float64 array per particle group
-results = test_sim.run()
-```
-
-The initial state is an `(N, 6)` array (or flat `6N`) with phase-space
-columns `[x, y, z, vx, vy, vz]`. See the docstrings
-(`help(dft.Config)`) and
-[Testing_Instructions.md](docs/Testing_Instructions.md) for details.
+See the quickstart notebook
+[notebooks/quickstart.ipynb](notebooks/quickstart.ipynb): it builds
+containers, wires them into a simulation, and integrates.
 
 # DEPENDENCIES
 
