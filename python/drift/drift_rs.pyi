@@ -36,8 +36,7 @@ class Potential:
         """Plummer sphere. ``amp`` is the total mass, ``radius`` the scale radius."""
         ...
     @staticmethod
-    def bovy() -> Potential:
-        ...
+    def bovy() -> Potential: ...
 
     # inner not exposed
 

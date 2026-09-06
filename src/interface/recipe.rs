@@ -45,3 +45,28 @@ impl PyRecipe {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::PyRecipe;
+    use shared::Recipe;
+
+    #[test]
+    fn kepler_amplitude_is_preserved() {
+        let Recipe::Kepler(recipe) = PyRecipe::kepler(2.5).inner else {
+            panic!("expected a Kepler recipe");
+        };
+
+        assert_eq!(recipe.amp, 2.5);
+    }
+
+    #[test]
+    fn plummer_parameters_are_preserved() {
+        let Recipe::Plummer(recipe) = PyRecipe::plummer(3.5, 0.25).inner else {
+            panic!("expected a Plummer recipe");
+        };
+
+        assert_eq!(recipe.amp, 3.5);
+        assert_eq!(recipe.radius, 0.25);
+    }
+}
