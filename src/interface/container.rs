@@ -21,7 +21,7 @@ pub struct Container {
     pub recipe: Option<PyRecipe>,
     pub state: Option<InputState>,
     // Object identity is stable; bounded graph labels are assigned per run.
-    pub(super) identity: u64,
+    pub(crate) identity: u64,
 }
 
 fn initialize_container<'py>(
