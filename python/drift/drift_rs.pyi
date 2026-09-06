@@ -1,32 +1,12 @@
 from __future__ import annotations
 from enum import Flag
+from .selectors import Engine, Method, Variant
 import numpy as np
 import numpy.typing as npt
 from typing import (
     Any,
     Sequence,
 )
-
-# Public classes exposed by m.add_class
-# Note: These are runtime-provided by the compiled extension; this is a stub only.
-
-class Engine:
-    """Execution backend. Members: CPU (default), GPU."""
-
-    CPU: Engine
-    GPU: Engine
-
-class Method:
-    """Integration scheme. Members: DOPR54 (default), DOP853."""
-
-    DOPR54: Method
-    DOP853: Method
-
-class Variant:
-    """Kernel variant. Members: Compatible (default), Modern (experimental)."""
-
-    Compatible: Variant
-    Modern: Variant
 
 class Potential:
     @staticmethod
@@ -100,9 +80,6 @@ def bg_feature(potential: Potential) -> Container: ...
 # If you prefer to avoid importing numpy.typing at runtime, alias a Protocol
 
 __all__ = [
-    "Engine",
-    "Method",
-    "Variant",
     "Potential",
     "Recipe",
     "Modern",
