@@ -1,17 +1,18 @@
 use numpy::PyArray1;
 use numpy::PyArrayMethods;
-use pyo3::exceptions::{PyDeprecationWarning, PyNotImplementedError, PyRuntimeError, PyValueError};
+use pyo3::exceptions::{PyDeprecationWarning, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyList, PyModule, PyTuple};
 
 mod container;
 mod engine;
+mod error;
 mod method;
 mod recipe;
 mod selector;
 mod variant;
 
-use crate::integrators::{IntegrationError, run_integration};
+use crate::integrators::run_integration;
 use crate::tree::{AdjacencyMatrix, IntegrationPlan};
 pub use container::Container;
 use engine::PyEngine;
@@ -284,11 +285,11 @@ impl PyConfig {
             let node_label = identity_by_label
                 .iter()
                 .position(|&identity| identity == Some(node))
-                .ok_or_else(|| PyRuntimeError::new_err("registered node is missing"))?;
+                .ok_or_else(|| error::DriftError::new_err("registered node is missing"))?;
             let dependency_label = identity_by_label
                 .iter()
                 .position(|&identity| identity == Some(dependency))
-                .ok_or_else(|| PyRuntimeError::new_err("registered dependency is missing"))?;
+                .ok_or_else(|| error::DriftError::new_err("registered dependency is missing"))?;
             adjacency_matrix.set(dependency_label, node_label, true);
         }
 
@@ -328,6 +329,9 @@ impl PyConfig {
     /// Results follow first-registration order. Each state-bearing container
     /// produces a float64 array shaped ``(time, particle, 6)``; stationary
     /// background containers produce ``None``.
+    ///
+    /// Raises ``drift.IntegrationError`` when a supported backend cannot
+    /// complete the integration.
     #[pyo3(signature = ())]
     fn run<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
         self.validate_registered_model()?;
@@ -347,13 +351,7 @@ impl PyConfig {
             input_frame,
             container_identity_by_stage,
         } = plan;
-        let results =
-            run_integration(self.inner, model, input_frame).map_err(|error| match error {
-                error @ IntegrationError::UnsupportedConfiguration { .. } => {
-                    PyNotImplementedError::new_err(error.to_string())
-                }
-                IntegrationError::Dispatch(error) => PyRuntimeError::new_err(error.to_string()),
-            })?;
+        let results = run_integration(self.inner, model, input_frame)?;
 
         let mut items: Vec<Option<Py<PyAny>>> = core::iter::repeat_with(|| None)
             .take(has_state.len())
@@ -361,7 +359,7 @@ impl PyConfig {
         for (result, container_identity) in results.0.iter().zip(container_identity_by_stage) {
             let Some(state) = result else { continue };
             let Some(container_identity) = container_identity else {
-                return Err(PyRuntimeError::new_err(
+                return Err(error::DriftError::new_err(
                     "integration returned an output without a source container",
                 ));
             };
@@ -369,7 +367,7 @@ impl PyConfig {
                 .iter()
                 .position(|&identity| identity == container_identity)
             else {
-                return Err(PyRuntimeError::new_err(
+                return Err(error::DriftError::new_err(
                     "integration returned an output for an unknown container",
                 ));
             };
@@ -387,7 +385,7 @@ impl PyConfig {
             .map(|(item, has_state)| match (item, has_state) {
                 (Some(item), _) => Ok(item),
                 (None, false) => Ok(py.None()),
-                (None, true) => Err(PyRuntimeError::new_err(
+                (None, true) => Err(error::DriftError::new_err(
                     "integration returned no output for a particle container",
                 )),
             })
@@ -477,6 +475,7 @@ impl PyConfig {
 fn drift_rs(m: &Bound<PyModule>) -> PyResult<()> {
     crate::logging::init(m.py())?;
 
+    error::register(m)?;
     m.add_class::<PyConfig>()?;
     m.add_class::<PyRecipe>()?;
     m.add_class::<Container>()?;
