@@ -16,25 +16,36 @@
 
 ```uv add astrodrift```
 
-# USAGE
+# QUICKSTART
 
-See the quickstart notebook
-[notebooks/quickstart.ipynb](notebooks/quickstart.ipynb): it builds
-containers, wires them into a simulation, and integrates.
+```python
+import numpy as np
+import drift as dft
 
-# DEPENDENCIES
+potential = dft.Potential.kepler(amp=1.0)
+background = dft.background(potential)
+tracers = dft.test_particles(
+    np.array([[1.0, 0.0, 0.0, 0.0, 1.0, 0.0]], dtype=np.float64)
+)
 
+sim = dft.Config(ts=(0.0, 2.0 * np.pi, 101))
+sim.add(tracers, background)
+trajectory, _ = sim.run()
+
+print(trajectory[-1])
 ```
-  
-```
+
+See the [Getting Started notebook](notebooks/getting_started.ipynb) for a full guided example.
 
 # CONTRIBUTION
 
-To install from source 
+To install from source:
 
-```git clone https://github.com/lbparticles/astrodrift```
+```bash
+git clone https://github.com/lbparticles/astrodrift
+```
 
-Enter the nix dev shell (`nix develop`) or the provided devcontainer, which include CUDA, LLVM, Rust, Python, and the cuda-oxide tooling used for GPU development. Common commands are `just` recipes: `just lint` (what the pre-push hook runs) and `just test` (the full suite).
+Enter the Nix development shell (`nix develop`) or use the provided devcontainer. Environment setup and the available `just` recipes are documented below.
 
 # Testing Instructions
 
