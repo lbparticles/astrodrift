@@ -183,7 +183,7 @@ fn launch_kernel_named(
             .collect()
     });
 
-    let mut output_state = OutputState::new_zeroed();
+    let mut output_state = OutputState::new_zeroed(times.len(), input_state.num_particles);
     backend::launch(kernel, input_state, &times, &mut output_state, tolerance)?;
 
     Ok(output_state)
@@ -194,9 +194,12 @@ pub fn gpu_dispatch(
     model: Model,
     input_frame: InputFrame,
 ) -> Result<OutputFrame, GPUDispatchError> {
-    for (model_component_opt, input_state_opt) in model.into_iter().zip(&input_frame) {
+    let mut output_frame = OutputFrame(core::array::from_fn(|_| None));
+    for (stage, (model_component_opt, input_state_opt)) in
+        model.into_iter().zip(&input_frame).enumerate()
+    {
         if let (Some(model_component), Some(input_state)) = (model_component_opt, input_state_opt) {
-            match config.method {
+            let output_state = match config.method {
                 Method::DOPR54 => launch_kernel(
                     model_component,
                     input_state,
@@ -213,11 +216,10 @@ pub fn gpu_dispatch(
                     config.settings.ts,
                     None,
                 ),
-            }
-            .expect("GPU integration failed");
+            }?;
+            output_frame.0[stage] = Some(output_state);
         }
     }
 
-    // Temp
-    Ok(OutputFrame(core::array::from_fn(|_| None)))
+    Ok(output_frame)
 }

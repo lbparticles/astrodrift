@@ -1,7 +1,7 @@
 use core::slice;
 
 use numpy::PyReadonlyArrayDyn;
-use shared::{INPUT_LENGTH, INPUT_STATE_DIM, Index, MAX_STATES, OUTPUT_LENGTH, Real};
+use shared::{INPUT_LENGTH, INPUT_STATE_DIM, Index, MAX_STATES, Real};
 
 #[derive(Debug, Clone)]
 pub struct InputState {
@@ -14,6 +14,9 @@ pub struct InputFrame(pub [Option<InputState>; MAX_STATES]);
 
 #[derive(Debug, Clone)]
 pub struct OutputState {
+    pub num_times: Index,
+    pub num_particles: Index,
+    // Flattened time-major (time, particle, phase-space component) data.
     pub data: Vec<Real>,
 }
 
@@ -68,23 +71,12 @@ impl InputState {
 }
 
 impl OutputState {
-    pub fn new_zeroed() -> Self {
+    pub fn new_zeroed(num_times: Index, num_particles: Index) -> Self {
         OutputState {
-            data: vec![0.0; OUTPUT_LENGTH],
+            num_times,
+            num_particles,
+            data: vec![0.0; num_times * num_particles * INPUT_STATE_DIM],
         }
-    }
-
-    pub fn from_py_array(istate: &PyReadonlyArrayDyn<Real>) -> Self {
-        let mut data = vec![0.0; OUTPUT_LENGTH];
-
-        for (i, v) in istate.as_array().iter().copied().enumerate() {
-            if i >= OUTPUT_LENGTH {
-                break;
-            }
-            data[i] = v;
-        }
-
-        OutputState { data }
     }
 
     #[inline]
