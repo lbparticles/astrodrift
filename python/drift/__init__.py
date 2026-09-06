@@ -6,6 +6,8 @@ from .drift_rs import (  # pyright: ignore[reportMissingModuleSource]
     particles,
     test_particles,
     background,
+    DriftError,
+    IntegrationError,
 )
 
 __all__ = [
@@ -15,6 +17,8 @@ __all__ = [
     "Variant",
     "Method",
     "Engine",
+    "DriftError",
+    "IntegrationError",
     "particles",
     "test_particles",
     "background",

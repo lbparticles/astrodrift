@@ -68,6 +68,12 @@ class Config:
         """Return a bounded human-readable configuration summary."""
         ...
 
+class DriftError(RuntimeError):
+    """Base class for operational errors reported by drift."""
+
+class IntegrationError(DriftError):
+    """An integration could not be completed."""
+
 def test_particles(istate: npt.NDArray[np.float64]) -> Container:
     """Create particles without an attached potential."""
     ...
