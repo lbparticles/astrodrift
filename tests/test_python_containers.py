@@ -35,6 +35,18 @@ def test_supported_potentials_can_be_attached_to_particles(
     assert isinstance(container, dft.Container)
 
 
+def test_container_particle_counts_are_read_only() -> None:
+    particles = dft.test_group(np.zeros((2, 6), dtype=np.float64))
+    background = dft.bg_feature(dft.Potential.kepler(1.0))
+
+    assert particles.num_particles == 2
+    assert background.num_particles is None
+
+    for container in (particles, background):
+        with pytest.raises(AttributeError):
+            setattr(container, "num_particles", 3)
+
+
 def test_unsupported_potential_cannot_be_attached_to_particles() -> None:
     with pytest.raises(NotImplementedError, match="only Kepler and Plummer"):
         dft.part_group(dft.Potential.bovy(), INITIAL_STATE)

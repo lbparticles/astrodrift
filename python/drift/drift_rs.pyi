@@ -28,10 +28,10 @@ class Recipe:
 class Container:
     """A group of particles or a background potential feature."""
 
-    # Public read-only attributes
-    num_particles: int | None  # particle count; None for background containers
-    recipe: Recipe | None
-    state: Any | None  # shared::InputState – treat as opaque
+    @property
+    def num_particles(self) -> int | None:
+        """Particle count, or ``None`` for a background container."""
+        ...
 
 class Config:
     def __init__(
