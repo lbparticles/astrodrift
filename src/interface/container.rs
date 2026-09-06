@@ -1,8 +1,8 @@
 use crate::interface::recipe::PyRecipe;
 use crate::state::InputState;
 use numpy::PyReadonlyArrayDyn;
-use pyo3::prelude::*;
 use pyo3::exceptions::PyNotImplementedError;
+use pyo3::prelude::*;
 use shared::{
     CustomKeplerRecipe, CustomPlummerRecipe, Index, MAX_CONTAINERS, PotentialName, Real, Recipe,
 };
@@ -60,8 +60,8 @@ pub fn part_group<'py>(
     potential: PyRecipe,
     istate: PyReadonlyArrayDyn<Real>,
 ) -> PyResult<Py<Container>> {
-    let recipe: Option<PyRecipe> = match potential.inner {
-        Recipe::Kepler(p) => Some(PyRecipe {
+    let recipe = match potential.inner {
+        Recipe::Kepler(p) => PyRecipe {
             inner: Recipe::CustomKepler(CustomKeplerRecipe {
                 length: 0,
                 offset: 0,
@@ -70,8 +70,8 @@ pub fn part_group<'py>(
                 amp: p.amp,
                 name: PotentialName::CustomKepler,
             }),
-        }),
-        Recipe::Plummer(p) => Some(PyRecipe {
+        },
+        Recipe::Plummer(p) => PyRecipe {
             inner: Recipe::CustomPlummer(CustomPlummerRecipe {
                 length: 0,
                 offset: 0,
@@ -81,15 +81,14 @@ pub fn part_group<'py>(
                 radius: p.radius,
                 name: PotentialName::CustomPlummer,
             }),
-        }),
+        },
         _ => {
             return Err(PyNotImplementedError::new_err(
-                "this potential cannot be attached to particles yet: Bovy is \
-                 not implemented. Use Potential.kepler() or Potential.plummer().",
+                "only Kepler and Plummer potentials can currently be attached to particles",
             ));
         }
     };
-    initialize_container(py, istate, recipe)
+    initialize_container(py, istate, Some(recipe))
 }
 
 #[pyfunction]
