@@ -1,6 +1,6 @@
 use numpy::PyArray1;
 use numpy::PyArrayMethods;
-use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
+use pyo3::exceptions::{PyDeprecationWarning, PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyList, PyModule, PyTuple};
 
@@ -178,6 +178,52 @@ pub struct PyConfig {
 }
 
 impl PyConfig {
+    fn dependency_path_exists(&self, start: u64, target: u64) -> bool {
+        let mut pending = vec![start];
+        let mut visited = Vec::new();
+
+        while let Some(current) = pending.pop() {
+            if current == target {
+                return true;
+            }
+            if visited.contains(&current) {
+                continue;
+            }
+            visited.push(current);
+            pending.extend(
+                self.dependencies
+                    .iter()
+                    .filter_map(|&(source, dependent)| (source == current).then_some(dependent)),
+            );
+        }
+
+        false
+    }
+
+    fn add_dependencies(&mut self, node: u64, requires: Vec<u64>) -> PyResult<()> {
+        if requires.is_empty() {
+            return Err(PyValueError::new_err(
+                "add() requires at least one dependency",
+            ));
+        }
+        if requires
+            .iter()
+            .any(|&dependency| self.dependency_path_exists(node, dependency))
+        {
+            return Err(PyValueError::new_err(
+                "adding these dependencies would create a cycle",
+            ));
+        }
+
+        for dependency in requires {
+            let edge = (dependency, node);
+            if !self.dependencies.contains(&edge) {
+                self.dependencies.push(edge);
+            }
+        }
+        Ok(())
+    }
+
     fn build_tree(&self, containers: Vec<Container>) -> PyResult<IntegrationPlan> {
         let mut containers_by_label = core::array::from_fn(|_| None);
         let mut identity_by_label = [None; MAX_STATES];
@@ -202,7 +248,7 @@ impl PyConfig {
                 .position(|&identity| identity == Some(node));
             let (Some(dependency_label), Some(node_label)) = (dependency_label, node_label) else {
                 return Err(PyValueError::new_err(
-                    "every container used in dependency() must be passed to run()",
+                    "every container used in add() must be passed to run()",
                 ));
             };
             adjacency_matrix.set(dependency_label, node_label, true);
@@ -308,29 +354,31 @@ impl PyConfig {
     /// Register that ``node`` is integrated with ``requires`` as inputs.
     #[pyo3(signature = (node, *requires))]
     fn add<'py>(&mut self, node: Container, requires: &Bound<'py, PyTuple>) -> PyResult<()> {
+        let mut dependency_ids = Vec::with_capacity(requires.len());
         for i in 0..requires.len() {
             let obj = requires.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
-            self.dependencies.push((container.identity, node.identity));
+            if !dependency_ids.contains(&container.identity) {
+                dependency_ids.push(container.identity);
+            }
         }
-        Ok(())
+        self.add_dependencies(node.identity, dependency_ids)
     }
 
-    #[pyo3(signature = (node, *args))]
+    #[pyo3(signature = (node, *requires))]
     fn dependency<'py>(
         &mut self,
         py: Python<'py>,
         node: Container,
-        args: &Bound<'py, PyTuple>,
+        requires: &Bound<'py, PyTuple>,
     ) -> PyResult<()> {
-        py.import("warnings")?.call_method1(
-            "warn",
-            (
-                "Config.dependency() is deprecated, use Config.add(node, *requires)",
-                py.get_type::<pyo3::exceptions::PyDeprecationWarning>(),
-            ),
+        PyErr::warn(
+            py,
+            &py.get_type::<PyDeprecationWarning>(),
+            c"Config.dependency() is deprecated; use Config.add(node, *requires)",
+            1,
         )?;
-        self.add(node, args)
+        self.add(node, requires)
     }
     #[pyo3(signature = ())]
     fn info(&self) {
