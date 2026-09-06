@@ -19,7 +19,7 @@ pub fn run_integration(
         (Engine::CPU, Method::DOPR54, Variant::Modern) => {
             Ok(OutputFrame(core::array::from_fn(|_| None)))
         }
-        (Engine::GPU, Method::DOPR54, Variant::Compatible) => {
+        (Engine::GPU, Method::DOPR54 | Method::DOP853, Variant::Compatible) => {
             gpu_dispatch(config, model, input_frame)
         }
         (Engine::CPU, Method::DOPR54, Variant::Compatible) => {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from enum import Flag
+import numpy as np
 import numpy.typing as npt
 from typing import (
     Any,
@@ -77,9 +78,7 @@ class Config:
         ts: tuple[float, float, int] | Sequence[float] | None = ...,
         tolerance: tuple[float, float] | float | None = ...,
     ) -> None: ...
-
-    # run returns a list of arrays (each element is a Python list converted from Rust result)
-    def run(self, *args: Container) -> list[list[float]]: ...
+    def run(self, *args: Container) -> list[npt.NDArray[np.float64] | None]: ...
     def dependency(self, node: Container, *args: Container) -> None: ...
     def info(self) -> None: ...
 

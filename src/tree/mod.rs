@@ -6,6 +6,14 @@ use crate::{
 };
 use shared::{MAX_MODEL_COMPONENTS, MAX_RECIPES, MAX_STATES, Model, Recipe};
 
+pub struct IntegrationPlan {
+    pub model: Model,
+    pub input_frame: InputFrame,
+    // Dispatch outputs are stage ordered; retain each source group label so
+    // the interface can restore the caller's container order.
+    pub container_label_by_stage: [Option<usize>; MAX_STATES],
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct AdjacencyMatrix(pub u128);
 
@@ -196,7 +204,7 @@ impl AdjacencyMatrix {
         }
         true
     }
-    pub fn build(&self, containers: [Option<Container>; 11]) -> (Model, InputFrame) {
+    pub fn build(&self, containers: [Option<Container>; MAX_STATES]) -> IntegrationPlan {
         let last = self.last_true_column_power(11);
 
         let mut with_deps: Vec<usize> = (0..11).filter(|&v| last[v] >= 1).collect();
@@ -217,6 +225,7 @@ impl AdjacencyMatrix {
         let mut meal_by_stage: [Option<[Option<Recipe>; MAX_RECIPES]>; MAX_MODEL_COMPONENTS] =
             std::array::from_fn(|_| None);
         let mut istates_by_stage: [Option<InputState>; MAX_STATES] = std::array::from_fn(|_| None);
+        let mut container_label_by_stage = [None; MAX_STATES];
         let mut rank: [usize; 11] = [0; 11];
         for (s, &v) in order.iter().enumerate() {
             rank[v] = s;
@@ -233,6 +242,9 @@ impl AdjacencyMatrix {
             // Input state from v
             if let Some(c) = containers[v].as_ref() {
                 istates_by_stage[s] = c.state.clone();
+                if c.state.is_some() {
+                    container_label_by_stage[s] = Some(v);
+                }
             }
 
             // Build the per-upstream array for this stage
@@ -251,7 +263,11 @@ impl AdjacencyMatrix {
             }
         }
 
-        (meal_by_stage.into(), InputFrame(istates_by_stage))
+        IntegrationPlan {
+            model: meal_by_stage.into(),
+            input_frame: InputFrame(istates_by_stage),
+            container_label_by_stage,
+        }
     }
 }
 

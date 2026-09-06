@@ -13,14 +13,13 @@ mod recipe;
 mod variant;
 
 use crate::integrators::run_integration;
-use crate::state::InputFrame;
-use crate::tree::AdjacencyMatrix;
+use crate::tree::{AdjacencyMatrix, IntegrationPlan};
 pub use container::Container;
 pub use engine::PyEngine;
 pub use flag::Modern;
 pub use method::PyMethod;
 pub use recipe::PyRecipe;
-use shared::{Config, Linspace, Model, OUTPUT_STATE_DIM, Tolerance};
+use shared::{Config, INPUT_STATE_DIM, Linspace, MAX_STATES, Tolerance};
 pub use variant::PyVariant;
 
 #[derive(Default, Clone, Debug)]
@@ -109,15 +108,37 @@ pub struct PyConfig {
     adjacency_matrix: AdjacencyMatrix,
 }
 
-impl PyConfig {
-    fn build_tree(&self, containers: Vec<Container>) -> (Model, InputFrame) {
-        self.adjacency_matrix.build(containers_to_array(containers))
-    }
+struct PyIntegrationPlan {
+    inner: IntegrationPlan,
+    argument_position_by_label: [Option<usize>; MAX_STATES],
 }
 
-fn containers_to_array(containers: Vec<Container>) -> [Option<Container>; 11] {
-    let mut containers = containers.into_iter();
-    core::array::from_fn(|_| containers.next())
+impl PyConfig {
+    fn build_tree(&self, containers: Vec<Container>) -> PyResult<PyIntegrationPlan> {
+        let mut containers_by_label = core::array::from_fn(|_| None);
+        let mut argument_position_by_label = [None; MAX_STATES];
+
+        for (position, container) in containers.into_iter().enumerate() {
+            let label = container.dependency_label;
+            if label >= MAX_STATES {
+                return Err(PyValueError::new_err(format!(
+                    "container label {label} exceeds the current model capacity of {MAX_STATES}"
+                )));
+            }
+            if containers_by_label[label].is_some() {
+                return Err(PyValueError::new_err(
+                    "run() received the same container more than once",
+                ));
+            }
+            argument_position_by_label[label] = Some(position);
+            containers_by_label[label] = Some(container);
+        }
+
+        Ok(PyIntegrationPlan {
+            inner: self.adjacency_matrix.build(containers_by_label),
+            argument_position_by_label,
+        })
+    }
 }
 
 #[pymethods]
@@ -153,51 +174,60 @@ impl PyConfig {
         py: Python<'py>,
         args: &Bound<'py, PyTuple>,
     ) -> PyResult<Bound<'py, PyList>> {
-        let mut containers = Vec::with_capacity(args.len().min(11));
+        let mut containers = Vec::with_capacity(args.len().min(MAX_STATES));
         for i in 0..args.len() {
             let obj = args.get_item(i)?;
             let container: PyRef<Container> = obj.extract()?;
             containers.push(container.clone());
         }
-        let group_sizes: Vec<Option<usize>> = containers
-            .iter()
-            .map(|c| c.state.as_ref().map(|s| s.num_particles))
-            .collect();
-        let (meal, istates) = self.build_tree(containers);
-        let results = run_integration(self.inner, meal, istates)
+        let has_state: Vec<bool> = containers.iter().map(|c| c.state.is_some()).collect();
+        let plan = self.build_tree(containers)?;
+        let PyIntegrationPlan {
+            inner: plan,
+            argument_position_by_label,
+        } = plan;
+        let IntegrationPlan {
+            model,
+            input_frame,
+            container_label_by_stage,
+        } = plan;
+        let results = run_integration(self.inner, model, input_frame)
             .map_err(|error| PyRuntimeError::new_err(error.to_string()))?;
 
-        // Align outputs with the containers passed to run(). Background
-        // containers carry no particle state and contribute `None`; a group
-        // container that produced no output means the engine/method/variant
-        // combination is not implemented.
-        let mut items: Vec<Py<PyAny>> = Vec::with_capacity(group_sizes.len());
-        for (result, group_size) in results.0.iter().zip(group_sizes.iter()) {
-            let num_particles = match group_size {
-                Some(n) => *n,
-                None => {
-                    items.push(py.None());
-                    continue;
-                }
+        let mut items: Vec<Option<Py<PyAny>>> = core::iter::repeat_with(|| None)
+            .take(has_state.len())
+            .collect();
+        for (result, container_label) in results.0.iter().zip(container_label_by_stage) {
+            let Some(state) = result else { continue };
+            let Some(container_label) = container_label else {
+                return Err(PyRuntimeError::new_err(
+                    "integration returned an output without a source container",
+                ));
             };
-            let state = match result {
-                Some(state) => state,
-                None => {
-                    return Err(PyNotImplementedError::new_err(
-                        "run() produced no output for a particle group: this \
-                         engine/method/variant combination is not implemented \
-                         (implemented: Engine.CPU or Engine.GPU with \
-                         Method.DOPR54 and Variant.Compatible)",
-                    ));
-                }
+            let Some(position) = argument_position_by_label[container_label] else {
+                return Err(PyRuntimeError::new_err(
+                    "integration returned an output for an unknown container",
+                ));
             };
-            let values = &state.data[..num_particles * OUTPUT_STATE_DIM];
-            let array = PyArray1::from_slice(py, values)
-                .reshape([num_particles, OUTPUT_STATE_DIM])?
+            let array = PyArray1::from_slice(py, &state.data)
+                .reshape([state.num_times, state.num_particles, INPUT_STATE_DIM])?
                 .into_any()
                 .unbind();
-            items.push(array);
+            items[position] = Some(array);
         }
+
+        let items = items
+            .into_iter()
+            .zip(has_state)
+            .map(|(item, has_state)| match (item, has_state) {
+                (Some(item), _) => Ok(item),
+                (None, false) => Ok(py.None()),
+                (None, true) => Err(PyNotImplementedError::new_err(
+                    "run() produced no output for a particle group: the supported combinations \
+                     are Engine.GPU with Method.DOPR54 or Method.DOP853 and Variant.Compatible",
+                )),
+            })
+            .collect::<PyResult<Vec<_>>>()?;
         PyList::new(py, items)
     }
 
