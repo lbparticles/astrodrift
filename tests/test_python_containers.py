@@ -78,4 +78,4 @@ def test_separate_configs_can_use_distinct_high_identity_containers() -> None:
         background = dft.bg_feature(potential)
         particles = dft.test_group(INITIAL_STATE)
         config = dft.Config()
-        config.dependency(particles, background)
+        config.add(particles, background)

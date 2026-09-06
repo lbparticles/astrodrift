@@ -44,15 +44,15 @@ def _run_gpu(
         method=method,
         variant=variant,
     )
-    sim.dependency(model.gmc, model.gal)
-    sim.dependency(model.iso, model.gmc, model.gal)
+    sim.add(model.gmc, model.gal)
+    sim.add(model.iso, model.gmc, model.gal)
     return sim.run(model.iso, model.gal, model.gmc)
 
 
 def _run_cpu(model: SmokeModel, method: dft.Method) -> IntegrationResult:
     sim = dft.Config(engine=dft.Engine.CPU, method=method)
-    sim.dependency(model.gmc, model.gal)
-    sim.dependency(model.iso, model.gmc, model.gal)
+    sim.add(model.gmc, model.gal)
+    sim.add(model.iso, model.gmc, model.gal)
     return sim.run(model.iso, model.gal, model.gmc)
 
 
@@ -130,7 +130,7 @@ def test_unimplemented_gpu_variant_is_rejected(model: SmokeModel) -> None:
 
 def test_unimplemented_cpu_variant_is_rejected(model: SmokeModel) -> None:
     sim = dft.Config(engine=dft.Engine.CPU, variant=dft.Variant.Modern)
-    sim.dependency(model.iso, model.gal)
+    sim.add(model.iso, model.gal)
 
     with pytest.raises(NotImplementedError, match="Engine.CPU or Engine.GPU"):
         sim.run(model.iso, model.gal)
@@ -160,8 +160,8 @@ def test_default_config_uses_cpu_compatible_path(
     cpu_compatible_results: dict[str, IntegrationResult],
 ) -> None:
     sim = dft.Config()
-    sim.dependency(model.gmc, model.gal)
-    sim.dependency(model.iso, model.gmc, model.gal)
+    sim.add(model.gmc, model.gal)
+    sim.add(model.iso, model.gmc, model.gal)
 
     default = _particle_trajectories(sim.run(model.iso, model.gal, model.gmc))
     explicit = _particle_trajectories(cpu_compatible_results[dft.Method.DOPR54])
@@ -180,6 +180,36 @@ def test_invalid_tolerances_are_rejected(
 ) -> None:
     with pytest.raises(ValueError, match="finite and greater than zero"):
         dft.Config(tolerance=tolerance)
+
+
+def test_add_rejects_empty_and_cyclic_dependencies(model: SmokeModel) -> None:
+    sim = dft.Config()
+
+    with pytest.raises(ValueError, match="at least one dependency"):
+        sim.add(model.iso)
+    with pytest.raises(ValueError, match="cycle"):
+        sim.add(model.iso, model.iso)
+
+    sim.add(model.gmc, model.gal)
+    sim.add(model.iso, model.gmc)
+    with pytest.raises(ValueError, match="cycle"):
+        sim.add(model.gal, model.iso)
+
+    # Rejected edges leave the existing graph usable, and duplicates are harmless.
+    sim.add(model.gmc, model.gal, model.gal)
+    result = sim.run(model.iso, model.gmc, model.gal)
+    assert isinstance(result[0], np.ndarray)
+    assert isinstance(result[1], np.ndarray)
+    assert result[2] is None
+
+
+def test_dependency_alias_warns_at_the_call_site(model: SmokeModel) -> None:
+    sim = dft.Config()
+
+    with pytest.warns(DeprecationWarning, match="use Config.add") as warnings:
+        sim.dependency(model.gmc, model.gal)
+
+    assert warnings[0].filename == __file__
 
 
 def run_gpu_smoke() -> IntegrationResult:
