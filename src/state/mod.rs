@@ -1,4 +1,5 @@
 use core::slice;
+use std::sync::Arc;
 
 use numpy::PyReadonlyArrayDyn;
 use shared::{INPUT_LENGTH, INPUT_STATE_DIM, Index, MAX_STATES, Real};
@@ -10,7 +11,7 @@ pub struct InputState {
 }
 
 #[derive(Debug, Clone)]
-pub struct InputFrame(pub [Option<InputState>; MAX_STATES]);
+pub struct InputFrame(pub [Option<Arc<InputState>>; MAX_STATES]);
 
 #[derive(Debug, Clone)]
 pub struct OutputState {
@@ -24,8 +25,8 @@ pub struct OutputState {
 pub struct OutputFrame(pub [Option<OutputState>; MAX_STATES]);
 
 impl<'a> IntoIterator for &'a InputFrame {
-    type Item = &'a Option<InputState>;
-    type IntoIter = slice::Iter<'a, Option<InputState>>;
+    type Item = &'a Option<Arc<InputState>>;
+    type IntoIter = slice::Iter<'a, Option<Arc<InputState>>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
