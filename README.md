@@ -8,15 +8,25 @@
 #########  ###    ### ########### ###            ###           
 ```
 
-`drift` is a python library that provides numerical integrator for arbitrary potentials specialising in galatic dynamics simulations. The library provides both cpu compiled and gpu accelerated integration methods utilising a rust-based backend. The library focuses on large quantities of non-interacting test particle integrations particularly useful for tidal stream dynamics. The library also provides interpolation of moving potential increased performance.
+`drift` is a Python library for large-scale orbit integration in gravitational potentials, specialising in galactic dynamics simulations. Its Rust backend supports CPU and GPU execution for large ensembles of non-interacting test particles, including tidal-stream simulations with moving perturbers.
 
-# INSTALLATION
+## Status
+
+**Available now:**
+- CPU and GPU DOPR54 and DOP853 integration.
+- Python model construction with built-in Kepler, Plummer, and Bovy potential definitions and container dependency graphs.
+
+**In progress:**
+- Applying declared potentials through model-driven force dispatch.
+- Moving-potential interpolation and user-defined potentials.
+
+# Installation
 
 ```python -m pip install astrodrift```
 
 ```uv add astrodrift```
 
-# QUICKSTART
+# Quickstart
 
 ```python
 import numpy as np
@@ -30,14 +40,14 @@ tracers = dft.test_particles(
 
 sim = dft.Config(ts=(0.0, 2.0 * np.pi, 101))
 sim.add(tracers, background)
-trajectory, _ = sim.run()
+trajectory, _ = sim.run()  # A stationary background has no trajectory, so _ ignores its result.
 
 print(trajectory[-1])
 ```
 
 See the [Getting Started notebook](notebooks/getting_started.ipynb) for a full guided example.
 
-# CONTRIBUTION
+# Contribution
 
 To install from source:
 
@@ -51,7 +61,7 @@ Enter the Nix development shell (`nix develop`) or use the provided devcontainer
 
 See [Testing_Instructions.md](docs/Testing_Instructions.md)
 
-# CONTRIBUTORS
+# Contributors
 
 Jack Patterson
 Angus Forrest

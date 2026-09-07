@@ -12,7 +12,7 @@
   "workspaceFolder": "/workspaces",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/astrodrift,type=bind",
   "mounts": [
-    "source=/home/jack/src/cuda-oxide,target=/workspaces/cuda-oxide,type=bind"
+    "source=${localEnv:CUDA_OXIDE_PATH:../cuda-oxide},target=/workspaces/cuda-oxide,type=bind"
   ],
   "containerEnv": {
     "CUDA_HOME": "/usr/local/cuda",

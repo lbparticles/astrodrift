@@ -7,18 +7,25 @@ Run the commands below from the repository root.
 `just --list` shows the common commands. Recipes that accept a backend use `oxide` by default and also accept `rust-cuda`:
 
 ```bash
-just develop
-just test
-just test rust-cuda
-just fixtures oxide
-just fixtures rust-cuda
+just develop         # Build an editable extension.
+just test            # Build and run the Python and ordinary Rust tests.
+just test rust-cuda  # Run the same workflow with Rust-CUDA.
+just fixtures        # Run the passing galpy fixture tests.
+just diagnostics     # Include known host/device math differences.
+just lint python     # Run Python formatting, linting, and type checks.
+just lint            # Also run Clippy for all Rust configurations.
+just verify          # Regenerate fixtures and check both backends.
 ```
-
-`just lint python` runs Ruff, ty, basedpyright, and Pyrefly. `just lint` adds all four Rust Clippy configurations. `just verify` regenerates the galpy fixtures and runs the tests, passing fixtures, and linters for both backends. The underlying commands and environment requirements are documented below.
 
 ## Devcontainer
 
 The repository is mounted at `/workspaces/astrodrift` in the devcontainer. The image registers CUDA's NVVM library directory with the system loader, so both backends also work when entering the container directly rather than through VS Code.
+
+The devcontainer binds a sibling `cuda-oxide` checkout to `/workspaces/cuda-oxide`. It uses `../cuda-oxide` by default; if the checkout lives elsewhere, set `CUDA_OXIDE_PATH` on the host before opening the devcontainer:
+
+```bash
+export CUDA_OXIDE_PATH=/path/to/your/cuda-oxide
+```
 
 cuda-oxide is the default backend and uses the repository's `nightly-2026-08-28` toolchain. Install the `cargo-oxide` frontend from the mounted sibling checkout after creating the devcontainer:
 
