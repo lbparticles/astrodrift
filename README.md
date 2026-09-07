@@ -47,6 +47,19 @@ print(trajectory[-1])
 
 See the [Getting Started notebook](notebooks/getting_started.ipynb) for a full guided example.
 
+# Logging
+
+Backend diagnostics use Python's standard `logging` hierarchy under `drift`. Applications own the handlers and formatting:
+
+```python
+import logging
+
+logging.basicConfig()
+logging.getLogger("drift").setLevel(logging.INFO)
+```
+
+Use `DEBUG` to include stage progress and detailed dispatch information.
+
 # Contribution
 
 To install from source:

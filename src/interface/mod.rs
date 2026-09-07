@@ -475,6 +475,8 @@ impl PyConfig {
 /// Python package.
 #[pymodule]
 fn drift_rs(m: &Bound<PyModule>) -> PyResult<()> {
+    crate::logging::init(m.py())?;
+
     m.add_class::<PyConfig>()?;
     m.add_class::<PyRecipe>()?;
     m.add_class::<Container>()?;
