@@ -67,6 +67,32 @@ We ship ~MBs of PTX + a driver-API extension — none of the `nvidia-*` machiner
 applies to us, and we cannot conflict with torch's bundled stack (big win; keep the
 runtime free of `libcudart`/`libcudnn` dependencies).
 
+## Build toolchain matrix (compiler / LLVM / CUDA toolkit)
+
+These define what we build **against** — none of it is a runtime requirement of
+the wheel (the artifact embeds PTX and dlopens `libcuda.so.1`). Sources of
+truth: `rust-toolchain.toml`, `flake.nix`, `container/ubuntu24-cuda13/Dockerfile`,
+`kernels.target`, `build.rs`.
+
+| Component | `cuda-oxide` backend (default — this is what wheels ship) | `rust-cuda` backend (dev/tests only) |
+|---|---|---|
+| Rust | `nightly-2026-08-28` (`rust-toolchain.toml`), + `rust-src`, `rustc-dev`, `llvm-tools` | `nightly-2026-04-02` (required by `rustc_codegen_nvvm`), same components |
+| LLVM tools | LLVM/Clang/LLD **21.x** (`llc`, `llvm-config`, `libclang` for bindgen) | same |
+| PTX codegen | **LLVM 7.1.0** built from source with the NVPTX target (legacy NVVM dialect; `llvm-config-7`) | **libnvvm from CUDA 13.0** (`rustc_codegen_nvvm`) |
+| CUDA toolkit (build time) | 13.0 (`cuda.h` via bindgen/cutile, driver stubs) | 13.0 |
+| Host C/C++ compiler | any (only used to compile LLVM 7 from source) | n/a |
+| Emitted kernel artifact | PTX, `compute_80` (`.so` embeds `kernels.ptx`; cubin materialization is test-only) | PTX, `compute_80` via NVVM |
+
+Compatibility consequence: the shipped PTX is LLVM-7-era (PTX ISA ≈ 6.x), which
+the r580+ driver JIT accepts unmodified — the toolchain pins affect
+**reproducibility of the build**, not the supported-driver range. Changing the
+Rust pin or the LLVM 21 minor does not change the compat matrix; changing
+`kernels.target` / `NvvmArch::Compute80`, or the LLVM 7 NVPTX basis, does.
+
+Wheel-policy mapping of the above: exactly **one artifact kind** ships —
+`astrodrift-<ver>-cp313-abi3-manylinux_2_28_x86_64.whl`, built by `just wheel`
+from the pins in this table. sdist is non-goal (see checklist #12).
+
 ## Implementation (validated on this toolchain)
 
 Each matrix axis maps to a concrete build knob; all verified by building
