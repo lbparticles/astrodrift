@@ -31,7 +31,7 @@
 #![allow(clippy::excessive_precision)]
 
 use approx::{assert_abs_diff_eq, assert_relative_eq};
-use rand::Rng;
+use rand::RngExt;
 use rstest::rstest;
 
 use shared::PlummerPotential;
