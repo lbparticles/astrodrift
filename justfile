@@ -21,6 +21,31 @@ _develop-rust-cuda:
     RUSTUP_TOOLCHAIN=nightly-2026-04-02 uv run --no-sync maturin develop \
         --release --locked --no-default-features --features rust-cuda --uv
 
+# Build a release wheel into dist/ with the project wheel policy:
+#   cp313-abi3 (set in pyproject) + manylinux_2_28 tag, audited by maturin.
+#
+# backend=zig (default, works on any host with glibc > 2.28 incl. nix):
+#   zig relinks against the glibc 2.28 symbol set; needs `ziglang` in the
+#   venv (`uv pip install ziglang`). On nix hosts bindgen also needs:
+#     BINDGEN_EXTRA_CLANG_ARGS="-I<glibc-dev>/include -I<clang-lib>/clang/<v>/include"
+# backend=native: build inside a glibc <= 2.28 environment instead
+#   (e.g. quay.io/pypa/manylinux_2_28_x86_64 with the oxide toolchain).
+#
+# _PYTHON_HOST_PLATFORM is unset because a stale value silently downgrades
+# the wheel tag to linux_x86_64 (which PyPI rejects).
+wheel backend="zig": sync
+    just _wheel-{{backend}}
+
+_wheel-zig:
+    env -u _PYTHON_HOST_PLATFORM \
+        MATURIN_EXTRA="--zig --compatibility manylinux_2_28 --auditwheel check" \
+        uv run --no-sync ./scripts/build_cuda_oxide.py wheel
+
+_wheel-native:
+    env -u _PYTHON_HOST_PLATFORM \
+        MATURIN_EXTRA="--compatibility manylinux_2_28 --auditwheel check" \
+        uv run --no-sync ./scripts/build_cuda_oxide.py wheel
+
 # Build the selected extension, run its Python smoke tests, and run ordinary Rust tests.
 test backend="oxide": sync
     just _develop-{{backend}}

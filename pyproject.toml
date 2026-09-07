@@ -7,8 +7,10 @@ name = "astrodrift"
 requires-python = ">=3.13"
 classifiers = [
     "Programming Language :: Rust",
-    "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: GPU :: NVIDIA CUDA",
 ]
 dynamic = ["version"]
 dependencies = [
@@ -16,7 +18,8 @@ dependencies = [
 ]
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
+# abi3-py313: one cp313-abi3 wheel serves every CPython >= 3.13 (incl. 3.14+).
+features = ["pyo3/extension-module", "pyo3/abi3-py313"]
 python-source = "python"
 module-name = "drift.drift_rs"
 

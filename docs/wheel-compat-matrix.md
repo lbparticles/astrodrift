@@ -67,6 +67,49 @@ We ship ~MBs of PTX + a driver-API extension — none of the `nvidia-*` machiner
 applies to us, and we cannot conflict with torch's bundled stack (big win; keep the
 runtime free of `libcudart`/`libcudnn` dependencies).
 
+## Implementation (validated on this toolchain)
+
+Each matrix axis maps to a concrete build knob; all verified by building
+`astrodrift-0.1.0-cp313-abi3-manylinux_2_28_x86_64.whl` and install/import-testing it:
+
+| Matrix axis | Knob | Status |
+|---|---|---|
+| Python ≥ 3.13 | `pyo3/abi3-py313` in `[tool.maturin] features` | one `cp313-abi3` wheel serves 3.13/3.14/…; `cargo check` + wheel build + install test pass |
+| glibc 2.28 | `just wheel` → `--zig --compatibility manylinux_2_28 --auditwheel check` | zig relinks against glibc 2.28; max symbol version in shipped `.so` is exactly `GLIBC_2.28`; `NEEDED` = libc/libm only (whitelist) |
+| glibc 2.28 (alt) | `just wheel native` inside `quay.io/pypa/manylinux_2_28_x86_64` | for CI or hosts where zig is unwanted |
+| x86_64 | default rust target (`x86_64-unknown-linux-gnu`), no `target-cpu` flags | `.so` verified; nothing sets `native` |
+| GPU sm_80+ | `build.rs` `NvvmArch::Compute80` + `kernels.target` `sm_80` PTX | unchanged; driver JIT covers Ada+ |
+| driver r580 | support statement only | wheels dlopen `libcuda.so.1` (no `NEEDED` entry), lazy init — import works without a driver |
+
+Mechanics that make it work:
+
+- `scripts/build_cuda_oxide.py` already had a `wheel` mode (maturin via the
+  cargo-oxide bridge, output to `dist/`); it now honors `MATURIN_EXTRA` so the
+  tag policy lives in the `justfile` recipes instead of the script.
+- `_PYTHON_HOST_PLATFORM` must be unset when building — a stale value (nix
+  shells set it) silently downgrades the tag to `linux_x86_64`, which PyPI
+  rejects. The recipes do `env -u _PYTHON_HOST_PLATFORM`.
+- nix hosts: bindgen (cuda-host) loses the wrapper include paths under zig;
+  export `BINDGEN_EXTRA_CLANG_ARGS="-I<glibc-dev>/include -I<clang-lib>/clang/<v>/include"`.
+  Unnecessary on normal glibc layouts (dev container, CI).
+- maturin finds zig via the venv `ziglang` package (`maturin[zig]` extra =
+  `ziglang>=0.10`); no global zig install needed.
+
+Wheel facts after the build (checked): `Tag: cp313-abi3-manylinux_2_28_x86_64`,
+`Requires-Python: >=3.13`, no PyPy classifier, `NEEDED` = `libc/libm` (+`ld-linux`),
+max `GLIBC_2.28` symbol, imports cleanly on a machine with no NVIDIA driver.
+
+### CI plan (follow-up)
+
+1. `wheel` job: ubuntu-24.04 runner, install uv + `ziglang`, run `just wheel`,
+   upload the artifact. Expect ~10–15 min cold.
+2. Assert the artifact: filename matches `*-cp313-abi3-manylinux_2_28_x86_64.whl`
+   (or run `auditwheel show`); fail the job otherwise.
+3. Smoke job: install the wheel on `ubuntu-20.04` (glibc 2.31) and `import drift`
+   — proves the 2.28 floor without needing a GPU.
+4. Keep GPU tests on the dev container path (`just test`); the wheel job only
+   validates packaging.
+
 ## Edge cases checklist
 
 1. **Driver floor r580 (CUDA 13), uniformly.** PyPI `torch` 2.14's default cu13 build

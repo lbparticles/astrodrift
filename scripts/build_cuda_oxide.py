@@ -3,6 +3,7 @@
 
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -43,6 +44,8 @@ if Path(sys.argv[0]).name == "cargo":
                     str(Path(environment["DRIFT_REPO_ROOT"]) / "dist"),
                 )
             )
+        # e.g. MATURIN_EXTRA="--compatibility manylinux_2_28 --auditwheel check"
+        args.extend(shlex.split(os.environ.get("MATURIN_EXTRA", "")))
         os.execve(
             maturin,
             args,
