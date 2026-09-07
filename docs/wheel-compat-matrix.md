@@ -12,7 +12,7 @@ torch 2.14.0, tensorflow 2.21.0, jax 0.11.1, uv 0.12.x.
 | libc | glibc ≥ 2.28 (`manylinux_2_28`) | Ubuntu 20.04+, Debian 11+, RHEL 8+. CentOS 7 (glibc 2.17) is dead and EOL |
 | Python | CPython ≥ 3.13 | Matches `requires-python = ">=3.13"`. Prefer `abi3-py313` (PyO3) so one wheel serves 3.13/3.14/… |
 | GPU | PTX `compute_80` (sm_80+) | `build.rs` emits compute_80 PTX → driver JITs it on Ampere/Ada/Hopper/Blackwell and future archs. "Ada Lovelace or newer" is the *supported/tested* statement; Ampere works in practice |
-| Driver | CUDA driver ≥ r525 (Linux 525.60.13) | We use the **driver API only** (`cust` / `cuda-oxide` → `libcuda.so.1`). No toolkit, no `nvidia-*` pip deps at runtime. If co-installed with torch-cu13, the *driver* becomes the binding constraint (see below) |
+| Driver | CUDA 13 driver ≥ r580 (Linux 580.65.06) | Decision for now: one floor everywhere. We use the **driver API only** (`cust` / `cuda-oxide` → `libcuda.so.1`) — no toolkit, no `nvidia-*` pip deps — so this is a *support statement*, not a hard technical gate. It aligns us with the CUDA 13 dev container and PyPI torch 2.14's cu13 default. Lowering to r525 later is a docs-only change (wheels unchanged) |
 
 Wheel set per release: `{manylinux_2_28_x86_64} × {cp313 (or abi3)}` — one file today,
 two if we later split free-threaded.
@@ -69,9 +69,12 @@ runtime free of `libcudart`/`libcudnn` dependencies).
 
 ## Edge cases checklist
 
-1. **PyPI `torch` 2.14 default = CUDA 13 → driver ≥ r580.** Users on r525–r570
-   drivers who `pip install -U torch` get a silently CPU/broken GPU. When we document
-   co-installation, the *driver* floor is `max(ours, torch's)`.
+1. **Driver floor r580 (CUDA 13), uniformly.** PyPI `torch` 2.14's default cu13 build
+   already requires driver ≥ r580; adopting the same floor means `max(ours, torch's)`
+   is just r580 and the co-install story is one number. Users on r525–r570 (CUDA 12
+   era) are out of scope: for astrodrift alone they'd technically work (driver-API
+   wheels have no lower bound beyond the emitted PTX ISA), so say "requires a CUDA 13
+   driver (r580+)" rather than implying a technical gate.
 2. **`nvidia-smi` reports the driver's max supported CUDA version**, not an installed
    toolkit — the most common user confusion in support channels. Document "driver ≥ X",
    never "install CUDA Y".
@@ -113,6 +116,8 @@ runtime free of `libcudart`/`libcudnn` dependencies).
 ## Decision summary
 
 - linux x86_64, manylinux_2_28, CPython ≥ 3.13 (abi3-py313 preferred), driver-API-only,
-  driver ≥ r525 (document r580+ when co-installed with torch-cu13),
+  driver ≥ r580 (CUDA 13 era) as the support floor — same number as torch-cu13,
   GPU support statement: Ada Lovelace (sm_89) or newer; Ampere (sm_80/86) expected to
   work via compute_80 PTX JIT.
+- Revisit trigger: if r525–r570 users show up, relaxing is a docs-only change
+  (no wheel rebuild needed).
