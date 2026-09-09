@@ -1,0 +1,192 @@
+# Wheel compatibility matrix (draft)
+
+Working notes for the astrodrift wheel distribution strategy.
+Facts below verified against PyPI metadata / `download.pytorch.org` / uv docs as of
+torch 2.14.0, tensorflow 2.21.0, jax 0.11.1, uv 0.12.x.
+
+## Target platform (proposed)
+
+| Axis | Floor | Notes |
+|---|---|---|
+| OS | Linux, x86_64 only | Windows explicitly unsupported (`Cargo.toml` has an empty `cfg(windows)` dep block); macOS has no CUDA |
+| libc | glibc ≥ 2.28 (`manylinux_2_28`) | Ubuntu 20.04+, Debian 11+, RHEL 8+. CentOS 7 (glibc 2.17) is dead and EOL |
+| Python | CPython ≥ 3.13 | Matches `requires-python = ">=3.13"`. Prefer `abi3-py313` (PyO3) so one wheel serves 3.13/3.14/… |
+| GPU | PTX `compute_80` (sm_80+) | `build.rs` emits compute_80 PTX → driver JITs it on Ampere/Ada/Hopper/Blackwell and future archs. "Ada Lovelace or newer" is the *supported/tested* statement; Ampere works in practice |
+| Driver | CUDA 13 driver ≥ r580 (Linux 580.65.06) | Decision for now: one floor everywhere. We use the **driver API only** (`cust` / `cuda-oxide` → `libcuda.so.1`) — no toolkit, no `nvidia-*` pip deps — so this is a *support statement*, not a hard technical gate. It aligns us with the CUDA 13 dev container and PyPI torch 2.14's cu13 default. Lowering to r525 later is a docs-only change (wheels unchanged) |
+
+Wheel set per release: `{manylinux_2_28_x86_64} × {cp313 (or abi3)}` — one file today,
+two if we later split free-threaded.
+
+## How torch/tf/jax pull in CUDA (the landscape we live in)
+
+### pip / PyPI
+- **torch (Linux)**: PyPI `torch` 2.14 is a CUDA 13 build. It depends on the NVIDIA pip
+  stack as ordinary dependencies: `cuda-toolkit[cublas,cudart,cufft,cufile,cupti,
+  curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.0.3`, `nvidia-cudnn-cu13`,
+  `nvidia-nccl-cu13`, `nvidia-nvshmem-cu13`, `triton~=3.8.0` (~5–6 GB installed).
+  **Windows PyPI torch is CPU-only**; GPU Windows wheels come from the PyTorch index
+  with CUDA DLLs bundled inside the wheel.
+- **torch indexes**: `download.pytorch.org/whl/{cpu,cu126,cu128,cu129,cu130,cu132,...}`.
+  The `+cuXXX` wheels now resolve to the *same* `nvidia-*` wheels on PyPI
+  (verified via `uv pip install --dry-run torch --index-url .../whl/cu130`):
+  nothing is bundled into the wheel on Linux anymore.
+- **tensorflow**: GPU support is compiled into the Linux wheel; CUDA libs come via the
+  `tensorflow[and-cuda]` extra, which pins `nvidia-*-cu12` (CUDA 12.5+, cuDNN 9.x).
+  TF 2.21 is still CUDA 12; no cu13 build yet.
+- **jax**: extras `jax[cuda12]` / `jax[cuda13]` → `jax-cudaNN-plugin[with-cuda]` →
+  `nvidia-*` wheels. Cleanest extra-based model of the three.
+
+### conda
+- `pytorch` channel: `pytorch-cuda=12.x` metapackages (Linux/Windows) pull the CUDA
+  runtime libs as conda packages; conda-forge has `pytorch-gpu` with `cuda-version`
+  pinning. conda never provides the **driver** — the driver floor is identical to pip.
+- conda-forge tensorflow uses the same `cuda-version` env-pin mechanism.
+- Consequence: conda vs pip only changes *which runtime libs*, never the driver
+  requirement; and since astrodrift is driver-API-only, conda adds nothing for us.
+
+### uv
+- Project mode (lockfile): explicit indexes + sources —
+  ```toml
+  [[tool.uv.index]]
+  name = "pytorch-cu130"
+  url = "https://download.pytorch.org/whl/cu130"
+  explicit = true
+
+  [tool.uv.sources]
+  torch = { index = "pytorch-cu130" }
+  ```
+  `explicit = true` keeps the PyTorch index from serving other packages.
+- `uv pip` interface: `--torch-backend=auto` / `UV_TORCH_BACKEND=auto` queries the
+  installed driver and picks cu126/cu128/cu130/cpu automatically (not available in
+  project mode).
+- Precedent (SLEAP, from their README):
+  `uv tool install "sleap[nn]" --index https://download.pytorch.org/whl/cu128 --index https://pypi.org/simple`
+
+### Why this matters for astrodrift
+We ship ~MBs of PTX + a driver-API extension — none of the `nvidia-*` machinery
+applies to us, and we cannot conflict with torch's bundled stack (big win; keep the
+runtime free of `libcudart`/`libcudnn` dependencies).
+
+## Build toolchain matrix (compiler / LLVM / CUDA toolkit)
+
+These define what we build **against** — none of it is a runtime requirement of
+the wheel (the artifact embeds PTX and dlopens `libcuda.so.1`). Sources of
+truth: `rust-toolchain.toml`, `flake.nix`, `container/ubuntu24-cuda13/Dockerfile`,
+`kernels.target`, `build.rs`.
+
+| Component | `cuda-oxide` backend (default — this is what wheels ship) | `rust-cuda` backend (dev/tests only) |
+|---|---|---|
+| Rust | `nightly-2026-08-28` (`rust-toolchain.toml`), + `rust-src`, `rustc-dev`, `llvm-tools` | `nightly-2026-04-02` (required by `rustc_codegen_nvvm`), same components |
+| LLVM tools | LLVM/Clang/LLD **21.x** (`llc`, `llvm-config`, `libclang` for bindgen) | same |
+| PTX codegen | **LLVM 7.1.0** built from source with the NVPTX target (legacy NVVM dialect; `llvm-config-7`) | **libnvvm from CUDA 13.0** (`rustc_codegen_nvvm`) |
+| CUDA toolkit (build time) | 13.0 (`cuda.h` via bindgen/cutile, driver stubs) | 13.0 |
+| Host C/C++ compiler | any (only used to compile LLVM 7 from source) | n/a |
+| Emitted kernel artifact | PTX, `compute_80` (`.so` embeds `kernels.ptx`; cubin materialization is test-only) | PTX, `compute_80` via NVVM |
+
+Compatibility consequence: the shipped PTX is LLVM-7-era (PTX ISA ≈ 6.x), which
+the r580+ driver JIT accepts unmodified — the toolchain pins affect
+**reproducibility of the build**, not the supported-driver range. Changing the
+Rust pin or the LLVM 21 minor does not change the compat matrix; changing
+`kernels.target` / `NvvmArch::Compute80`, or the LLVM 7 NVPTX basis, does.
+
+Wheel-policy mapping of the above: exactly **one artifact kind** ships —
+`astrodrift-<ver>-cp313-abi3-manylinux_2_28_x86_64.whl`, built by `just wheel`
+from the pins in this table. sdist is non-goal (see checklist #12).
+
+## Implementation (validated on this toolchain)
+
+Each matrix axis maps to a concrete build knob; all verified by building
+`astrodrift-0.1.0-cp313-abi3-manylinux_2_28_x86_64.whl` and install/import-testing it:
+
+| Matrix axis | Knob | Status |
+|---|---|---|
+| Python ≥ 3.13 | `pyo3/abi3-py313` in `[tool.maturin] features` | one `cp313-abi3` wheel serves 3.13/3.14/…; `cargo check` + wheel build + install test pass |
+| glibc 2.28 | `just wheel` → `--zig --compatibility manylinux_2_28 --auditwheel check` | zig relinks against glibc 2.28; max symbol version in shipped `.so` is exactly `GLIBC_2.28`; `NEEDED` = libc/libm only (whitelist) |
+| glibc 2.28 (alt) | `just wheel native` inside `quay.io/pypa/manylinux_2_28_x86_64` | for CI or hosts where zig is unwanted |
+| x86_64 | default rust target (`x86_64-unknown-linux-gnu`), no `target-cpu` flags | `.so` verified; nothing sets `native` |
+| GPU sm_80+ | `build.rs` `NvvmArch::Compute80` + `kernels.target` `sm_80` PTX | unchanged; driver JIT covers Ada+ |
+| driver r580 | support statement only | wheels dlopen `libcuda.so.1` (no `NEEDED` entry), lazy init — import works without a driver |
+
+Mechanics that make it work:
+
+- `scripts/build_cuda_oxide.py` already had a `wheel` mode (maturin via the
+  cargo-oxide bridge, output to `dist/`); it now honors `MATURIN_EXTRA` so the
+  tag policy lives in the `justfile` recipes instead of the script.
+- `_PYTHON_HOST_PLATFORM` must be unset when building — a stale value (nix
+  shells set it) silently downgrades the tag to `linux_x86_64`, which PyPI
+  rejects. The recipes do `env -u _PYTHON_HOST_PLATFORM`.
+- nix hosts: bindgen (cuda-host) loses the wrapper include paths under zig;
+  export `BINDGEN_EXTRA_CLANG_ARGS="-I<glibc-dev>/include -I<clang-lib>/clang/<v>/include"`.
+  Unnecessary on normal glibc layouts (dev container, CI).
+- maturin finds zig via the venv `ziglang` package (`maturin[zig]` extra =
+  `ziglang>=0.10`); no global zig install needed.
+
+Wheel facts after the build (checked): `Tag: cp313-abi3-manylinux_2_28_x86_64`,
+`Requires-Python: >=3.13`, no PyPy classifier, `NEEDED` = `libc/libm` (+`ld-linux`),
+max `GLIBC_2.28` symbol, imports cleanly on a machine with no NVIDIA driver.
+
+### CI plan (follow-up)
+
+1. `wheel` job: ubuntu-24.04 runner, install uv + `ziglang`, run `just wheel`,
+   upload the artifact. Expect ~10–15 min cold.
+2. Assert the artifact: filename matches `*-cp313-abi3-manylinux_2_28_x86_64.whl`
+   (or run `auditwheel show`); fail the job otherwise.
+3. Smoke job: install the wheel on `ubuntu-20.04` (glibc 2.31) and `import drift`
+   — proves the 2.28 floor without needing a GPU.
+4. Keep GPU tests on the dev container path (`just test`); the wheel job only
+   validates packaging.
+
+## Edge cases checklist
+
+1. **Driver floor r580 (CUDA 13), uniformly.** PyPI `torch` 2.14's default cu13 build
+   already requires driver ≥ r580; adopting the same floor means `max(ours, torch's)`
+   is just r580 and the co-install story is one number. Users on r525–r570 (CUDA 12
+   era) are out of scope: for astrodrift alone they'd technically work (driver-API
+   wheels have no lower bound beyond the emitted PTX ISA), so say "requires a CUDA 13
+   driver (r580+)" rather than implying a technical gate.
+2. **`nvidia-smi` reports the driver's max supported CUDA version**, not an installed
+   toolkit — the most common user confusion in support channels. Document "driver ≥ X",
+   never "install CUDA Y".
+3. **PTX JIT cost**: first kernel launch per process JIT-compiles compute_80 PTX
+   (hundreds of ms). Consider noting it; caching via `CUDA_CACHE_PATH`/`__GL_JIT_CACHE`
+   style options if it matters.
+4. **CUDA 13 dropped Maxwell/Pascal/Volta (sm_50–sm_70)**; Turing (sm_75) is the CUDA 13
+   floor. Our compute_80 stance is unaffected, but co-installed cu13 frameworks are
+   Turing+ only.
+5. **glibc floor of the manylinux tag**: pick the maturin `--manylinux` target
+   deliberately (`manylinux_2_28` matches torch; don't build on a newer glibc and
+   accidentally emit `manylinux_2_34`+).
+6. **x86_64 baseline**: build with the plain `x86-64` target (no `native`/`target-cpu`,
+   no unconditional AVX-512) so the "x86_64" claim is honest; use runtime dispatch if
+   SIMD ever matters.
+7. **aarch64 exclusion UX**: GH200/Grace and Apple-silicon users *will* try to install.
+   Ensure pip fails with a clear "no matching wheel" message (don't publish an sdist
+   that dies 20 minutes into a nightly-rust + LLVM-7-NVVM build). A pure-Python
+   "unsupported platform" stub wheel is the friendly option.
+8. **Free-threaded CPython** (`cp313t`/`cp314t`): torch 2.14 ships `cp314t` but *not*
+   `cp313t`. Skip free-threading for now; revisit at 3.14.
+9. **PyPy**: pyproject claims a PyPy classifier but PyPy 3.13 doesn't exist — remove it.
+10. **numpy floor**: `numpy>=1.24.4` has no cp313 wheels — on 3.13 the resolver
+    effectively requires numpy ≥ 2.1. Fine, but document/pin intent.
+11. **Containers/WSL2**: libcuda only enters via `--gpus all` (nvidia-container-toolkit)
+    or the WSL2 driver shim; there is no static libcuda. The dev container builds PTX
+    but wheels must not require a toolkit at runtime — build/runtime decoupling is a
+    feature; state it in the README.
+12. **sdist policy**: building from source needs nightly Rust + rustc_codegen_nvvm /
+    LLVM 7 NVVM — effectively unbuildable. Prefer sdist-that-errors-clearly or none.
+13. **pip vs uv index semantics**: `pip --extra-index-url` has no priority rules;
+    uv's `--index` + `explicit = true` (or `--torch-backend=auto`) is deterministic.
+    Recommend uv in our install docs (matches SLEAP's approach).
+14. **CI matrix**: build on `ubuntu-24.04` runners inside the manylinux container (or
+    maturin's manylinux images) so the emitted tag matches the glibc claim; verify with
+    `maturin`'s audit/policy step. One GPU smoke test on Ada (sm_89) via a
+    self-hosted/GH GPU runner or `--gpus` runner as budget allows.
+
+## Decision summary
+
+- linux x86_64, manylinux_2_28, CPython ≥ 3.13 (abi3-py313 preferred), driver-API-only,
+  driver ≥ r580 (CUDA 13 era) as the support floor — same number as torch-cu13,
+  GPU support statement: Ada Lovelace (sm_89) or newer; Ampere (sm_80/86) expected to
+  work via compute_80 PTX JIT.
+- Revisit trigger: if r525–r570 users show up, relaxing is a docs-only change
+  (no wheel rebuild needed).
