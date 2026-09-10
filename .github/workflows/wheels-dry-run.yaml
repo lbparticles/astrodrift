@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: wheel-dry-run-${{ github.workflow }}-${{ github.ref }}
@@ -42,14 +43,42 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.3.0
 
-      - name: Build the toolchain image (gha-cached; LLVM 7 build dominates first run)
+      - name: Log in to ghcr.io (the toolchain image cache)
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # The image is far above the 10 GB actions-cache limit, so gha caching
+      # never persisted; ghcr.io holds it instead. The image doubles as the
+      # build cache (cache-from pulls its layers) and as a prebuilt option
+      # for the real release workflow later. Retries absorb apt/llvm.org
+      # flakiness; with registry cache a retry only redoes failed layers.
+      - name: Build the toolchain image
         run: |
-          docker buildx build \
-            --load \
-            -t drift-build:cuda13 \
-            --cache-from type=gha \
-            --cache-to type=gha,mode=max \
-            -f container/ubuntu24-cuda13/Dockerfile .
+          for attempt in 1 2 3; do
+            if docker buildx build \
+              --load \
+              -t drift-build:cuda13 \
+              --cache-from type=registry,ref=ghcr.io/lbparticles/astrodrift-build:cuda13 \
+              -f container/ubuntu24-cuda13/Dockerfile .
+            then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::toolchain image build failed after 3 attempts"
+              exit 1
+            fi
+            echo "attempt $attempt failed; retrying"
+            sleep 30
+          done
+
+      - name: Push the toolchain image to ghcr.io
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          docker tag drift-build:cuda13 ghcr.io/lbparticles/astrodrift-build:cuda13
+          docker push ghcr.io/lbparticles/astrodrift-build:cuda13
 
       - name: Build the wheel
         run: |
