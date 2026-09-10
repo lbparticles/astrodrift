@@ -1,0 +1,185 @@
+name: Wheel dry run
+
+# Proves the wheel pipeline works on a GPU-less standard runner, end to end,
+# without publishing anything:
+#   cuda13 toolchain image -> wheel build (zig manylinux_2_28, audited) ->
+#   wheel-tag assertion -> stub-backed import inside the container ->
+#   fresh CPython 3.13 install + import probe on the bare runner ->
+#   twine check (the publish metadata gate, minus the network).
+#
+# Artifacts are uploaded for download only: no PyPI publish, no GitHub release.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+      - wheel-compat-matrix
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: wheel-dry-run-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build wheel in the cuda13 toolchain image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Free disk space for the CUDA image
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /usr/share/swift \
+            /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.3.0
+
+      - name: Log in to ghcr.io (the toolchain image cache)
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # The image is far above the 10 GB actions-cache limit, so gha caching
+      # never persisted; ghcr.io holds it instead. The image doubles as the
+      # build cache (cache-from pulls its layers) and as a prebuilt option
+      # for the real release workflow later. Retries absorb apt/llvm.org
+      # flakiness; with registry cache a retry only redoes failed layers.
+      - name: Build the toolchain image
+        run: |
+          for attempt in 1 2 3; do
+            if docker buildx build \
+              --load \
+              -t drift-build:cuda13 \
+              --cache-from type=registry,ref=ghcr.io/lbparticles/astrodrift-build:cuda13 \
+              -f container/ubuntu24-cuda13/Dockerfile .
+            then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::toolchain image build failed after 3 attempts"
+              exit 1
+            fi
+            echo "attempt $attempt failed; retrying"
+            sleep 30
+          done
+
+      - name: Push the toolchain image to ghcr.io
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          docker tag drift-build:cuda13 ghcr.io/lbparticles/astrodrift-build:cuda13
+          docker push ghcr.io/lbparticles/astrodrift-build:cuda13
+
+      - name: Build the wheel
+        run: |
+          docker run --rm --user root \
+            -v "$PWD":/workspaces/astrodrift \
+            -w /workspaces/astrodrift \
+            drift-build:cuda13 bash -c '
+              set -euo pipefail
+              # cargo-oxide ships in the nix shell and devcontainer mounts, not
+              # in the image; pin it to the same rev as the cuda-host dependency.
+              cargo install --locked \
+                --git https://github.com/NVlabs/cuda-oxide.git \
+                --rev 8ac82ec761e950594db5f47322330b231f3d80be \
+                cargo-oxide
+              just sync
+              # ziglang goes in after sync: `uv sync` prunes non-lockfile
+              # packages, and _wheel-zig builds with --no-sync so it survives.
+              uv pip install --python /opt/drift-venv/bin/python ziglang
+              # mirrors justfile _wheel-zig (skips its sync prerequisite, which
+              # would prune ziglang again)
+              env -u _PYTHON_HOST_PLATFORM \
+                MATURIN_EXTRA="--zig --compatibility manylinux_2_28 --auditwheel check" \
+                uv run --no-sync ./scripts/build_cuda_oxide.py wheel
+            '
+
+      - name: Assert wheel tag policy
+        run: |
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          if [ "${#wheels[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one wheel, found ${#wheels[@]}"; exit 1
+          fi
+          case "${wheels[0]}" in
+            *cp313-abi3-manylinux_2_28_x86_64.whl) echo "tag policy OK: ${wheels[0]}" ;;
+            *) echo "::error::unexpected wheel tag: ${wheels[0]}"; exit 1 ;;
+          esac
+          ls -lh dist/
+
+      - name: Report runtime linkage of the extension module
+        run: |
+          unzip -o -j dist/*.whl 'drift/*.so' -d wheel-extract
+          readelf -d wheel-extract/*.so | grep NEEDED || echo "no DT_NEEDED entries"
+
+      - name: Import inside the container with the driver stub
+        run: |
+          docker run --rm --user root \
+            -v "$PWD":/workspaces/astrodrift \
+            drift-build:cuda13 bash -c '
+              set -euo pipefail
+              uv venv /tmp/checkenv --python 3.13
+              uv pip install --python /tmp/checkenv/bin/python /workspaces/astrodrift/dist/*.whl
+              cd /tmp
+              LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs \
+                /tmp/checkenv/bin/python -c "import drift; print(\"stub-backed import OK:\", drift.__name__)"
+            '
+
+      - name: Upload the wheel artifact (dry run — no publish)
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: wheel-dry-run
+          path: dist/*.whl
+          if-no-files-found: error
+
+  verify:
+    name: Install and twine-check on the bare GPU-less runner
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Download the wheel artifact
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: wheel-dry-run
+          path: dist
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.12.7"
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install the wheel into a fresh environment
+        run: |
+          uv venv .checkenv --python 3.13
+          uv pip install --python .checkenv/bin/python dist/*.whl
+          ./.checkenv/bin/python -c "from importlib.metadata import version; print('astrodrift', version('astrodrift'))"
+
+      - name: GPU-less import probe (no libcuda on PATH — informational)
+        id: gpuless-import
+        continue-on-error: true
+        run: ./.checkenv/bin/python -c "import drift; print('GPU-less import OK')"
+
+      - name: Report the GPU-less import result
+        if: always()
+        run: |
+          if [ "${{ steps.gpuless-import.outcome }}" = "failure" ]; then
+            echo "::warning::import fails with no libcuda present — the extension needs the driver at load time. GPU-less users cannot import; machines with a driver are unaffected."
+          else
+            echo "import works with no libcuda at all"
+          fi
+
+      - name: Twine check (publish metadata gate, no upload)
+        run: uvx twine@7.0.0 check dist/*.whl
