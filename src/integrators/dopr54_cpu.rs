@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// Portions of this file are derived from galpy (https://github.com/jobovy/galpy),
+// Copyright (c) 2010, Jo Bovy, used under the BSD 3-Clause License.
+// The rest of this repository is MIT-licensed; see LICENSE and docs/licensing.md.
 // This module intentionally retains galpy's C control flow and pointer model so
 // the CPU implementation remains a bit-for-bit reference for the GPU ports.
 #![allow(
