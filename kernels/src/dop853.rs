@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// Portions of this file are derived from galpy (https://github.com/jobovy/galpy),
+// Copyright (c) 2010, Jo Bovy, used under the BSD 3-Clause License.
+// The rest of this repository is MIT-licensed; see LICENSE and docs/licensing.md.
 // Preserve the published DOP853 coefficients and the operation ordering used
 // by the CPU reference; even equivalent rewrites can change device results.
 #![allow(

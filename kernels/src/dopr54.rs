@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// Portions of this file are derived from galpy (https://github.com/jobovy/galpy),
+// Copyright (c) 2010, Jo Bovy, used under the BSD 3-Clause License.
+// The rest of this repository is MIT-licensed; see LICENSE and docs/licensing.md.
 // This is an exact device port of the galpy reference. Keep its control flow
 // and copy operations stable so compiler/backend comparisons remain meaningful.
 #![allow(

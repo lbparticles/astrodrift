@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// Portions of this file are derived from galpy (https://github.com/jobovy/galpy),
+// Copyright (c) 2010, Jo Bovy, used under the BSD 3-Clause License.
+// The rest of this repository is MIT-licensed; see LICENSE and docs/licensing.md.
 // Preserve the published DOP853 coefficients and galpy operation ordering in
 // this CPU reference implementation, including expressions Clippy can shorten.
 #![allow(clippy::assign_op_pattern, clippy::excessive_precision)]

@@ -2,6 +2,7 @@
 name = "drift"
 version = "0.1.0"
 edition = "2024"
+license = "MIT AND BSD-3-Clause"
 
 [lib]
 name = "drift_rs"

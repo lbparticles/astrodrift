@@ -2,6 +2,7 @@
 name = "kernels"
 version = "0.1.0"
 edition = "2024"
+license = "MIT AND BSD-3-Clause"
 
 [dependencies]
 cuda_std = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cuda_std", branch = "main", optional = true }
