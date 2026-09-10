@@ -1,0 +1,33 @@
+name: Commit format
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commit-format-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  subjects:
+    name: Conventional commit subjects
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check the PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: echo "$TITLE" | scripts/check-commit-subjects.sh
+
+      - name: Check commit subjects since the base branch
+        run: git log --no-merges --format=%s "origin/${{ github.base_ref }}..HEAD" | scripts/check-commit-subjects.sh
