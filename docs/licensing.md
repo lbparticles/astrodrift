@@ -32,14 +32,70 @@ MIT is compatible with all of the above.
 REBOUND is GPL-3.0. Code derived from REBOUND sources (e.g. its IAS15 or
 WHFast implementations) cannot be redistributed as part of this MIT project:
 the derivative file would have to be GPL-3.0, and distributing the combined
-work would inherit GPL-3.0 obligations. Policy:
+work would inherit GPL-3.0 obligations. Policy for **shipped source**:
 
 - reimplement published algorithms from their papers instead (algorithms and
   mathematical facts are not copyrightable; expression is);
-- never read-and-port REBOUND source for a kernel that should stay MIT;
+- never read-and-port REBOUND source into a kernel that should stay MIT;
 - if a GPL-derived kernel is ever truly required, it must live behind its own
   file-level GPL-3.0 header and the distribution implications get decided
   explicitly, not by accident.
+
+None of this restricts *running* or *benchmarking* REBOUND, or publishing
+measured results. The next section describes the sanctioned way to do that.
+
+## Benchmarking against GPL code (external-linkage methodology)
+
+GPL-3 obligations trigger on **conveyance** (distributing or making available
+derived material), not on building, linking, or running. The line is not
+"wheel vs other artifacts" — an sdist, a paper code archive, and a public
+commit count as much as a wheel does. The fence that works:
+
+> REBOUND-derived material lives only in gitignored build paths and in
+> benchmark runs. Every committed byte and every published artifact (wheel,
+> sdist, archived code) is REBOUND-free.
+
+Context table:
+
+| Context | Status |
+|---|---|
+| Fetch REBOUND at a pinned rev, build/link/benchmark locally | allowed (private use, no obligations) |
+| Same on own CI; artifacts upload results (timings/CSV) only | allowed (results are not copyrightable) |
+| Sharing generated code with collaborators privately | allowed (no conveyance) |
+| Generated/derived code committed to this public repository | prohibited — would be publishing a GPL-3.0 derivative |
+| Generated/derived code in any release artifact (wheel, sdist, paper code archive) | prohibited — distribution; would need GPL-3.0 |
+| Publishing the fetch script itself (MIT, contains no REBOUND code) | allowed |
+
+Two sanctioned architectures:
+
+1. **Out-of-repo comparison (preferred for publications).** A separate
+   GPL-3.0-licensed repository (or an unshipped script) drives upstream
+   `rebound` and `astrodrift` **PyPI wheels** from one Python environment.
+   This benchmarks the exact upstream implementations — the strongest claim
+   for reproducing "exact implementation details" — with zero contamination
+   risk by construction, at the cost of benchmarking released wheels rather
+   than development state.
+
+2. **In-repo feature-gated benchmark linkage (development benchmarking).**
+   A fetch script pins a REBOUND revision into a gitignored `external/`
+   path, builds `librebound.so` there, and generates FFI bindings from the
+   pinned header at fetch time (so struct layouts always match the pin). A
+   bench-only crate behind a non-default cargo feature consumes it; link
+   directives are emitted only when that feature is enabled. Requirements:
+
+   - the feature is never a default and never enabled by the wheel/sdist
+     build path;
+   - `external/` is gitignored, and CI asserts committed sources contain no
+     REBOUND symbols;
+   - CI/job artifacts carry results only — never built objects or generated
+     bindings.
+
+Transient transpilation of REBOUND into Rust is rejected: worst fidelity and
+maintenance, no legal advantage over linking.
+
+When publishing work that uses these comparisons, cite Rein & Liu 2012
+(REBOUND) and Rein & Tamayo 2015 (IAS15, WHFast) — academic convention,
+independent of licensing.
 
 ## Why per-file licensing works here
 
@@ -62,3 +118,4 @@ When producing a distribution (PyPI wheel, sdist, or crates):
 - [ ] per-file BSD-3 headers intact on the four galpy-derived integrator files
 - [ ] `tests/fixtures/README.md` intact (fixtures are dev/test artifacts, but keep the notice)
 - [ ] Apache-2.0 dependency notices available (Cargo/vendor metadata or a generated THIRD-PARTY file)
+- [ ] no REBOUND-derived files or generated bindings in the artifact (CI grep guard: no `reb_` symbols in committed sources)
