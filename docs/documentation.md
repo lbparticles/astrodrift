@@ -46,7 +46,7 @@ code) is the contributor reference. Conventions:
 
 This is the main difference from a normal crate: there is **no docs.rs**.
 The crate is not published (`git_only`), so rustdoc is built in CI and
-self-hosted (GitHub Pages) as the developer reference. It is never linked
+hosted on the docs site as the developer reference. It is never linked
 as user documentation — a user reading rustdoc for a `#[pyclass]` is
 reading the wrong layer.
 
@@ -71,6 +71,32 @@ One site, built by CI on the GPU-less runner, from three sources:
 - **Developer reference** — `cargo doc --no-deps` output uploaded alongside,
   linked from a developer section.
 
+## Deployment: Cloudflare Pages on a domain we own
+
+The site is hosted on our own infrastructure via Cloudflare Pages, not
+GitHub Pages. Build stays in GitHub Actions; deployment goes through
+wrangler:
+
+- the docs build needs no CUDA toolchain by design (the API reference
+  renders statically from the stub), so one Actions job assembles
+  `mkdocs build` output plus `cargo doc --no-deps` and deploys;
+- deploy via `cloudflare/wrangler-action` with a `CLOUDFLARE_API_TOKEN`
+  scoped to the Pages project, stored in a protected `docs` environment
+  (same review-gate pattern as the PyPI environment);
+- `main` deploys to the production custom domain (DNS on Cloudflare, TLS
+  automatic); PR branches deploy as preview aliases
+  (`<branch>.<project>.pages.dev`) so docs changes are reviewable;
+- do not use Cloudflare's direct Git integration for the build: its build
+  image lacks our pinned Rust/LLVM toolchains, and rustdoc produced by a
+  different toolchain than the code it documents is not reproducible.
+  GitHub Actions is the single build source of truth; Cloudflare only
+  serves.
+
+GitHub Pages is explicitly not used: the site is infrastructure we own
+(domain, TLS, analytics) independent of the repository host, and Cloudflare
+Pages' free tier (unlimited bandwidth) is more than sufficient for docs
+traffic.
+
 ### How this differs from stock tooling
 
 - **vs normal Rust docs:** no docs.rs (crate unpublished); rustdoc is
@@ -87,7 +113,9 @@ One site, built by CI on the GPU-less runner, from three sources:
 
 1. Add `mypy` to the dev group + a `stubtest` CI job (signature parity gate).
 2. mkdocs-material + mkdocstrings-python scaffold; docs CI job builds the
-   site from `python/drift/drift_rs.pyi` + `docs/*.md`; publish to GitHub Pages.
+   site from `python/drift/drift_rs.pyi` + `docs/*.md`; deploy to Cloudflare
+   Pages via wrangler (protected `docs` environment, production domain +
+   PR preview aliases).
 3. `cargo doc --no-deps` CI job uploading the developer reference artifact.
 4. Sweep the stub for full numpydoc sections; add one-line `///` summaries on
    pyo3 items that lack them.
