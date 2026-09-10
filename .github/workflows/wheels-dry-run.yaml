@@ -153,4 +153,4 @@ jobs:
           fi
 
       - name: Twine check (publish metadata gate, no upload)
-        run: uvx twine@6.1.1 check dist/*.whl
+        run: uvx twine@7.0.0 check dist/*.whl
