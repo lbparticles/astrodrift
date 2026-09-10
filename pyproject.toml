@@ -15,6 +15,10 @@ dependencies = [
     "numpy>=1.24.4",
 ]
 
+[project.urls]
+Repository = "https://github.com/lbparticles/astrodrift"
+Changelog = "https://github.com/lbparticles/astrodrift/blob/main/CHANGELOG.md"
+
 [tool.maturin]
 features = ["pyo3/extension-module"]
 python-source = "python"

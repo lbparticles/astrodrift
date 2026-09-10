@@ -76,6 +76,17 @@ Enter the Nix development shell (`nix develop`) or use the provided devcontainer
 
 See [Testing_Instructions.md](docs/Testing_Instructions.md)
 
+# CHANGELOG
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and serves both the `astrodrift` PyPI package and the `drift` crate.
+
+Every PR merged to `main` must list its changes under `[Unreleased]`:
+
+- `### Added` — features
+- `### Fixed` — bug fixes
+
+CI fails PRs to `main` that do not touch `CHANGELOG.md`. Dependabot bumps are merged with the `skip-changelog` label; whoever merges the bump adds its line under the appropriate section.
+
 # Contributors
 
 Jack Patterson
