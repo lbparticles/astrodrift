@@ -1,20 +1,17 @@
 # Changelog
 
-Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 1.1.0. Versions track both the `astrodrift` PyPI package and the `drift` crate, so one entry serves both registries.
+All notable changes to this project will be documented in this file.
 
-Every PR merged to `main` must list its changes under `[Unreleased]`:
-
-- `### Added` — features
-- `### Fixed` — bug fixes
-
-Dependabot bump PRs are exempt at PR time (label `skip-changelog`); whoever merges the bump adds its line here.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
 
-- Changelog requirements for merges to `main` (this policy, CI check, and registry metadata).
+- Changelog automation via release-plz: versions, `CHANGELOG.md`, tags, and GitHub Releases are generated from conventional commit subjects (`feat:` → Added, `fix:` → Fixed) on merges to `main`.
+- Required commit/PR subject format (`type: description`), enforced by the Commit format workflow and the lefthook `commit-msg` hook.
+- Registry metadata: PyPI `[project.urls]` (Repository, Changelog) and crate `repository` field.
 
-### Fixed
+### Removed
 
-- (none)
+- Per-PR manual `CHANGELOG.md` edits and their CI gate (superseded by the commit-format requirement).

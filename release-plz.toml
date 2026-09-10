@@ -1,0 +1,96 @@
+# https://release-plz.dev/docs/config
+[workspace]
+# Nothing ships to crates.io: the distributed artifact is the maturin build on
+# PyPI. `git_only` makes release-plz derive released versions from git tags
+# instead of registry lookups and skips `cargo publish` entirely.
+git_only = true
+# Disable per-package changelogs; the `drift` package below owns the single
+# root changelog (and pulls in kernels/shared commits via changelog_include).
+changelog_update = false
+changelog_path = "./CHANGELOG.md"
+repo_url = "https://github.com/lbparticles/astrodrift"
+# cargo-semver-checks would burn CI time on 0.x crates where breaks are allowed.
+semver_check = false
+
+[changelog]
+header = """# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+"""
+# Template based on the documented "release-plz default + contributors" body
+# (https://release-plz.dev/docs/changelog/examples), plus commit-sha and PR
+# links. Requires squash merges so subjects carry (#N).
+body = """## [{{ version }}]\
+{%- if release_link -%}\
+({{ release_link }})\
+{% endif %}\
+ - {{ timestamp | date(format="%Y-%m-%d") }}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}\
+{%- if commit.scope -%}\
+- *({{commit.scope}})* {% if commit.breaking %}[**breaking**] {% endif %}\
+{{ commit.message }}{{ self::sha(commit=commit) }}{{ self::username(commit=commit) }}\
+{%- if commit.links %} \
+({% for link in commit.links %}[{{link.text}}]({{link.href}}) \
+{% endfor -%})\
+{% endif %}\
+{% else -%}\
+- {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message }}{{ self::sha(commit=commit) }}{{ self::username(commit=commit) }}{{ self::pr(commit=commit) }}\
+{%- if commit.links %} \
+({% for link in commit.links %}[{{link.text}}]({{link.href}}) \
+{% endfor -%})\
+{% endif %}\
+{% endif %}\
+{% endfor -%}\
+{% endfor %}\
+{%- if remote.contributors %}\
+### Contributors\
+{% for contributor in remote.contributors %}\
+ * @{{ contributor.username }}\
+{% endfor %}\
+{% endif -%}\
+{%- macro username(commit) -%}\
+{% if commit.remote.username %} (by @{{ commit.remote.username }}){% endif -%}\
+{% endmacro -%}\
+{%- macro pr(commit) -%}\
+{% if commit.remote.pr_number %} ([#{{ commit.remote.pr_number }}]({{ remote.link }}/pull/{{ commit.remote.pr_number }}))\
+{% endif -%}\
+{% endmacro -%}\
+{%- macro sha(commit) -%}\
+{% if commit.id %} ([{{ commit.id | truncate(length=7, end="") }}]({{ remote.link }}/commit/{{ commit.id }}))\
+{% endif -%}\
+{% endmacro -%}\
+"""
+commit_parsers = [
+  { message = "^feat", group = "added" },
+  { message = "^changed", group = "changed" },
+  { message = "^deprecated", group = "deprecated" },
+  { message = "^removed", group = "removed" },
+  { message = "^fix", group = "fixed" },
+  { message = "^security", group = "security" },
+  { message = "^Bump|^chore\\(deps", group = "dependencies" },
+  { message = "^.*", group = "other" },
+]
+link_parsers = [
+  { pattern = "#(\\d+)", href = "{{ remote.link }}/pull/$1" },
+]
+
+[[package]]
+name = "drift"
+changelog_update = true
+# The root changelog also reports kernels/ and shared/ changes.
+changelog_include = ["kernels", "shared"]
+git_release_enable = true
+
+[[package]]
+name = "kernels"
+git_release_enable = false
+
+[[package]]
+name = "shared"
+git_release_enable = false

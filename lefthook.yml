@@ -1,11 +1,18 @@
 # Local git hooks.
 #
-# pre-commit : fast, staged-file ruff checks only.
-# pre-push   : locked Python lint and type checks.
+# commit-msg  : conventional commit subject check (feeds CHANGELOG.md).
+# pre-commit  : fast, staged-file ruff checks only.
+# pre-push    : locked Python lint and type checks.
 #
 # Bypass with `LEFTHOOK=0 git push ...` or `git push --no-verify`; the
 # same checks can be run directly with `just lint python`. For full verification
 # before opening a PR, use `just verify`.
+
+commit-msg:
+  commands:
+    conventional-subject:
+      # Validate the subject (first non-comment line) of the commit message.
+      run: grep -v '^#' "{1}" | head -n1 | scripts/check-commit-subjects.sh
 
 pre-commit:
   commands:
