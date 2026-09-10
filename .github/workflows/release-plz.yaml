@@ -28,7 +28,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Open or update the release PR
-        uses: release-plz/[email protected]
+        uses: release-plz/action@v0.5.135
         with:
           command: release-pr
         env:
@@ -53,7 +53,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Tag and create the GitHub release
-        uses: release-plz/[email protected]
+        uses: release-plz/action@v0.5.135
         with:
           command: release
         env:
