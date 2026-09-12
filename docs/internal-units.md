@@ -214,7 +214,8 @@ import astropy.units as u
 
 potential = dft.Potential.kepler(amp=1.0 * u.Msun)
 tracers = dft.test_particles(
-    istate * u.AU, vstate * u.km / u.s,      # illustrative shapes
+    istate * u.AU,
+    vstate * u.km / u.s,  # illustrative shapes
 )
 sim = dft.Config(ts=np.linspace(0, 10, 101) * u.yr)
 trajectory  # -> astropy Quantity in AU and km/s when inputs had units
@@ -235,11 +236,11 @@ galpy's plain-float mode: the user declares the system once, the library
 converts, and everything remains `ndarray`:
 
 ```python
-us = dft.units.SOLAR                          # AU, yr, Msun -> G = 4*pi^2
+us = dft.units.SOLAR  # AU, yr, Msun -> G = 4*pi^2
 
-potential = dft.Potential.kepler(amp=1.0, units=us)     # amp is Msun
-tracers = dft.test_particles(istate, units=us)          # AU, AU/yr
-sim = dft.Config(ts=(0.0, 10.0, 101), units=us)         # years
+potential = dft.Potential.kepler(amp=1.0, units=us)  # amp is Msun
+tracers = dft.test_particles(istate, units=us)  # AU, AU/yr
+sim = dft.Config(ts=(0.0, 10.0, 101), units=us)  # years
 trajectory  # plain ndarray in AU, AU/yr — same dtype as today
 ```
 
