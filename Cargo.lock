@@ -363,7 +363,7 @@ source = "git+https://github.com/Rust-GPU/Rust-CUDA?branch=main#103a8d56935c4e08
 dependencies = [
  "bitflags",
  "cuda_std_macros",
- "glam 0.33.6",
+ "glam 0.30.10",
  "half",
  "paste",
  "vek",
@@ -643,16 +643,16 @@ version = "0.30.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
 dependencies = [
+ "bytemuck",
  "libm",
 ]
 
 [[package]]
 name = "glam"
-version = "0.33.6"
+version = "0.33.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21fef0953c54fd3de2f44b743fbf77e044c81a25faee03636dfccc0d35135e23"
+checksum = "e762b9b188634fc508d4ec54b62ea3d352c43fd431d18d05d46f559f217f4725"
 dependencies = [
- "bytemuck",
  "libm",
 ]
 
@@ -763,7 +763,7 @@ dependencies = [
  "cuda-device",
  "cuda-host",
  "cuda_std",
- "glam 0.33.6",
+ "glam 0.33.7",
  "libm",
  "shared",
 ]
