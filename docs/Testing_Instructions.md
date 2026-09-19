@@ -60,7 +60,7 @@ The passing fixture suite covers the DOPR54 and DOP853 basic CPU/GPU contracts, 
 
 ```bash
 cargo oxide test --materialize-cubin -- \
-    --release --features galpy-kepler-reference --tests -- \
+    --release --tests -- \
     --ignored --test-threads=1 --nocapture \
     --skip tests::dopr54_gpu_matches_native_galpy_fixtures \
     --skip tests::dop853_gpu_matches_native_galpy_dump \
@@ -71,7 +71,7 @@ cargo oxide test --materialize-cubin -- \
 
 ```bash
 cargo +nightly-2026-04-02 test \
-    --release --no-default-features --features rust-cuda,galpy-kepler-reference \
+    --release --no-default-features --features rust-cuda \
     --tests -- --ignored --test-threads=1 --nocapture \
     --skip tests::dopr54_gpu_matches_native_galpy_fixtures \
     --skip tests::dop853_gpu_matches_native_galpy_dump \
@@ -79,8 +79,6 @@ cargo +nightly-2026-04-02 test \
 ```
 
 The skipped tests require bit-exact agreement between native host math and CUDA device math. They are retained as strict diagnostic probes and fail at the known transcendental differences. Remove the three `--skip` options to run them as well, expecting a non-zero overall test result.
-
-`galpy-kepler-reference` is currently required because it selects the galpy-form Kepler force arithmetic in DOPR54. This compile-time test switch should be replaced by an explicitly selected reference kernel/RHS so fixture testing cannot change the behavior of the ordinary DOPR54 kernel.
 
 ## Ordinary Tests
 
@@ -103,7 +101,6 @@ Check the default cuda-oxide configuration with:
 
 ```bash
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy --workspace --all-targets --features galpy-kepler-reference -- -D warnings
 ```
 
 Check the Rust-CUDA configuration with:
@@ -112,10 +109,6 @@ Check the Rust-CUDA configuration with:
 cargo +nightly-2026-04-02 clippy \
     --workspace --all-targets --no-default-features \
     --features rust-cuda -- \
-    -D warnings -A clippy::duplicated-attributes -A unused-attributes
-cargo +nightly-2026-04-02 clippy \
-    --workspace --all-targets --no-default-features \
-    --features rust-cuda,galpy-kepler-reference -- \
     -D warnings -A clippy::duplicated-attributes -A unused-attributes
 ```
 
