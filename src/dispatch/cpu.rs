@@ -1,11 +1,11 @@
 use std::time::Instant;
 
 use log::{debug, info};
-use shared::{Config, INPUT_STATE_DIM, Method, Model, Real, Tolerance};
+use shared::{Config, INPUT_STATE_DIM, Method, Model, Real};
 
 use crate::{
     dispatch::{DispatchError, dispatch_stages, sample_times},
-    integrators::{dop853_cpu, dopr54_cpu},
+    integrators::galpy::{LogTolerance, dop853, dopr54},
     state::{InputFrame, InputState, OutputFrame, OutputState},
 };
 
@@ -20,10 +20,10 @@ fn integrate_particle(
     method: Method,
     initial_state: &[Real; INPUT_STATE_DIM],
     times: &[Real],
-    tolerance: Tolerance,
+    tolerance: LogTolerance,
 ) -> Result<Vec<Real>, DispatchError> {
     match method {
-        Method::DOPR54 => dopr54_cpu::integrate_kepler(
+        Method::DOPR54 => dopr54::integrate_kepler(
             *initial_state,
             times,
             INITIAL_STEP_SENTINEL,
@@ -32,7 +32,7 @@ fn integrate_particle(
             tolerance.atol,
         )
         .map_err(|code| DispatchError::CpuIntegration { method, code }),
-        Method::DOP853 => Ok(dop853_cpu::integrate_kepler(
+        Method::DOP853 => Ok(dop853::integrate_kepler(
             *initial_state,
             times,
             INITIAL_STEP_SENTINEL,
@@ -48,7 +48,7 @@ fn integrate_stage(
     method: Method,
     input_state: &InputState,
     times: &[Real],
-    tolerance: Tolerance,
+    tolerance: LogTolerance,
 ) -> Result<OutputState, DispatchError> {
     let particle_count = input_state.num_particles;
     let mut output = OutputState::new_zeroed(times.len(), particle_count);
@@ -86,19 +86,20 @@ pub fn cpu_dispatch(
     model: Model,
     input_frame: InputFrame,
 ) -> Result<OutputFrame, DispatchError> {
-    let times = sample_times(config.settings.ts);
+    let times = sample_times(config.output);
     info!(
         target: LOG_TARGET,
         "CPU integration starting: method={:?}, {} output times over [{}, {}], rtol={:.2e}, atol={:.2e}",
-        config.method,
+        config.integrator.method,
         times.len(),
         times.first().copied().unwrap_or_default(),
         times.last().copied().unwrap_or_default(),
-        config.settings.tolerance.rtol.exp(),
-        config.settings.tolerance.atol.exp(),
+        config.tolerance.rtol,
+        config.tolerance.atol,
     );
 
     let started = Instant::now();
+    let tolerance = LogTolerance::from_linear(config.tolerance);
     let mut stage = 0usize;
     let mut total_particles = 0usize;
     let output_frame = dispatch_stages(model, input_frame, |_model_component, input_state| {
@@ -115,10 +116,10 @@ pub fn cpu_dispatch(
         let stage_started = Instant::now();
         let result = integrate_stage(
             stage,
-            config.method,
+            config.integrator.method,
             input_state,
             &times,
-            config.settings.tolerance,
+            tolerance,
         );
         if result.is_ok() {
             debug!(

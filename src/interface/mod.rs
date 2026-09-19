@@ -7,35 +7,35 @@ use pyo3::types::{PyAny, PyList, PyModule, PyTuple};
 mod container;
 mod engine;
 mod error;
+mod implementation;
 mod method;
 mod recipe;
 mod selector;
-mod variant;
 
-use crate::integrators::run_integration;
+use crate::integrators::{run_integration, validate_configuration};
 use crate::tree::{AdjacencyMatrix, IntegrationPlan};
 pub use container::Container;
 use engine::PyEngine;
+use implementation::PyImplementation;
 use method::PyMethod;
 pub use recipe::PyRecipe;
 use shared::{
-    Config, INPUT_STATE_DIM, Linspace, MAX_MODEL_COMPONENTS, MAX_OUTPUT_TIMES, MAX_STATES, Real,
+    Config, INPUT_STATE_DIM, MAX_MODEL_COMPONENTS, MAX_OUTPUT_TIMES, MAX_STATES, OutputGrid, Real,
     Tolerance,
 };
-use variant::PyVariant;
 
-// Python extraction and validation live here so shared::Linspace remains usable
+// Python extraction and validation live here so shared::OutputGrid remains usable
 // by GPU code without PyO3 or NumPy dependencies.
 #[derive(Default, Clone, Debug)]
-pub struct PyLinspace(pub Linspace);
-impl<'a, 'py> FromPyObject<'a, 'py> for PyLinspace {
+pub struct PyOutputGrid(pub OutputGrid);
+impl<'a, 'py> FromPyObject<'a, 'py> for PyOutputGrid {
     type Error = PyErr;
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         // --- Case 1: (start, end, num) tuple ---
         if let Ok(tup) = obj.cast::<PyTuple>() {
             if tup.len() != 3 {
                 return Err(PyValueError::new_err(
-                    "Linspace tuple must have 3 elements: (start, end, steps)",
+                    "time-grid tuple must have 3 elements: (start, end, steps)",
                 ));
             }
             let start: f64 = tup.get_item(0)?.extract()?;
@@ -64,7 +64,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for PyLinspace {
     }
 }
 
-impl PyLinspace {
+impl PyOutputGrid {
     const GRID_ULP_TOLERANCE: Real = 8.0;
 
     fn new(start: Real, end: Real, steps: usize) -> PyResult<Self> {
@@ -83,7 +83,7 @@ impl PyLinspace {
             ));
         }
 
-        Ok(Self(Linspace { start, end, steps }))
+        Ok(Self(OutputGrid { start, end, steps }))
     }
 
     // FIXME: Store and pass arbitrary requested times directly, then remove
@@ -166,14 +166,14 @@ impl PyTolerance {
             ));
         }
 
-        Ok(Self(Tolerance::from_linear(rtol, atol)))
+        Ok(Self(Tolerance::new(rtol, atol)))
     }
 }
 
 /// Configuration and registered container graph for an integration.
 ///
 /// The default selectors are ``Engine.CPU``, ``Method.DOPR54``, and
-/// ``Variant.Compatible``. Register force relationships with :meth:`add`,
+/// ``Implementation.GALPY``. Register force relationships with :meth:`add`,
 /// then execute the complete model with :meth:`run`.
 #[pyclass(name = "Config")]
 #[derive(Debug)]
@@ -302,26 +302,27 @@ impl PyConfig {
 #[pymethods]
 impl PyConfig {
     #[new]
-    #[pyo3(signature = (engine=None,method=None,variant=None,ts=None,tolerance=None))]
+    #[pyo3(signature = (engine=None,method=None,implementation=None,ts=None,tolerance=None))]
     fn new(
         engine: Option<PyEngine>,
         method: Option<PyMethod>,
-        variant: Option<PyVariant>,
-        ts: Option<PyLinspace>,
+        implementation: Option<PyImplementation>,
+        ts: Option<PyOutputGrid>,
         tolerance: Option<PyTolerance>,
-    ) -> Self {
-        Self {
-            inner: Config::new(
-                engine.unwrap_or_default().into(),
-                method.unwrap_or_default().into(),
-                variant.unwrap_or_default().into(),
-                Default::default(),
-                ts.unwrap_or_default().0,
-                tolerance.unwrap_or_default().0,
-            ),
+    ) -> PyResult<Self> {
+        let inner = Config::new(
+            engine.unwrap_or_default().into(),
+            method.unwrap_or_default().into(),
+            implementation.unwrap_or_default().into(),
+            ts.unwrap_or_default().0,
+            tolerance.unwrap_or_default().0,
+        );
+        validate_configuration(inner)?;
+        Ok(Self {
+            inner,
             dependencies: Vec::new(),
             containers: Vec::new(),
-        }
+        })
     }
 
     /// Integrate the registered model.
@@ -446,18 +447,17 @@ impl PyConfig {
     /// Return a human-readable summary of this configuration.
     #[pyo3(signature = ())]
     fn info(&self) -> String {
-        let settings = self.inner.settings;
         format!(
-            "Config(engine={:?}, method={:?}, variant={:?}, times=({}, {}, {}), \
+            "Config(engine={:?}, method={:?}, implementation={:?}, times=({}, {}, {}), \
              tolerance=(rtol={:.6e}, atol={:.6e}), containers={}, dependencies={})",
             self.inner.engine,
-            self.inner.method,
-            self.inner.variant,
-            settings.ts.start,
-            settings.ts.end,
-            settings.ts.steps,
-            settings.tolerance.rtol.exp(),
-            settings.tolerance.atol.exp(),
+            self.inner.integrator.method,
+            self.inner.integrator.implementation,
+            self.inner.output.start,
+            self.inner.output.end,
+            self.inner.output.steps,
+            self.inner.tolerance.rtol,
+            self.inner.tolerance.atol,
             self.containers.len(),
             self.dependencies.len(),
         )

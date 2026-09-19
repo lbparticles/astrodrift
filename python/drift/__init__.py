@@ -1,4 +1,4 @@
-from .selectors import Engine, Method, Variant
+from .selectors import Engine, Implementation, Method
 from .drift_rs import (  # pyright: ignore[reportMissingModuleSource]
     Potential,
     Container,
@@ -14,7 +14,7 @@ __all__ = [
     "Potential",
     "Container",
     "Config",
-    "Variant",
+    "Implementation",
     "Method",
     "Engine",
     "DriftError",

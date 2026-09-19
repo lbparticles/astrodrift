@@ -10,7 +10,7 @@ import pytest
     (
         (dft.Engine, "CPU", dft.Engine.CPU),
         (dft.Method, "DOP853", dft.Method.DOP853),
-        (dft.Variant, "Compatible", dft.Variant.Compatible),
+        (dft.Implementation, "GALPY", dft.Implementation.GALPY),
     ),
 )
 def test_selectors_support_value_construction(
@@ -21,7 +21,7 @@ def test_selectors_support_value_construction(
 
 @pytest.mark.parametrize(
     "keyword",
-    ({"engine": "CPU"}, {"method": "DOPR54"}, {"variant": "Compatible"}),
+    ({"engine": "CPU"}, {"method": "DOPR54"}, {"implementation": "GALPY"}),
 )
 def test_config_rejects_raw_strings(keyword: dict[str, str]) -> None:
     config = cast(Any, dft.Config)

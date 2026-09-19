@@ -1,12 +1,10 @@
 #![no_std]
 // shared/src/lib.rs
 mod config;
-mod flags;
 mod model;
 mod potential;
 
-pub use config::{Config, Engine, Linspace, Method, Tolerance, Variant};
-pub use flags::ModernFlags;
+pub use config::{Config, Engine, Implementation, IntegratorSpec, Method, OutputGrid, Tolerance};
 pub use model::{
     BovyRecipe, Construct, CustomKeplerRecipe, CustomPlummerRecipe, KeplerRecipe, PlummerRecipe,
     PotentialName, Recipe,

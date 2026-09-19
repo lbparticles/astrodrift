@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use drift_rs::dispatch::gpu::launch_dop853_kernel;
-    use drift_rs::integrators::dop853_cpu::integrate_kepler;
+    use drift_rs::dispatch::gpu::launch_galpy_dop853;
+    use drift_rs::integrators::galpy::{LogTolerance, dop853::integrate_kepler};
     use drift_rs::state::InputState;
     use libc::{c_double, c_int};
-    use shared::{Config, Index, ModelComponent, Tolerance};
+    use shared::{Index, ModelComponent, OutputGrid};
     use std::fs::{self, File};
     use std::io::{self, Read};
     use std::io::{BufWriter, Write};
@@ -151,13 +151,12 @@ mod tests {
         assert_eq!(dump.t.len(), dump.nt as usize, "t length != nt");
         assert_eq!(dump.y0.len(), dump.dim as usize, "y0 length != dim");
 
-        let mut config = Config::default();
-        config.settings.tolerance = Tolerance {
-            rtol: dump.rtol,
-            atol: dump.atol,
+        let tolerance = LogTolerance::from_logarithmic(dump.rtol, dump.atol);
+        let output = OutputGrid {
+            end: *dump.t.last().unwrap(),
+            steps: dump.nt as Index,
+            ..Default::default()
         };
-        config.settings.ts.end = *dump.t.last().unwrap();
-        config.settings.ts.steps = dump.nt as Index;
 
         let mut input_state = InputState::new_zeroed();
         input_state.num_particles = dump.y0.len() as Index / dump.dim as Index;
@@ -166,12 +165,11 @@ mod tests {
         }
 
         let model_component = ModelComponent(core::array::from_fn(|_| None));
-        let output_state = launch_dop853_kernel(
+        let output_state = launch_galpy_dop853(
             &model_component,
             &input_state,
-            config.flags,
-            config.settings.tolerance,
-            config.settings.ts,
+            tolerance,
+            output,
             Some(dump.t.clone()),
         )
         .expect("kernel launch failed");

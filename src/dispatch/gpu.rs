@@ -1,9 +1,10 @@
 use std::time::Instant;
 
 use log::{debug, info};
-use shared::{Config, Linspace, Method, Model, ModelComponent, ModernFlags, Real, Tolerance};
+use shared::{Config, Method, Model, ModelComponent, OutputGrid, Real};
 
 use crate::dispatch::{DispatchError, dispatch_stages, sample_times};
+use crate::integrators::galpy::LogTolerance;
 use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
 
 #[cfg(feature = "cuda-oxide")]
@@ -79,61 +80,56 @@ pub fn gather_states_nested_extended(
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(super) enum Kernel {
+pub(super) enum GalpyKernel {
     Dopr54,
     Dop853,
 }
 
-pub fn launch_kernel(
+pub fn launch_galpy_dopr54(
     model_component: &ModelComponent,
     input_state: &InputState,
-    flags: ModernFlags,
-    tolerance: Tolerance,
-    linspace: Linspace,
+    tolerance: LogTolerance,
+    output: OutputGrid,
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, DispatchError> {
-    launch_kernel_named(
-        Kernel::Dopr54,
+    launch_galpy_kernel(
+        GalpyKernel::Dopr54,
         model_component,
         input_state,
-        flags,
         tolerance,
-        linspace,
+        output,
         times,
     )
 }
 
-pub fn launch_dop853_kernel(
+pub fn launch_galpy_dop853(
     model_component: &ModelComponent,
     input_state: &InputState,
-    flags: ModernFlags,
-    tolerance: Tolerance,
-    linspace: Linspace,
+    tolerance: LogTolerance,
+    output: OutputGrid,
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, DispatchError> {
-    launch_kernel_named(
-        Kernel::Dop853,
+    launch_galpy_kernel(
+        GalpyKernel::Dop853,
         model_component,
         input_state,
-        flags,
         tolerance,
-        linspace,
+        output,
         times,
     )
 }
 
 // FIXME: The reference kernels currently hard-code their force model and ignore
 // these general-dispatch inputs.
-fn launch_kernel_named(
-    kernel: Kernel,
+fn launch_galpy_kernel(
+    kernel: GalpyKernel,
     _model_component: &ModelComponent,
     input_state: &InputState,
-    _flags: ModernFlags,
-    tolerance: Tolerance,
-    linspace: Linspace,
+    tolerance: LogTolerance,
+    output: OutputGrid,
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, DispatchError> {
-    let times = times.unwrap_or_else(|| sample_times(linspace));
+    let times = times.unwrap_or_else(|| sample_times(output));
     let (grid, block) = grid_size(input_state.num_particles);
     debug!(
         target: LOG_TARGET,
@@ -153,19 +149,20 @@ pub fn gpu_dispatch(
     model: Model,
     input_frame: InputFrame,
 ) -> Result<OutputFrame, DispatchError> {
-    let ts = config.settings.ts;
+    let ts = config.output;
     info!(
         target: LOG_TARGET,
         "GPU integration starting: method={:?}, {} output times over [{}, {}], rtol={:.2e}, atol={:.2e}",
-        config.method,
+        config.integrator.method,
         ts.steps,
         ts.start,
         ts.end,
-        config.settings.tolerance.rtol.exp(),
-        config.settings.tolerance.atol.exp(),
+        config.tolerance.rtol,
+        config.tolerance.atol,
     );
 
     let started = Instant::now();
+    let tolerance = LogTolerance::from_linear(config.tolerance);
     let mut stage = 0usize;
     let mut total_particles = 0usize;
     let output_frame = dispatch_stages(model, input_frame, |model_component, input_state| {
@@ -178,23 +175,13 @@ pub fn gpu_dispatch(
         );
 
         let stage_started = Instant::now();
-        let result = match config.method {
-            Method::DOPR54 => launch_kernel(
-                model_component,
-                input_state,
-                config.flags,
-                config.settings.tolerance,
-                config.settings.ts,
-                None,
-            ),
-            Method::DOP853 => launch_dop853_kernel(
-                model_component,
-                input_state,
-                config.flags,
-                config.settings.tolerance,
-                config.settings.ts,
-                None,
-            ),
+        let result = match config.integrator.method {
+            Method::DOPR54 => {
+                launch_galpy_dopr54(model_component, input_state, tolerance, config.output, None)
+            }
+            Method::DOP853 => {
+                launch_galpy_dop853(model_component, input_state, tolerance, config.output, None)
+            }
         };
         if result.is_ok() {
             debug!(

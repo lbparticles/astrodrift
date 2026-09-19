@@ -1,4 +1,4 @@
-use shared::{Linspace, Method, Model, ModelComponent, Real};
+use shared::{Method, Model, ModelComponent, OutputGrid, Real};
 use std::io;
 #[cfg(feature = "cuda-oxide")]
 use std::path::PathBuf;
@@ -11,9 +11,9 @@ pub use gpu::gpu_dispatch;
 
 use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
 
-pub(crate) fn sample_times(linspace: Linspace) -> Vec<Real> {
-    (0..linspace.steps)
-        .map(|index| linspace.sample(index))
+pub(crate) fn sample_times(output: OutputGrid) -> Vec<Real> {
+    (0..output.steps)
+        .map(|index| output.sample(index))
         .collect()
 }
 
