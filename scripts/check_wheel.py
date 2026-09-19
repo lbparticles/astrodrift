@@ -14,6 +14,14 @@ from zipfile import ZipFile
 
 
 EXPECTED_TAG = "cp313-abi3-manylinux_2_28_x86_64"
+EXPECTED_LICENSE_EXPRESSION = "MIT AND BSD-2-Clause AND BSD-3-Clause"
+EXPECTED_LICENSE_FILES = {
+    "LICENSE",
+    "LICENSES/README.md",
+    "LICENSES/galpy-bovy-BSD-3-Clause.txt",
+    "LICENSES/galpy-leung-BSD-3-Clause.txt",
+    "LICENSES/hairer-unige-BSD-2-Clause.txt",
+}
 ALLOWED_LIBRARIES = {
     "ld-linux-x86-64.so.2",
     "libc.so.6",
@@ -99,8 +107,9 @@ def check_wheel(wheel: Path) -> None:
         wheel_metadata = Parser().parsestr(
             archive.read(one(names, ".dist-info/WHEEL")).decode()
         )
+        metadata_member = one(names, ".dist-info/METADATA")
         package_metadata = Parser().parsestr(
-            archive.read(one(names, ".dist-info/METADATA")).decode()
+            archive.read(metadata_member).decode()
         )
         if wheel_metadata.get_all("Tag") != [EXPECTED_TAG]:
             fail(f"unexpected wheel tags: {wheel_metadata.get_all('Tag')}")
@@ -108,6 +117,26 @@ def check_wheel(wheel: Path) -> None:
             fail(
                 "unexpected Requires-Python: "
                 f"{package_metadata['Requires-Python']}"
+            )
+        if (
+            package_metadata["License-Expression"]
+            != EXPECTED_LICENSE_EXPRESSION
+        ):
+            fail(
+                "unexpected License-Expression: "
+                f"{package_metadata['License-Expression']}"
+            )
+        license_files = set(package_metadata.get_all("License-File", []))
+        if license_files != EXPECTED_LICENSE_FILES:
+            fail(f"unexpected license files: {sorted(license_files)}")
+        dist_info = metadata_member.removesuffix("/METADATA")
+        missing_license_members = {
+            f"{dist_info}/licenses/{path}" for path in EXPECTED_LICENSE_FILES
+        } - set(names)
+        if missing_license_members:
+            fail(
+                "missing wheel license files: "
+                f"{sorted(missing_license_members)}"
             )
         extension = one(names, "/drift_rs.abi3.so")
 
@@ -167,7 +196,7 @@ def check_wheel(wheel: Path) -> None:
 
     print(
         f"validated {wheel.name}: {EXPECTED_TAG}, glibc <= 2.28, "
-        "self-contained sm_80 PTX"
+        "self-contained sm_80 PTX, licenses present"
     )
 
 
