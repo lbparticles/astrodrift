@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: 2011 Jo Bovy
+// SPDX-FileCopyrightText: 2026 Drift contributors
+// SPDX-License-Identifier: BSD-3-Clause
+// Derived from galpy v1.11.2, galpy/util/bovy_rk.c. See
+// LICENSES/galpy-bovy-BSD-3-Clause.txt for the complete upstream notice.
 // This module intentionally retains galpy's C control flow and pointer model so
 // the CPU implementation remains a bit-for-bit reference for the GPU ports.
 #![allow(

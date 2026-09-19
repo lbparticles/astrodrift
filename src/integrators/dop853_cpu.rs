@@ -1,3 +1,11 @@
+// SPDX-FileCopyrightText: 2004 UNIGE
+// SPDX-FileCopyrightText: 2018 Henry Leung
+// SPDX-FileCopyrightText: 2026 Drift contributors
+// SPDX-License-Identifier: BSD-2-Clause AND BSD-3-Clause
+// Derived from galpy v1.11.2, galpy/util/leung_dop853.c, which follows the
+// Hairer/Wanner DOP853 C implementation. See
+// LICENSES/galpy-leung-BSD-3-Clause.txt and
+// LICENSES/hairer-unige-BSD-2-Clause.txt for the complete upstream notices.
 // Preserve the published DOP853 coefficients and galpy operation ordering in
 // this CPU reference implementation, including expressions Clippy can shorten.
 #![allow(clippy::assign_op_pattern, clippy::excessive_precision)]

@@ -2,6 +2,7 @@
 name = "shared"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 cust_core = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust_core", branch = "main", optional = true }
