@@ -11,14 +11,9 @@ import tempfile
 
 FINGERPRINT_ENV = "CUDA_OXIDE_INTERNAL_CODEGEN_FINGERPRINT"
 MODES = {"develop": "develop", "wheel": "build"}
-OXIDE_ARGS = (
-    "oxide",
-    "build",
-    "--materialize-cubin",
-    "--",
-    "--release",
-    "--locked",
-)
+LINKERS = {"native", "zig"}
+HOST_TARGET = "x86_64-unknown-linux-gnu"
+DEVICE_TARGET = "sm_80"
 
 # The temporary `cargo` symlink receives both cargo-oxide's prepared build and
 # Maturin's ordinary Cargo calls. Replace only the former.
@@ -40,9 +35,17 @@ if Path(sys.argv[0]).name == "cargo":
                     "--interpreter",
                     environment["DRIFT_PYTHON"],
                     "--out",
-                    str(Path(environment["DRIFT_REPO_ROOT"]) / "dist"),
+                    environment["DRIFT_WHEEL_OUT"],
+                    "--target",
+                    HOST_TARGET,
+                    "--compatibility",
+                    "manylinux_2_28",
+                    "--auditwheel",
+                    "check",
                 )
             )
+            if environment["DRIFT_WHEEL_LINKER"] == "zig":
+                args.append("--zig")
         os.execve(
             maturin,
             args,
@@ -50,11 +53,14 @@ if Path(sys.argv[0]).name == "cargo":
         )
     os.execv(cargo, [cargo, *sys.argv[1:]])
 
-if len(sys.argv) != 2 or sys.argv[1] not in MODES:
-    raise SystemExit(f"usage: {sys.argv[0]} <develop|wheel>")
+if len(sys.argv) not in {2, 3} or sys.argv[1] not in MODES:
+    raise SystemExit(f"usage: {sys.argv[0]} develop | wheel [native|zig]")
 
 repo_root = Path(__file__).resolve().parent.parent
 mode = sys.argv[1]
+linker = sys.argv[2] if len(sys.argv) == 3 else "native"
+if (mode == "develop" and len(sys.argv) != 2) or linker not in LINKERS:
+    raise SystemExit(f"usage: {sys.argv[0]} develop | wheel [native|zig]")
 cargo = shutil.which("cargo") or sys.exit(
     "error: 'cargo' was not found on PATH"
 )
@@ -77,7 +83,10 @@ if mode == "develop" and not project_python.is_file():
     raise SystemExit("error: project environment not found; run 'just sync'")
 
 with tempfile.TemporaryDirectory(prefix="drift-cargo-bridge-") as directory:
-    Path(directory, "cargo").symlink_to(Path(__file__).resolve())
+    temporary_root = Path(directory)
+    temporary_wheel_dir = temporary_root / "wheel"
+    temporary_wheel_dir.mkdir()
+    (temporary_root / "cargo").symlink_to(Path(__file__).resolve())
     environment = os.environ.copy()
     environment.update(
         DRIFT_REAL_CARGO=cargo,
@@ -85,13 +94,35 @@ with tempfile.TemporaryDirectory(prefix="drift-cargo-bridge-") as directory:
         DRIFT_MATURIN_MODE=mode,
         DRIFT_PYTHON=python,
         DRIFT_REPO_ROOT=str(repo_root),
+        DRIFT_WHEEL_LINKER=linker,
+        DRIFT_WHEEL_OUT=str(temporary_wheel_dir),
         PATH=f"{directory}{os.pathsep}{environment['PATH']}",
         VIRTUAL_ENV=str(virtual_env),
     )
+    oxide_args = [cargo, "oxide", "build"]
+    if mode == "develop":
+        oxide_args.append("--materialize-cubin")
+    else:
+        environment["CUDA_OXIDE_TARGET"] = DEVICE_TARGET
+        environment.pop("_PYTHON_HOST_PLATFORM", None)
+    oxide_args.extend(("--", "--release", "--locked"))
 
     # FIXME(cuda-oxide): use an upstream command wrapper once one is available.
-    status = subprocess.call(
-        [cargo, *OXIDE_ARGS], cwd=repo_root, env=environment
-    )
+    status = subprocess.call(oxide_args, cwd=repo_root, env=environment)
+
+    if status == 0 and mode == "wheel":
+        built_wheels = list(temporary_wheel_dir.glob("*.whl"))
+        if len(built_wheels) != 1:
+            raise SystemExit(
+                f"error: expected one newly built wheel, found {len(built_wheels)}"
+            )
+        status = subprocess.call(
+            [python, repo_root / "scripts/check_wheel.py", built_wheels[0]],
+            cwd=repo_root,
+        )
+        if status == 0:
+            wheel_dir = repo_root / "dist"
+            wheel_dir.mkdir(exist_ok=True)
+            shutil.move(built_wheels[0], wheel_dir / built_wheels[0].name)
 
 raise SystemExit(status)

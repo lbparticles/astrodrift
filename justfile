@@ -21,6 +21,20 @@ _develop-rust-cuda:
     RUSTUP_TOOLCHAIN=nightly-2026-04-02 uv run --no-sync maturin develop \
         --release --locked --no-default-features --features rust-cuda --uv
 
+# Build the cuda-oxide release wheel with a native (default) or Zig linker.
+wheel linker="native": sync
+    just _wheel-{{linker}}
+
+_wheel-zig:
+    uv run --no-sync ./scripts/build_cuda_oxide.py wheel zig
+
+_wheel-native:
+    uv run --no-sync ./scripts/build_cuda_oxide.py wheel native
+
+# Validate the tags, ELF requirements, and embedded PTX in an existing wheel.
+wheel-check wheel:
+    uv run --no-sync ./scripts/check_wheel.py {{wheel}}
+
 # Build the selected extension, run its Python smoke tests, and run ordinary Rust tests.
 test backend="oxide": sync
     just _develop-{{backend}}

@@ -65,27 +65,29 @@ pub(super) fn load_module(
         });
     }
 
-    let mut cubins = bundle
-        .payloads
-        .iter()
-        .filter(|payload| payload.kind == ArtifactPayloadKind::Cubin);
-    let Some(cubin) = cubins.next() else {
-        return Err(DispatchError::ArtifactCubinCount {
+    let mut images = bundle.payloads.iter().filter(|payload| {
+        matches!(
+            payload.kind,
+            ArtifactPayloadKind::Ptx | ArtifactPayloadKind::Cubin
+        )
+    });
+    let Some(image) = images.next() else {
+        return Err(DispatchError::ArtifactImageCount {
             path,
             name: KERNEL_BUNDLE_NAME,
             count: 0,
         });
     };
-    let duplicate_count = cubins.count();
+    let duplicate_count = images.count();
     if duplicate_count != 0 {
-        return Err(DispatchError::ArtifactCubinCount {
+        return Err(DispatchError::ArtifactImageCount {
             path,
             name: KERNEL_BUNDLE_NAME,
             count: duplicate_count + 1,
         });
     }
 
-    let module = context.load_module_from_image(&cubin.bytes)?;
+    let module = context.load_module_from_image(&image.bytes)?;
     // SAFETY: the selected bundle is embedded by the same `kernels` crate that
     // generated this typed host API, so its kernel ABI and contracts match.
     Ok(unsafe { kernels::oxide::from_module(module) }?)
