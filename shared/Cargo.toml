@@ -14,6 +14,6 @@ rust-cuda = ["dep:cust_core"]
 cuda-oxide = []
 
 [dev-dependencies]
-rstest = "0.26.1"
+rstest = "0.27.0"
 approx = "0.5.1"
 rand = "0.10.1"
