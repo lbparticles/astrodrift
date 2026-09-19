@@ -135,16 +135,27 @@ Cargo will update the lockfile while the path override is active; do not commit 
 
 ## Wheel Builds
 
-Build a cuda-oxide wheel with the temporary Maturin bridge. The dependency-only sync and `--no-sync` invocation prevent uv from rebuilding the project outside cargo-oxide's prepared environment:
+Published wheels use cuda-oxide. From a glibc 2.28 release environment, build and validate the wheel with:
 
 ```bash
-uv sync --locked --no-install-project
-uv run --no-sync ./scripts/build_cuda_oxide.py wheel
+just wheel
 ```
 
-The wheel is written to `dist/`. The bridge can be removed once cargo-oxide can run Maturin inside its prepared codegen environment.
+On a newer glibc host, use Zig to target glibc 2.28:
 
-Rust-CUDA does not require the bridge:
+```bash
+just wheel zig
+```
+
+The validated wheel is written to `dist/`. Recheck an existing artifact with:
+
+```bash
+just wheel-check dist/astrodrift-<version>-cp313-abi3-manylinux_2_28_x86_64.whl
+```
+
+See [Wheel Compatibility](Wheel_Compatibility.md) for the release contract.
+
+For reference, build a development-only Rust-CUDA wheel with:
 
 ```bash
 RUSTUP_TOOLCHAIN=nightly-2026-04-02 uv run --no-sync maturin build \

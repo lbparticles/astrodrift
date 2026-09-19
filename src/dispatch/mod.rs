@@ -64,8 +64,8 @@ pub enum DispatchError {
     },
 
     #[cfg(feature = "cuda-oxide")]
-    #[error("expected one cubin payload in embedded CUDA module '{name}' in {}, found {count}", path.display())]
-    ArtifactCubinCount {
+    #[error("expected one PTX or cubin payload in embedded CUDA module '{name}' in {}, found {count}", path.display())]
+    ArtifactImageCount {
         path: PathBuf,
         name: &'static str,
         count: usize,

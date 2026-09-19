@@ -7,8 +7,13 @@ name = "astrodrift"
 requires-python = ">=3.13"
 classifiers = [
     "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: GPU :: NVIDIA CUDA",
 ]
 dynamic = ["version"]
 dependencies = [
@@ -16,14 +21,15 @@ dependencies = [
 ]
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
+# ABI compatibility starts at CPython 3.13; supported minors are still tested.
+features = ["pyo3/extension-module", "pyo3/abi3-py313"]
 python-source = "python"
 module-name = "drift.drift_rs"
 
 [dependency-groups]
 dev = [
     "basedpyright==1.39.10",
-    "maturin==1.15.0",
+    "maturin[zig]==1.15.0",
     "pytest>=8.3.5",
     "pytest-cov>=5.0.0",
     "pyrefly==1.2.0",

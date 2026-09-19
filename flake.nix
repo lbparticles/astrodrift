@@ -116,6 +116,7 @@
               python313
 
               gcc
+              binutils
               cmake
               ninja
               patchelf
