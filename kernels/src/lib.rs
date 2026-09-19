@@ -88,11 +88,7 @@ pub unsafe fn galpy_dopr54(
 
 #[cfg(feature = "rust-cuda")]
 #[cuda_std::kernel]
-#[allow(clippy::too_many_arguments)]
 /// Runs DOP853 for one particle per CUDA thread.
-///
-/// `_dt_one_init` keeps the launch interface consistent with DOPR54; DOP853
-/// derives its own initial step.
 ///
 /// # Safety
 ///
@@ -109,7 +105,6 @@ pub unsafe fn galpy_dop853(
     nt: usize,
     rtol: f64,
     atol: f64,
-    _dt_one_init: f64,
 ) {
     let Some(tid) = rust_cuda_thread_id(n) else {
         return;
@@ -190,9 +185,6 @@ pub mod oxide {
             state_out.len() >= nt * n * 6
         )
     )]
-    #[allow(clippy::too_many_arguments)]
-    /// `_dt_one_init` keeps the launch interface consistent with DOPR54;
-    /// DOP853 derives its own initial step.
     pub fn galpy_dop853(
         state0: &[f64],
         times: &[f64],
@@ -201,7 +193,6 @@ pub mod oxide {
         nt: Uniform<usize>,
         rtol: f64,
         atol: f64,
-        _dt_one_init: f64,
     ) {
         let tid = thread::index_1d().get();
         let n = n.get();
