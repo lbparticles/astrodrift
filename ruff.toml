@@ -26,6 +26,7 @@ exclude = [
     "build",
     "dist",
     "node_modules",
+    "README.md",
     "site-packages",
     "venv",
 ]

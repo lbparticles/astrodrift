@@ -4,6 +4,8 @@ build-backend = "maturin"
 
 [project]
 name = "astrodrift"
+description = "Large-scale numerical orbit integration for galactic dynamics on CPUs and GPUs"
+readme = "README.md"
 requires-python = ">=3.13"
 classifiers = [
     "Programming Language :: Rust",
