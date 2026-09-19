@@ -6,6 +6,7 @@ use shared::{Config, Engine, Implementation, Method, Model};
 use thiserror::Error;
 
 pub mod galpy;
+pub mod scipy;
 
 #[derive(Debug, Error)]
 pub enum IntegrationError {
