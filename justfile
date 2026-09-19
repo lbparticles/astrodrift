@@ -58,12 +58,12 @@ diagnostics backend="oxide":
 
 _fixtures-oxide mode:
     cargo oxide test --materialize-cubin -- \
-        --release --locked --features galpy-kepler-reference --tests -- \
+        --release --locked --tests -- \
         {{fixture_args}} {{ if mode == "passing" { fixture_skips } else { "" } }}
 
 _fixtures-rust-cuda mode:
     cargo +nightly-2026-04-02 test --release --locked \
-        --no-default-features --features rust-cuda,galpy-kepler-reference \
+        --no-default-features --features rust-cuda \
         --tests -- {{fixture_args}} \
         {{ if mode == "passing" { fixture_skips } else { "" } }}
 
@@ -84,13 +84,8 @@ _lint-python:
 
 _lint-all: _lint-python
     cargo clippy --workspace --all-targets --locked -- -D warnings
-    cargo clippy --workspace --all-targets --locked \
-        --features galpy-kepler-reference -- -D warnings
     cargo +nightly-2026-04-02 clippy --workspace --all-targets --locked \
         --no-default-features --features rust-cuda -- \
-        -D warnings -A clippy::duplicated-attributes -A unused-attributes
-    cargo +nightly-2026-04-02 clippy --workspace --all-targets --locked \
-        --no-default-features --features rust-cuda,galpy-kepler-reference -- \
         -D warnings -A clippy::duplicated-attributes -A unused-attributes
 
 # Alias for the complete lint gate.

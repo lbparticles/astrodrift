@@ -5,29 +5,19 @@ mod tests {
     use drift_rs::state::InputState;
     use libc::{c_double, c_int};
     use shared::{Config, Index, ModelComponent, Tolerance};
-    #[cfg(feature = "galpy-kepler-reference")]
-    use std::fs;
-    use std::fs::File;
-    use std::io::{self, Read};
-    #[cfg(feature = "galpy-kepler-reference")]
-    use std::io::{BufWriter, Write};
-    use std::path::Path;
-    #[cfg(feature = "galpy-kepler-reference")]
-    use std::path::PathBuf;
+    use std::fs::{self, File};
+    use std::io::{self, BufWriter, Read, Write};
+    use std::path::{Path, PathBuf};
 
-    #[cfg(not(feature = "galpy-kepler-reference"))]
-    fn expected_tail_bits() -> [u64; 6] {
-        [
-            0xbfead9ac890cbf34,
-            0xbfe1689ef5f2f595,
-            0x0000000000000000,
-            0x3fe1689ef5f2da49,
-            0xbfead9ac890ca8be,
-            0x0000000000000000,
-        ]
-    }
-
-    #[cfg(feature = "galpy-kepler-reference")]
+    // Previous Cartesian Kepler force tail:
+    // [
+    //     0xbfead9ac890cbf34,
+    //     0xbfe1689ef5f2f595,
+    //     0x0000000000000000,
+    //     0x3fe1689ef5f2da49,
+    //     0xbfead9ac890ca8be,
+    //     0x0000000000000000,
+    // ]
     fn expected_tail_bits() -> [u64; 6] {
         [
             0xbfead9ac890cbf36,
@@ -39,7 +29,6 @@ mod tests {
         ]
     }
 
-    #[cfg(feature = "galpy-kepler-reference")]
     const GALPY_NATIVE_FIXTURE_DIR: &str = "tests/fixtures/dopr54_galpy_native";
     const GALPY_NATIVE_REFERENCE: &str = "tests/fixtures/dopr54_galpy_native/reference.fixture";
 
@@ -61,7 +50,6 @@ mod tests {
         assert_tail_bits(GALPY_NATIVE_REFERENCE, &result, expected_tail_bits());
     }
 
-    #[cfg(feature = "galpy-kepler-reference")]
     #[test]
     #[ignore = "local generated native galpy fixture corpus"]
     fn dopr54_cpu_matches_native_galpy_fixtures() {
@@ -74,7 +62,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "galpy-kepler-reference")]
     // First observed mismatch in the shorter fixture corpus was case_00, step 35,
     // component 5 by 1 ULP.
     #[test]
@@ -89,7 +76,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "galpy-kepler-reference")]
     #[test]
     #[ignore = "diagnostic report for host libm versus CUDA device math drift"]
     fn dopr54_gpu_native_galpy_fixture_error_summary() {
@@ -139,7 +125,6 @@ mod tests {
         assert!(summary.max_abs.is_finite());
     }
 
-    #[cfg(feature = "galpy-kepler-reference")]
     fn galpy_native_fixture_paths() -> Vec<PathBuf> {
         let mut paths: Vec<_> = fs::read_dir(GALPY_NATIVE_FIXTURE_DIR)
             .unwrap_or_else(|err| panic!("could not read {GALPY_NATIVE_FIXTURE_DIR}: {err}"))
@@ -161,7 +146,6 @@ mod tests {
         paths
     }
 
-    #[cfg(feature = "galpy-kepler-reference")]
     #[derive(Default)]
     struct ErrorSummary {
         compared: usize,
@@ -176,7 +160,6 @@ mod tests {
         max_abs_expected_bits: u64,
     }
 
-    #[cfg(feature = "galpy-kepler-reference")]
     impl ErrorSummary {
         fn observe_fixture(&mut self, case_name: &str, result: &[c_double], init: &DumpData) {
             assert_eq!(
@@ -221,7 +204,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "galpy-kepler-reference")]
     fn ulp_distance(a: u64, b: u64) -> u64 {
         let a = ordered_f64_bits(a);
         let b = ordered_f64_bits(b);
@@ -229,7 +211,6 @@ mod tests {
         a.abs_diff(b)
     }
 
-    #[cfg(feature = "galpy-kepler-reference")]
     fn ordered_f64_bits(bits: u64) -> u64 {
         if bits & (1 << 63) == 0 {
             bits | (1 << 63)
@@ -247,7 +228,6 @@ mod tests {
         t: Vec<c_double>,
         yo: Vec<c_double>,
         nargs: c_int,
-        #[cfg_attr(not(feature = "galpy-kepler-reference"), allow(dead_code))]
         expected_state_bits: Vec<u64>,
     }
 
@@ -315,7 +295,6 @@ mod tests {
         }
     }
 
-    #[cfg_attr(not(feature = "galpy-kepler-reference"), allow(dead_code))]
     fn assert_all_state_bits(case_name: &str, result: &[c_double], init: &DumpData) {
         assert_eq!(
             init.expected_state_bits.len(),

@@ -17,7 +17,6 @@ shared = { path = "../shared", default-features = false }
 default = []
 rust-cuda = ["dep:cuda_std", "shared/rust-cuda"]
 cuda-oxide = ["dep:cuda-core", "dep:cuda-device", "dep:cuda-host", "shared/cuda-oxide"]
-galpy-kepler-reference = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]

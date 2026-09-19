@@ -462,7 +462,7 @@ fn copy_state(dst: &mut [f64; DIM], src: &[f64; DIM]) {
 }
 
 fn kepler_rhs(_t: f64, q: &[f64; DIM], a: &mut [f64; DIM]) {
-    let (ax, ay, az) = kepler_force(q[0], q[1], q[2]);
+    let (ax, ay, az) = galpy_kepler_force(q[0], q[1], q[2]);
     a[0] = q[3];
     a[1] = q[4];
     a[2] = q[5];
@@ -472,24 +472,6 @@ fn kepler_rhs(_t: f64, q: &[f64; DIM], a: &mut [f64; DIM]) {
 }
 
 #[inline(always)]
-#[cfg(not(feature = "galpy-kepler-reference"))]
-fn kepler_force(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-    let r2 = x * x + y * y + z * z;
-    let r2_safe = if r2 == 0.0 { 1e-16 } else { r2 };
-    let r = r2_safe.sqrt();
-    let inv_r3 = 1.0 / (r2_safe * r);
-
-    (-x * inv_r3, -y * inv_r3, -z * inv_r3)
-}
-
-#[inline(always)]
-#[cfg(feature = "galpy-kepler-reference")]
-fn kepler_force(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-    galpy_kepler_force(x, y, z)
-}
-
-#[inline(always)]
-#[cfg(feature = "galpy-kepler-reference")]
 fn galpy_kepler_force(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
     // Match galpy's full-orbit cylindrical force projection for the Kepler case.
     let r = (x * x + y * y).sqrt();

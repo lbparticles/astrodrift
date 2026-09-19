@@ -66,32 +66,13 @@ extern "C" fn kepler_rhs(
     unsafe {
         let q = core::slice::from_raw_parts(q, KEPLER_DIM);
         let a = core::slice::from_raw_parts_mut(a, KEPLER_DIM);
-        let (ax, ay, az) = reference_kepler_force(q[0], q[1], q[2]);
+        let (ax, ay, az) = galpy_kepler_force(q[0], q[1], q[2]);
 
         a.copy_from_slice(&[q[3], q[4], q[5], ax, ay, az]);
     }
 }
 
-#[cfg(not(feature = "galpy-kepler-reference"))]
-fn reference_kepler_force(x: c_double, y: c_double, z: c_double) -> (c_double, c_double, c_double) {
-    let radius_squared = x * x + y * y + z * z;
-    let safe_radius_squared = if radius_squared == 0.0 {
-        1.0e-16
-    } else {
-        radius_squared
-    };
-    let radius = unsafe { sqrt(safe_radius_squared) };
-    let inverse_radius_cubed = 1.0 / (safe_radius_squared * radius);
-
-    (
-        -x * inverse_radius_cubed,
-        -y * inverse_radius_cubed,
-        -z * inverse_radius_cubed,
-    )
-}
-
-#[cfg(feature = "galpy-kepler-reference")]
-fn reference_kepler_force(x: c_double, y: c_double, z: c_double) -> (c_double, c_double, c_double) {
+fn galpy_kepler_force(x: c_double, y: c_double, z: c_double) -> (c_double, c_double, c_double) {
     let cylindrical_radius = unsafe { sqrt(x * x + y * y) };
     let sin_phi = y / cylindrical_radius;
     let cos_phi = x / cylindrical_radius;
