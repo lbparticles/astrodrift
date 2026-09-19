@@ -7,7 +7,7 @@ use thiserror::Error;
 pub mod cpu;
 pub mod gpu;
 
-pub use gpu::gpu_dispatch;
+pub(crate) use gpu::gpu_dispatch;
 
 use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
 

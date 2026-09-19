@@ -1,18 +1,16 @@
 use cuda_core::{CudaContext, DeviceBuffer, LaunchConfig1D};
 mod embedded;
 
-use super::{DispatchError, GalpyKernel, grid_size};
-use crate::integrators::galpy::LogTolerance;
+use super::{DispatchError, GpuKernel, grid_size};
 use crate::state::{InputState, OutputState};
 
 const LOG_TARGET: &str = "drift::dispatch::gpu::cuda_oxide";
 
 pub(super) fn launch(
-    kernel: GalpyKernel,
+    kernel: GpuKernel,
     input_state: &InputState,
     times: &[f64],
     output_state: &mut OutputState,
-    tolerance: LogTolerance,
 ) -> Result<(), DispatchError> {
     let setup_started = std::time::Instant::now();
     let context = CudaContext::new(0)?;
@@ -39,10 +37,11 @@ pub(super) fn launch(
     let config = LaunchConfig1D::new(grid, block, 0);
     let n = input_state.num_particles;
     let nt = times.len();
-    let dt_one_init = -9999.99f64;
-
     match kernel {
-        GalpyKernel::Dopr54 => {
+        GpuKernel::GalpyDopr54 {
+            tolerance,
+            initial_step,
+        } => {
             let prepared = module.prepare_galpy_dopr54(config)?;
             module.galpy_dopr54(
                 &stream,
@@ -54,10 +53,10 @@ pub(super) fn launch(
                 nt,
                 tolerance.rtol,
                 tolerance.atol,
-                dt_one_init,
+                initial_step,
             )?;
         }
-        GalpyKernel::Dop853 => {
+        GpuKernel::GalpyDop853 { tolerance } => {
             let prepared = module.prepare_galpy_dop853(config)?;
             module.galpy_dop853(
                 &stream,
@@ -69,7 +68,6 @@ pub(super) fn launch(
                 nt,
                 tolerance.rtol,
                 tolerance.atol,
-                dt_one_init,
             )?;
         }
     }

@@ -1,5 +1,4 @@
-use super::{DispatchError, GalpyKernel, grid_size};
-use crate::integrators::galpy::LogTolerance;
+use super::{DispatchError, GpuKernel, grid_size};
 use crate::state::{InputState, OutputState};
 use cust::launch;
 use cust::memory::CopyDestination;
@@ -9,21 +8,16 @@ static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 const LOG_TARGET: &str = "drift::dispatch::gpu::rust_cuda";
 
 pub(super) fn launch(
-    kernel: GalpyKernel,
+    kernel: GpuKernel,
     input_state: &InputState,
     times: &[f64],
     output_state: &mut OutputState,
-    tolerance: LogTolerance,
 ) -> Result<(), DispatchError> {
     let setup_started = std::time::Instant::now();
     // Keep the CUDA context alive until all device work in this launch completes.
     let _context = cust::quick_init()?;
     let module = Module::from_ptx(PTX, &[])?;
     let stream = Stream::new(StreamFlags::DEFAULT, None)?;
-    let function = module.get_function(match kernel {
-        GalpyKernel::Dopr54 => "galpy_dopr54",
-        GalpyKernel::Dop853 => "galpy_dop853",
-    })?;
     log::debug!(
         target: LOG_TARGET,
         "context initialized and kernel module loaded in {:.3?}",
@@ -43,21 +37,44 @@ pub(super) fn launch(
     );
     let (grid, block) = grid_size(input_state.num_particles);
     let nt = times.len();
-    let dt_one_init = -9999.99f64;
 
-    unsafe {
-        launch!(
-            function<<<grid, block, 0, stream>>>(
-                state0.as_device_ptr(),
-                device_times.as_device_ptr(),
-                output.as_device_ptr(),
-                input_state.num_particles,
-                nt,
-                tolerance.rtol,
-                tolerance.atol,
-                dt_one_init
-            )
-        )?;
+    match kernel {
+        GpuKernel::GalpyDopr54 {
+            tolerance,
+            initial_step,
+        } => {
+            let function = module.get_function("galpy_dopr54")?;
+            unsafe {
+                launch!(
+                    function<<<grid, block, 0, stream>>>(
+                        state0.as_device_ptr(),
+                        device_times.as_device_ptr(),
+                        output.as_device_ptr(),
+                        input_state.num_particles,
+                        nt,
+                        tolerance.rtol,
+                        tolerance.atol,
+                        initial_step
+                    )
+                )?;
+            }
+        }
+        GpuKernel::GalpyDop853 { tolerance } => {
+            let function = module.get_function("galpy_dop853")?;
+            unsafe {
+                launch!(
+                    function<<<grid, block, 0, stream>>>(
+                        state0.as_device_ptr(),
+                        device_times.as_device_ptr(),
+                        output.as_device_ptr(),
+                        input_state.num_particles,
+                        nt,
+                        tolerance.rtol,
+                        tolerance.atol
+                    )
+                )?;
+            }
+        }
     }
     // This combines pending kernel work, synchronization, and readback. Use
     // CUDA events around the launch when kernel-only timing is required.

@@ -1,10 +1,13 @@
 use std::time::Instant;
 
 use log::{debug, info};
-use shared::{Config, Method, Model, ModelComponent, OutputGrid, Real};
+use shared::{
+    Config, Implementation, IntegratorSpec, Method, Model, ModelComponent, OutputGrid, Real,
+    Tolerance,
+};
 
 use crate::dispatch::{DispatchError, dispatch_stages, sample_times};
-use crate::integrators::galpy::LogTolerance;
+use crate::integrators::galpy::{INITIAL_STEP_SENTINEL, LogTolerance};
 use crate::state::{InputFrame, InputState, OutputFrame, OutputState};
 
 #[cfg(feature = "cuda-oxide")]
@@ -79,10 +82,39 @@ pub fn gather_states_nested_extended(
     all
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(super) enum GalpyKernel {
-    Dopr54,
-    Dop853,
+#[derive(Clone, Copy)]
+enum GpuKernel {
+    GalpyDopr54 {
+        tolerance: LogTolerance,
+        initial_step: Real,
+    },
+    GalpyDop853 {
+        tolerance: LogTolerance,
+    },
+}
+
+impl GpuKernel {
+    fn from_integrator(integrator: IntegratorSpec, tolerance: Tolerance) -> Self {
+        match (integrator.implementation, integrator.method) {
+            (Implementation::GALPY, Method::DOPR54) => Self::GalpyDopr54 {
+                tolerance: LogTolerance::from_linear(tolerance),
+                initial_step: INITIAL_STEP_SENTINEL,
+            },
+            (Implementation::GALPY, Method::DOP853) => Self::GalpyDop853 {
+                tolerance: LogTolerance::from_linear(tolerance),
+            },
+            (Implementation::SCIPY | Implementation::DRIFT, _) => {
+                unreachable!("integrator configuration was validated before GPU dispatch")
+            }
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::GalpyDopr54 { .. } => "GALPY DOPR54",
+            Self::GalpyDop853 { .. } => "GALPY DOP853",
+        }
+    }
 }
 
 pub fn launch_galpy_dopr54(
@@ -92,11 +124,13 @@ pub fn launch_galpy_dopr54(
     output: OutputGrid,
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, DispatchError> {
-    launch_galpy_kernel(
-        GalpyKernel::Dopr54,
+    launch_kernel(
+        GpuKernel::GalpyDopr54 {
+            tolerance,
+            initial_step: INITIAL_STEP_SENTINEL,
+        },
         model_component,
         input_state,
-        tolerance,
         output,
         times,
     )
@@ -109,11 +143,10 @@ pub fn launch_galpy_dop853(
     output: OutputGrid,
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, DispatchError> {
-    launch_galpy_kernel(
-        GalpyKernel::Dop853,
+    launch_kernel(
+        GpuKernel::GalpyDop853 { tolerance },
         model_component,
         input_state,
-        tolerance,
         output,
         times,
     )
@@ -121,11 +154,10 @@ pub fn launch_galpy_dop853(
 
 // FIXME: The reference kernels currently hard-code their force model and ignore
 // these general-dispatch inputs.
-fn launch_galpy_kernel(
-    kernel: GalpyKernel,
+fn launch_kernel(
+    kernel: GpuKernel,
     _model_component: &ModelComponent,
     input_state: &InputState,
-    tolerance: LogTolerance,
     output: OutputGrid,
     times: Option<Vec<Real>>,
 ) -> Result<OutputState, DispatchError> {
@@ -133,18 +165,19 @@ fn launch_galpy_kernel(
     let (grid, block) = grid_size(input_state.num_particles);
     debug!(
         target: LOG_TARGET,
-        "launching {kernel:?}: {} particles, grid={grid}, block={block}, {} output times",
+        "launching {} kernel: {} particles, grid={grid}, block={block}, {} output times",
+        kernel.label(),
         input_state.num_particles,
         times.len(),
     );
 
     let mut output_state = OutputState::new_zeroed(times.len(), input_state.num_particles);
-    backend::launch(kernel, input_state, &times, &mut output_state, tolerance)?;
+    backend::launch(kernel, input_state, &times, &mut output_state)?;
 
     Ok(output_state)
 }
 
-pub fn gpu_dispatch(
+pub(crate) fn gpu_dispatch(
     config: Config,
     model: Model,
     input_frame: InputFrame,
@@ -152,7 +185,8 @@ pub fn gpu_dispatch(
     let ts = config.output;
     info!(
         target: LOG_TARGET,
-        "GPU integration starting: method={:?}, {} output times over [{}, {}], rtol={:.2e}, atol={:.2e}",
+        "GPU integration starting: implementation={:?}, method={:?}, {} output times over [{}, {}], rtol={:.2e}, atol={:.2e}",
+        config.integrator.implementation,
         config.integrator.method,
         ts.steps,
         ts.start,
@@ -162,7 +196,7 @@ pub fn gpu_dispatch(
     );
 
     let started = Instant::now();
-    let tolerance = LogTolerance::from_linear(config.tolerance);
+    let kernel = GpuKernel::from_integrator(config.integrator, config.tolerance);
     let mut stage = 0usize;
     let mut total_particles = 0usize;
     let output_frame = dispatch_stages(model, input_frame, |model_component, input_state| {
@@ -175,14 +209,7 @@ pub fn gpu_dispatch(
         );
 
         let stage_started = Instant::now();
-        let result = match config.integrator.method {
-            Method::DOPR54 => {
-                launch_galpy_dopr54(model_component, input_state, tolerance, config.output, None)
-            }
-            Method::DOP853 => {
-                launch_galpy_dop853(model_component, input_state, tolerance, config.output, None)
-            }
-        };
+        let result = launch_kernel(kernel, model_component, input_state, config.output, None);
         if result.is_ok() {
             debug!(
                 target: LOG_TARGET,

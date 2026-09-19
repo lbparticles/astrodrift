@@ -94,7 +94,8 @@ def test_gpu_debug_records_include_dispatch_and_backend_phases(
         if record.name == GPU_LOGGER_NAME
     ]
     assert any(
-        message.startswith("launching Dopr54") for message in dispatch_messages
+        message.startswith("launching GALPY DOPR54 kernel")
+        for message in dispatch_messages
     )
     assert any(
         message.startswith("stage 1: dispatching")

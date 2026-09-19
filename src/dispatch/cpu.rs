@@ -1,29 +1,30 @@
 use std::time::Instant;
 
 use log::{debug, info};
-use shared::{Config, INPUT_STATE_DIM, Method, Model, Real};
+use shared::{Config, INPUT_STATE_DIM, Implementation, IntegratorSpec, Method, Model, Real};
 
 use crate::{
     dispatch::{DispatchError, dispatch_stages, sample_times},
-    integrators::galpy::{LogTolerance, dop853, dopr54},
+    integrators::galpy::{INITIAL_STEP_SENTINEL, LogTolerance, dop853, dopr54},
     state::{InputFrame, InputState, OutputFrame, OutputState},
 };
 
-const INITIAL_STEP_SENTINEL: Real = -9999.99;
 const LOG_TARGET: &str = "drift::dispatch::cpu";
 
 // Progress is reported at most this many times per stage, and not at all for
 // stages smaller than this, so log volume stays proportional to the work.
 const PROGRESS_UPDATES_PER_STAGE: usize = 10;
 
+// CPU implementations are ordinary host functions, so IntegratorSpec can be
+// resolved directly without the intermediate kernel ABI type used by the GPU.
 fn integrate_particle(
-    method: Method,
+    integrator: IntegratorSpec,
     initial_state: &[Real; INPUT_STATE_DIM],
     times: &[Real],
     tolerance: LogTolerance,
 ) -> Result<Vec<Real>, DispatchError> {
-    match method {
-        Method::DOPR54 => dopr54::integrate_kepler(
+    match (integrator.implementation, integrator.method) {
+        (Implementation::GALPY, Method::DOPR54) => dopr54::integrate_kepler(
             *initial_state,
             times,
             INITIAL_STEP_SENTINEL,
@@ -31,8 +32,11 @@ fn integrate_particle(
             tolerance.rtol,
             tolerance.atol,
         )
-        .map_err(|code| DispatchError::CpuIntegration { method, code }),
-        Method::DOP853 => Ok(dop853::integrate_kepler(
+        .map_err(|code| DispatchError::CpuIntegration {
+            method: Method::DOPR54,
+            code,
+        }),
+        (Implementation::GALPY, Method::DOP853) => Ok(dop853::integrate_kepler(
             *initial_state,
             times,
             INITIAL_STEP_SENTINEL,
@@ -40,12 +44,15 @@ fn integrate_particle(
             tolerance.rtol,
             tolerance.atol,
         )),
+        (Implementation::SCIPY | Implementation::DRIFT, _) => {
+            unreachable!("integrator configuration was validated before CPU dispatch")
+        }
     }
 }
 
 fn integrate_stage(
     stage: usize,
-    method: Method,
+    integrator: IntegratorSpec,
     input_state: &InputState,
     times: &[Real],
     tolerance: LogTolerance,
@@ -58,7 +65,7 @@ fn integrate_stage(
 
     let progress_interval = particle_count.div_ceil(PROGRESS_UPDATES_PER_STAGE);
     for (particle, initial_state) in initial_states.iter().enumerate() {
-        let trajectory = integrate_particle(method, initial_state, times, tolerance)?;
+        let trajectory = integrate_particle(integrator, initial_state, times, tolerance)?;
         let (states, remainder) = trajectory.as_chunks::<INPUT_STATE_DIM>();
         debug_assert!(remainder.is_empty());
         for (time, state) in states.iter().enumerate() {
@@ -81,7 +88,7 @@ fn integrate_stage(
     Ok(output)
 }
 
-pub fn cpu_dispatch(
+pub(crate) fn cpu_dispatch(
     config: Config,
     model: Model,
     input_frame: InputFrame,
@@ -89,7 +96,8 @@ pub fn cpu_dispatch(
     let times = sample_times(config.output);
     info!(
         target: LOG_TARGET,
-        "CPU integration starting: method={:?}, {} output times over [{}, {}], rtol={:.2e}, atol={:.2e}",
+        "CPU integration starting: implementation={:?}, method={:?}, {} output times over [{}, {}], rtol={:.2e}, atol={:.2e}",
+        config.integrator.implementation,
         config.integrator.method,
         times.len(),
         times.first().copied().unwrap_or_default(),
@@ -114,13 +122,7 @@ pub fn cpu_dispatch(
         // FIXME: The reference CPU and GPU paths currently use their
         // kernel-local Kepler force instead of the supplied model.
         let stage_started = Instant::now();
-        let result = integrate_stage(
-            stage,
-            config.integrator.method,
-            input_state,
-            &times,
-            tolerance,
-        );
+        let result = integrate_stage(stage, config.integrator, input_state, &times, tolerance);
         if result.is_ok() {
             debug!(
                 target: LOG_TARGET,

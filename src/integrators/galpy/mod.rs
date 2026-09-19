@@ -1,9 +1,11 @@
 //! Exact host ports of galpy's DOPR54 and DOP853 implementations.
 
-use shared::Tolerance;
+use shared::{Real, Tolerance};
 
 pub mod dop853;
 pub mod dopr54;
+
+pub(crate) const INITIAL_STEP_SENTINEL: Real = -9999.99;
 
 /// Logarithmic tolerances used by galpy's native integrator interfaces.
 #[derive(Clone, Copy, Debug)]
