@@ -20,6 +20,10 @@ dependencies = [
     "numpy>=1.24.4",
 ]
 
+[project.urls]
+Repository = "https://github.com/lbparticles/astrodrift"
+Changelog = "https://github.com/lbparticles/astrodrift/blob/main/CHANGELOG.md"
+
 [tool.maturin]
 # ABI compatibility starts at CPython 3.13; supported minors are still tested.
 features = ["pyo3/extension-module", "pyo3/abi3-py313"]
