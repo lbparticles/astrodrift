@@ -475,6 +475,11 @@ impl PyConfig {
 fn drift_rs(m: &Bound<PyModule>) -> PyResult<()> {
     crate::logging::init(m.py())?;
 
+    #[cfg(feature = "cuda-oxide")]
+    m.add("_cuda_compiler", "cuda-oxide")?;
+    #[cfg(feature = "rust-cuda")]
+    m.add("_cuda_compiler", "rust-cuda")?;
+
     error::register(m)?;
     m.add_class::<PyConfig>()?;
     m.add_class::<PyRecipe>()?;

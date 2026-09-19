@@ -1,6 +1,7 @@
 from typing import NamedTuple
 
 import drift as dft
+import drift.drift_rs as drift_rs
 import numpy as np
 import numpy.typing as npt
 import pytest
@@ -99,6 +100,10 @@ def test_results_follow_registration_order(
 
 def test_empty_config_returns_no_results() -> None:
     assert dft.Config().run() == []
+
+
+def test_extension_reports_cuda_compiler() -> None:
+    assert drift_rs._cuda_compiler in {"cuda-oxide", "rust-cuda"}
 
 
 def test_config_construction_does_not_print(
