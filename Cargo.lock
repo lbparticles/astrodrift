@@ -1563,7 +1563,6 @@ name = "shared"
 version = "0.1.0"
 dependencies = [
  "approx",
- "cust_core",
  "libm",
  "rand 0.10.2",
  "rstest",

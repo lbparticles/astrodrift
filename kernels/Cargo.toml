@@ -11,12 +11,12 @@ cuda-device = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "8ac82ec
 cuda-host = { git = "https://github.com/NVlabs/cuda-oxide.git", rev = "8ac82ec761e950594db5f47322330b231f3d80be", optional = true }
 glam = { version = "0.33.0", default-features = false, features = ["cuda", "nostd-libm", "u32"] }
 libm = "0.2.11"
-shared = { path = "../shared", default-features = false }
+shared = { path = "../shared" }
 
 [features]
 default = []
-rust-cuda = ["dep:cuda_std", "shared/rust-cuda"]
-cuda-oxide = ["dep:cuda-core", "dep:cuda-device", "dep:cuda-host", "shared/cuda-oxide"]
+rust-cuda = ["dep:cuda_std"]
+cuda-oxide = ["dep:cuda-core", "dep:cuda-device", "dep:cuda-host"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

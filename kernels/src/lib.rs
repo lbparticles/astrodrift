@@ -1,5 +1,4 @@
-mod dop853;
-mod dopr54;
+mod integrators;
 
 #[cfg(all(feature = "rust-cuda", feature = "cuda-oxide"))]
 compile_error!("features `rust-cuda` and `cuda-oxide` are mutually exclusive");
@@ -54,7 +53,7 @@ fn rust_cuda_thread_id(n: usize) -> Option<usize> {
 /// must not overlap either input, those size products must not overflow, and no
 /// concurrent launch may write the same output. `n` must be positive and
 /// `2 <= nt <= 1024`.
-pub unsafe fn dopr54_cpu_port(
+pub unsafe fn galpy_dopr54(
     state0: *const f64,
     times: *const f64,
     state_out: *mut f64,
@@ -73,7 +72,7 @@ pub unsafe fn dopr54_cpu_port(
     let state0 = unsafe { core::slice::from_raw_parts(state0, n * STATE_DIM) };
     let times = unsafe { core::slice::from_raw_parts(times, nt) };
     unsafe {
-        dopr54::integrate_particle(
+        integrators::galpy::dopr54::integrate_particle(
             tid,
             n,
             nt,
@@ -102,7 +101,7 @@ pub unsafe fn dopr54_cpu_port(
 /// must not overlap either input, those size products must not overflow, and no
 /// concurrent launch may write the same output. `n` must be positive and
 /// `2 <= nt <= 1024`.
-pub unsafe fn dop853_cpu_port(
+pub unsafe fn galpy_dop853(
     state0: *const f64,
     times: *const f64,
     state_out: *mut f64,
@@ -120,7 +119,11 @@ pub unsafe fn dop853_cpu_port(
     // contain the extents described by n and nt.
     let state0 = unsafe { core::slice::from_raw_parts(state0, n * STATE_DIM) };
     let times = unsafe { core::slice::from_raw_parts(times, nt) };
-    unsafe { dop853::integrate_particle(tid, n, nt, state0, times, state_out, rtol, atol) };
+    unsafe {
+        integrators::galpy::dop853::integrate_particle(
+            tid, n, nt, state0, times, state_out, rtol, atol,
+        )
+    };
 }
 
 #[cfg(feature = "cuda-oxide")]
@@ -142,7 +145,7 @@ pub mod oxide {
         )
     )]
     #[allow(clippy::too_many_arguments)]
-    pub fn dopr54_cpu_port(
+    pub fn galpy_dopr54(
         state0: &[f64],
         times: &[f64],
         mut state_out: DisjointSlice<f64>,
@@ -160,7 +163,7 @@ pub mod oxide {
 
         // SAFETY: the launch contract proves all buffer extents; each thread has a unique tid.
         unsafe {
-            super::dopr54::integrate_particle(
+            super::integrators::galpy::dopr54::integrate_particle(
                 tid,
                 n,
                 nt.get(),
@@ -190,7 +193,7 @@ pub mod oxide {
     #[allow(clippy::too_many_arguments)]
     /// `_dt_one_init` keeps the launch interface consistent with DOPR54;
     /// DOP853 derives its own initial step.
-    pub fn dop853_cpu_port(
+    pub fn galpy_dop853(
         state0: &[f64],
         times: &[f64],
         mut state_out: DisjointSlice<f64>,
@@ -208,7 +211,7 @@ pub mod oxide {
 
         // SAFETY: the launch contract proves all buffer extents; each thread has a unique tid.
         unsafe {
-            super::dop853::integrate_particle(
+            super::integrators::galpy::dop853::integrate_particle(
                 tid,
                 n,
                 nt.get(),

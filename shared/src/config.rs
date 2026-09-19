@@ -1,58 +1,48 @@
 use core::f64::consts::PI;
-#[cfg(feature = "rust-cuda")]
-use cust_core::DeviceCopy;
-use libm::log;
 
-use crate::{Index, MIN_ATOL, MIN_RTOL, ModernFlags, Real};
-
-#[cfg(feature = "rust-cuda")]
-unsafe impl DeviceCopy for Settings {}
+use crate::{Index, MIN_ATOL, MIN_RTOL, Real};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Config {
     pub engine: Engine,
-    pub method: Method,
-    pub variant: Variant,
-    pub flags: ModernFlags,
-    pub settings: Settings,
+    pub integrator: IntegratorSpec,
+    pub output: OutputGrid,
+    pub tolerance: Tolerance,
 }
 
-#[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
-pub struct Settings {
-    pub ts: Linspace,
-    pub tolerance: Tolerance,
+pub struct IntegratorSpec {
+    pub method: Method,
+    pub implementation: Implementation,
 }
 
 impl Config {
     pub fn new(
         engine: Engine,
         method: Method,
-        variant: Variant,
-        flags: ModernFlags,
-        ts: Linspace,
+        implementation: Implementation,
+        output: OutputGrid,
         tolerance: Tolerance,
     ) -> Self {
         Self {
             engine,
-            method,
-            variant,
-            flags,
-            settings: Settings { ts, tolerance },
+            integrator: IntegratorSpec {
+                method,
+                implementation,
+            },
+            output,
+            tolerance,
         }
-    }
-    pub fn settings_mut(&mut self) -> &mut Settings {
-        &mut self.settings
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Linspace {
+pub struct OutputGrid {
     pub start: Real,
     pub end: Real,
     pub steps: Index,
 }
-impl Default for Linspace {
+impl Default for OutputGrid {
     fn default() -> Self {
         Self {
             start: 0.0,
@@ -62,7 +52,7 @@ impl Default for Linspace {
     }
 }
 
-impl Linspace {
+impl OutputGrid {
     /// Returns one point from the inclusive grid represented by this value.
     pub fn sample(&self, index: Index) -> Real {
         debug_assert!(self.steps >= 2);
@@ -78,12 +68,12 @@ impl Linspace {
 
 #[cfg(test)]
 mod tests {
-    use super::Linspace;
+    use super::OutputGrid;
 
     #[test]
-    fn linspace_includes_endpoints_in_either_direction() {
+    fn output_grid_includes_endpoints_in_either_direction() {
         for (start, end, expected) in [(0.0, 1.0, [0.0, 0.5, 1.0]), (1.0, -1.0, [1.0, 0.0, -1.0])] {
-            let grid = Linspace {
+            let grid = OutputGrid {
                 start,
                 end,
                 steps: 3,
@@ -93,26 +83,22 @@ mod tests {
         }
     }
 }
-/// Error tolerances in the logarithmic representation consumed by the
-/// galpy-compatible integrators.
+/// Conventional positive relative and absolute error tolerances.
 #[derive(Clone, Copy, Debug)]
 pub struct Tolerance {
-    pub atol: Real,
     pub rtol: Real,
+    pub atol: Real,
 }
 
 impl Tolerance {
-    pub fn from_linear(rtol: Real, atol: Real) -> Self {
-        Self {
-            atol: log(atol),
-            rtol: log(rtol),
-        }
+    pub const fn new(rtol: Real, atol: Real) -> Self {
+        Self { rtol, atol }
     }
 }
 
 impl Default for Tolerance {
     fn default() -> Self {
-        Self::from_linear(MIN_RTOL, MIN_ATOL)
+        Self::new(MIN_RTOL, MIN_ATOL)
     }
 }
 
@@ -131,9 +117,9 @@ pub enum Method {
 }
 
 #[derive(Default, Debug, Clone, Copy)]
-pub enum Variant {
-    // This is currently the only implemented general-dispatch variant.
+pub enum Implementation {
     #[default]
-    Compatible,
-    Modern,
+    GALPY,
+    SCIPY,
+    DRIFT,
 }

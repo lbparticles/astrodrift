@@ -18,15 +18,12 @@ class Method(StrEnum):
     DOP853 = "DOP853"
 
 
-class Variant(StrEnum):
-    """Integrator implementation variant.
+class Implementation(StrEnum):
+    """Numerical implementation of the selected integration method."""
 
-    Compatible selects the CPU/GPU reference implementation. Modern is
-    reserved for future optimized implementations.
-    """
-
-    Compatible = "Compatible"
-    Modern = "Modern"
+    GALPY = "GALPY"
+    SCIPY = "SCIPY"
+    DRIFT = "DRIFT"
 
 
-__all__ = ["Engine", "Method", "Variant"]
+__all__ = ["Engine", "Implementation", "Method"]

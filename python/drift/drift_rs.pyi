@@ -7,7 +7,7 @@ from typing import Literal, Sequence
 import numpy as np
 import numpy.typing as npt
 
-from .selectors import Engine, Method, Variant
+from .selectors import Engine, Implementation, Method
 
 _cuda_compiler: Literal["cuda-oxide", "rust-cuda"]
 
@@ -47,7 +47,7 @@ class Config:
         self,
         engine: Engine | None = ...,
         method: Method | None = ...,
-        variant: Variant | None = ...,
+        implementation: Implementation | None = ...,
         ts: tuple[float, float, int]
         | Sequence[float]
         | npt.NDArray[np.float64]

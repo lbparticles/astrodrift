@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use drift_rs::dispatch::gpu::launch_kernel;
-    use drift_rs::integrators::dopr54_cpu::integrate_kepler;
+    use drift_rs::dispatch::gpu::launch_galpy_dopr54;
+    use drift_rs::integrators::galpy::{LogTolerance, dopr54::integrate_kepler};
     use drift_rs::state::InputState;
     use libc::{c_double, c_int};
-    use shared::{Config, Index, ModelComponent, Tolerance};
+    use shared::{Index, ModelComponent, OutputGrid};
     use std::fs::{self, File};
     use std::io::{self, BufWriter, Read, Write};
     use std::path::{Path, PathBuf};
@@ -251,13 +251,12 @@ mod tests {
         assert_eq!(init.t.len(), init.nt as usize, "t length != nt");
         assert_eq!(init.yo.len(), init.dim as usize, "yo length != dim");
 
-        let mut config = Config::default();
-        config.settings.tolerance = Tolerance {
-            rtol: init.rtol,
-            atol: init.atol,
+        let tolerance = LogTolerance::from_logarithmic(init.rtol, init.atol);
+        let output = OutputGrid {
+            end: *init.t.last().unwrap(),
+            steps: init.nt as Index,
+            ..Default::default()
         };
-        config.settings.ts.end = *init.t.last().unwrap();
-        config.settings.ts.steps = init.nt as Index;
 
         let mut input_state = InputState::new_zeroed();
         input_state.num_particles = init.yo.len() as Index / init.dim as Index;
@@ -266,12 +265,11 @@ mod tests {
         }
 
         let model_component = ModelComponent(core::array::from_fn(|_| None));
-        let output_state = launch_kernel(
+        let output_state = launch_galpy_dopr54(
             &model_component,
             &input_state,
-            config.flags,
-            config.settings.tolerance,
-            config.settings.ts,
+            tolerance,
+            output,
             Some(init.t.clone()),
         )
         .expect("kernel launch failed");

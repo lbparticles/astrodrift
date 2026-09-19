@@ -38,12 +38,11 @@ def _make_model() -> SmokeModel:
 def _run_gpu(
     model: SmokeModel,
     method: dft.Method,
-    variant: dft.Variant = dft.Variant.Compatible,
 ) -> IntegrationResult:
     sim = dft.Config(
         engine=dft.Engine.GPU,
         method=method,
-        variant=variant,
+        implementation=dft.Implementation.GALPY,
     )
     sim.add(model.gmc, model.gal)
     sim.add(model.iso, model.gmc, model.gal)
@@ -51,7 +50,11 @@ def _run_gpu(
 
 
 def _run_cpu(model: SmokeModel, method: dft.Method) -> IntegrationResult:
-    sim = dft.Config(engine=dft.Engine.CPU, method=method)
+    sim = dft.Config(
+        engine=dft.Engine.CPU,
+        method=method,
+        implementation=dft.Implementation.GALPY,
+    )
     sim.add(model.gmc, model.gal)
     sim.add(model.iso, model.gmc, model.gal)
     return sim.run()
@@ -72,14 +75,14 @@ def model() -> SmokeModel:
 
 
 @pytest.fixture(scope="module")
-def compatible_results(
+def galpy_gpu_results(
     model: SmokeModel,
 ) -> dict[dft.Method, IntegrationResult]:
     return {method: _run_gpu(model, method) for method in SUPPORTED_METHODS}
 
 
 @pytest.fixture(scope="module")
-def cpu_compatible_results(
+def galpy_cpu_results(
     model: SmokeModel,
 ) -> dict[dft.Method, IntegrationResult]:
     return {method: _run_cpu(model, method) for method in SUPPORTED_METHODS}
@@ -87,9 +90,9 @@ def cpu_compatible_results(
 
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
 def test_results_follow_registration_order(
-    compatible_results: dict[dft.Method, IntegrationResult], method: dft.Method
+    galpy_gpu_results: dict[dft.Method, IntegrationResult], method: dft.Method
 ) -> None:
-    gmc_trajectory, background_result, iso_trajectory = compatible_results[
+    gmc_trajectory, background_result, iso_trajectory = galpy_gpu_results[
         method
     ]
 
@@ -128,6 +131,7 @@ def test_info_and_repr_return_a_bounded_summary_without_printing(
     assert capsys.readouterr().out == ""
     assert repr(sim) == summary
     assert summary.startswith("Config(engine=CPU, method=DOPR54")
+    assert "implementation=GALPY" in summary
     assert "containers=2" in summary
     assert "dependencies=1" in summary
     assert len(summary) < 300
@@ -145,18 +149,18 @@ def test_particle_group_requires_a_registered_force_source(
 
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
 def test_particle_results_are_time_major_trajectories(
-    compatible_results: dict[dft.Method, IntegrationResult], method: dft.Method
+    galpy_gpu_results: dict[dft.Method, IntegrationResult], method: dft.Method
 ) -> None:
-    for trajectory in _particle_trajectories(compatible_results[method]):
+    for trajectory in _particle_trajectories(galpy_gpu_results[method]):
         assert trajectory.shape == (100, N_PARTICLES, 6)
         assert trajectory.dtype == np.float64
 
 
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
 def test_gpu_trajectories_are_accurate_over_one_orbit(
-    compatible_results: dict[dft.Method, IntegrationResult], method: dft.Method
+    galpy_gpu_results: dict[dft.Method, IntegrationResult], method: dft.Method
 ) -> None:
-    trajectories = _particle_trajectories(compatible_results[method])
+    trajectories = _particle_trajectories(galpy_gpu_results[method])
     initial_states = (ISO_INITIAL_STATE, GMC_INITIAL_STATE)
 
     for trajectory, initial_state in zip(
@@ -171,23 +175,29 @@ def test_gpu_trajectories_are_accurate_over_one_orbit(
 
 @pytest.mark.parametrize("engine", dft.Engine)
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
-def test_unimplemented_variant_is_rejected(
-    model: SmokeModel, engine: dft.Engine, method: dft.Method
+@pytest.mark.parametrize(
+    "implementation", (dft.Implementation.SCIPY, dft.Implementation.DRIFT)
+)
+def test_unimplemented_integrator_is_rejected_before_execution(
+    engine: dft.Engine,
+    method: dft.Method,
+    implementation: dft.Implementation,
 ) -> None:
-    sim = dft.Config(engine=engine, method=method, variant=dft.Variant.Modern)
-    sim.add(model.iso, model.gal)
-
-    message = rf"{engine.value} \+ {method.value} \+ Modern is not implemented"
+    message = rf"{engine.value} \+ {implementation.value} {method.value} is not implemented"
     with pytest.raises(NotImplementedError, match=message):
-        sim.run()
+        dft.Config(
+            engine=engine,
+            method=method,
+            implementation=implementation,
+        )
 
 
 @pytest.mark.parametrize("method", SUPPORTED_METHODS)
-def test_cpu_compatible_results_are_time_major_trajectories(
-    cpu_compatible_results: dict[dft.Method, IntegrationResult],
+def test_cpu_galpy_results_are_time_major_trajectories(
+    galpy_cpu_results: dict[dft.Method, IntegrationResult],
     method: dft.Method,
 ) -> None:
-    trajectories = _particle_trajectories(cpu_compatible_results[method])
+    trajectories = _particle_trajectories(galpy_cpu_results[method])
 
     for trajectory, initial_state in zip(
         trajectories, (ISO_INITIAL_STATE, GMC_INITIAL_STATE), strict=True
@@ -201,16 +211,30 @@ def test_cpu_compatible_results_are_time_major_trajectories(
         )
 
 
-def test_default_config_uses_cpu_compatible_path(
+@pytest.mark.parametrize("method", SUPPORTED_METHODS)
+def test_cpu_and_gpu_galpy_results_agree(
+    galpy_cpu_results: dict[dft.Method, IntegrationResult],
+    galpy_gpu_results: dict[dft.Method, IntegrationResult],
+    method: dft.Method,
+) -> None:
+    cpu = _particle_trajectories(galpy_cpu_results[method])
+    gpu = _particle_trajectories(galpy_gpu_results[method])
+    for cpu_trajectory, gpu_trajectory in zip(cpu, gpu, strict=True):
+        np.testing.assert_allclose(
+            cpu_trajectory, gpu_trajectory, rtol=1.0e-12, atol=1.0e-12
+        )
+
+
+def test_default_config_uses_cpu_galpy_path(
     model: SmokeModel,
-    cpu_compatible_results: dict[str, IntegrationResult],
+    galpy_cpu_results: dict[dft.Method, IntegrationResult],
 ) -> None:
     sim = dft.Config()
     sim.add(model.gmc, model.gal)
     sim.add(model.iso, model.gmc, model.gal)
 
     default = _particle_trajectories(sim.run())
-    explicit = _particle_trajectories(cpu_compatible_results[dft.Method.DOPR54])
+    explicit = _particle_trajectories(galpy_cpu_results[dft.Method.DOPR54])
     for default_trajectory, explicit_trajectory in zip(
         default, explicit, strict=True
     ):

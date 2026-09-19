@@ -40,17 +40,12 @@ def test_failed_integration_raises_drift_integration_error() -> None:
 
 
 def test_unsupported_configuration_uses_not_implemented_error() -> None:
-    sim = dft.Config(
-        engine=dft.Engine.CPU,
-        method=dft.Method.DOPR54,
-        variant=dft.Variant.Modern,
-    )
-    sim.add(
-        dft.test_particles(_PLUNGE), dft.background(dft.Potential.kepler(1.0))
-    )
-
     with pytest.raises(NotImplementedError) as raised:
-        sim.run()
+        dft.Config(
+            engine=dft.Engine.CPU,
+            method=dft.Method.DOPR54,
+            implementation=dft.Implementation.SCIPY,
+        )
     assert not isinstance(raised.value, dft.DriftError)
 
 

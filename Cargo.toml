@@ -10,7 +10,7 @@ name = "drift_rs"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-shared = { path = "shared", default-features = false }
+shared = { path = "shared" }
 pyo3 = "0.28.3"
 cust = { git = "https://github.com/Rust-GPU/Rust-CUDA", package = "cust", branch = "main", optional = true }
 cuda-core = { version = "0.3.1", optional = true }
@@ -38,8 +38,8 @@ members = ["shared", "kernels", "."]
 [features]
 default = ["cuda-oxide"]
 extension-module = ["pyo3/extension-module"]
-rust-cuda = ["dep:cust", "dep:cuda_builder", "shared/rust-cuda"]
-cuda-oxide = ["dep:cuda-core", "dep:cuda-host", "dep:kernels", "kernels/cuda-oxide", "shared/cuda-oxide"]
+rust-cuda = ["dep:cust", "dep:cuda_builder"]
+cuda-oxide = ["dep:cuda-core", "dep:cuda-host", "dep:kernels", "kernels/cuda-oxide"]
 
 
 [target.'cfg(unix)'.dependencies]

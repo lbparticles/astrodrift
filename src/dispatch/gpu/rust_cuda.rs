@@ -1,20 +1,19 @@
+use super::{DispatchError, GalpyKernel, grid_size};
+use crate::integrators::galpy::LogTolerance;
+use crate::state::{InputState, OutputState};
 use cust::launch;
 use cust::memory::CopyDestination;
 use cust::prelude::{DeviceBuffer, Module, Stream, StreamFlags};
-use shared::Tolerance;
-
-use super::{DispatchError, Kernel, grid_size};
-use crate::state::{InputState, OutputState};
 
 static PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/kernels.ptx"));
 const LOG_TARGET: &str = "drift::dispatch::gpu::rust_cuda";
 
 pub(super) fn launch(
-    kernel: Kernel,
+    kernel: GalpyKernel,
     input_state: &InputState,
     times: &[f64],
     output_state: &mut OutputState,
-    tolerance: Tolerance,
+    tolerance: LogTolerance,
 ) -> Result<(), DispatchError> {
     let setup_started = std::time::Instant::now();
     // Keep the CUDA context alive until all device work in this launch completes.
@@ -22,8 +21,8 @@ pub(super) fn launch(
     let module = Module::from_ptx(PTX, &[])?;
     let stream = Stream::new(StreamFlags::DEFAULT, None)?;
     let function = module.get_function(match kernel {
-        Kernel::Dopr54 => "dopr54_cpu_port",
-        Kernel::Dop853 => "dop853_cpu_port",
+        GalpyKernel::Dopr54 => "galpy_dopr54",
+        GalpyKernel::Dop853 => "galpy_dop853",
     })?;
     log::debug!(
         target: LOG_TARGET,
