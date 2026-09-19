@@ -12,14 +12,20 @@ sync:
 
 # Build an editable Python extension for oxide (default) or rust-cuda.
 develop backend="oxide": sync
+    just _develop-checked {{backend}}
+
+_develop-checked backend:
+    uv run --no-sync ./scripts/editable_extension.py clean
     just _develop-{{backend}}
+    uv run --no-sync ./scripts/editable_extension.py check {{ if backend == "oxide" { "cuda-oxide" } else { backend } }}
 
 _develop-oxide:
     uv run --no-sync ./scripts/build_cuda_oxide.py develop
 
 _develop-rust-cuda:
     RUSTUP_TOOLCHAIN=nightly-2026-04-02 uv run --no-sync maturin develop \
-        --release --locked --no-default-features --features rust-cuda --uv
+        --release --locked --no-default-features \
+        --features rust-cuda,pyo3/abi3-py313 --uv
 
 # Build the cuda-oxide release wheel with a native (default) or Zig linker.
 wheel linker="native": sync
@@ -37,7 +43,7 @@ wheel-check wheel:
 
 # Build the selected extension, run its Python smoke tests, and run ordinary Rust tests.
 test backend="oxide": sync
-    just _develop-{{backend}}
+    just _develop-checked {{backend}}
     uv run --no-sync pytest tests
     just _test-{{backend}}
 

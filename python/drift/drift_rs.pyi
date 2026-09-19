@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Literal, Sequence
 
 import numpy as np
 import numpy.typing as npt
 
 from .selectors import Engine, Method, Variant
+
+_cuda_compiler: Literal["cuda-oxide", "rust-cuda"]
 
 class Potential:
     """A gravitational potential definition."""
