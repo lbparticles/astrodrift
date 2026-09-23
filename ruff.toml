@@ -29,7 +29,15 @@ exclude = [
     "README.md",
     "site-packages",
     "venv",
+    # Vendored galpy 1.11.2, kept as upstream wrote it (see reference/galpy-minimal).
+    "reference/galpy-minimal/galpy",
+    "reference/galpy-minimal/setup.py",
 ]
+
+# Hold `exclude` against paths named explicitly, not just directory traversal.
+# Without this, the pre-commit hook's `ruff <staged files>` lints the vendored
+# tree, which is deliberately not held to this repository's style.
+force-exclude = true
 
 # Same as Black.
 line-length = 80

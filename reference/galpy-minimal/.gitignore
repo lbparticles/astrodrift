@@ -1,0 +1,8 @@
+# The repository root ignores *.txt; galpy's contributor list is not a build
+# artifact and is kept for attribution.
+!AUTHORS.txt
+
+# Local build of the C extension and its editable install.
+/build/
+/galpy.egg-info/
+/.venv/
